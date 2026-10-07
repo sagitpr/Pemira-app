@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { GLOBAL_REKAP_SUMMARY, BEM_REKAP_RESULTS } from '@/data/mockRekapData';
 
