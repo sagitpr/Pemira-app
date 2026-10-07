@@ -65,7 +65,7 @@ export default function QrScreenPage() {
   return (
     <main
       ref={containerRef}
-      className="relative flex min-h-screen flex-col items-center justify-between overflow-hidden bg-[#FAF9F5] p-6 text-slate-800 select-none"
+      className="fixed inset-0 flex h-screen max-h-screen w-screen flex-col items-center justify-between overflow-hidden bg-[#FAF9F5] p-4 md:p-6 text-slate-800 select-none"
     >
       {/* Layer Video YouTube Background */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
@@ -174,16 +174,6 @@ export default function QrScreenPage() {
             {formattedTime}
           </span>
         </div>
-
-        {/* Pintasan Simulasi Layar Bilik Suara untuk Pengujian Desktop */}
-        <a
-          href={voteUrl || '/vote'}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-4 inline-flex items-center gap-2 px-4 py-1.5 rounded-xl bg-white/90 hover:bg-white text-[#0284c7] font-bold text-xs border border-sky-200 shadow-2xs transition hover:shadow-xs cursor-pointer"
-        >
-          <span>🖥️ Buka Layar Bilik Suara (Vote)</span>
-        </a>
       </div>
 
       {/* Footer */}

@@ -16,6 +16,15 @@ export async function GET() {
         fs.mkdirSync(targetDir, { recursive: true });
       }
       fs.writeFileSync(targetPath, buffer);
+
+      const imageDir = path.join(targetDir, 'image');
+      if (!fs.existsSync(imageDir)) fs.mkdirSync(imageDir, { recursive: true });
+      fs.writeFileSync(path.join(imageDir, 'logo.png'), buffer);
+
+      const imagesDir = path.join(targetDir, 'images');
+      if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+      fs.writeFileSync(path.join(imagesDir, 'logo.png'), buffer);
+
       return new NextResponse(buffer, {
         headers: {
           'Content-Type': 'image/png',

@@ -3,8 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
-import AppLogo from '@/components/common/AppLogo';
-import { Eye, EyeOff, Lock, Mail, ShieldCheck, ArrowRight, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -15,6 +14,7 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [imgError, setImgError] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,8 +36,7 @@ export default function AdminLoginPage() {
       } else {
         setErrorMessage(data.message || 'Email atau kata sandi tidak cocok.');
       }
-    } catch (err: any) {
-      // Fallback
+    } catch {
       const success = login(email, password);
       if (success) {
         router.push('/admin/dashboard');
@@ -56,41 +55,55 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 font-sans">
+    <div className="min-h-screen w-full bg-gradient-to-b from-slate-100 via-white to-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 font-sans">
       <div className="w-full max-w-md">
-        {/* Header Logo & Badge */}
+        {/* Identitas & Logo Resmi UBTH + Badge Tegas */}
         <div className="text-center mb-6 flex flex-col items-center">
-          <AppLogo size={56} />
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 text-sky-800 border border-sky-200 text-[11px] font-bold tracking-wide mt-3">
-            <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
-            <span>PORTAL RESMI KPUM UBTH 2026</span>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <div className="w-16 h-16 shrink-0 flex items-center justify-center drop-shadow-sm">
+              {!imgError ? (
+                <img
+                  src="/api/logo"
+                  alt="Logo Resmi UBTH"
+                  className="w-16 h-16 object-contain"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-xl shadow-md">
+                  UBTH
+                </div>
+              )}
+            </div>
+            <div className="inline-flex items-center px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-xs font-black tracking-wider uppercase shadow-xs">
+              [ KPR UBTH 2026 ]
+            </div>
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-2 tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1">
             Panel Administrator &amp; Saksi
           </h1>
           <p className="text-xs text-slate-500 mt-1 max-w-xs">
-            Masuk untuk mengakses rekapitulasi suara, manajemen DPT, dan bilik
+            Masuk untuk mengakses rekapitulasi suara, manajemen DPT, dan bilik suara digital.
           </p>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white border border-slate-200/80 shadow-lg shadow-slate-200/60 rounded-3xl p-6 sm:p-8">
+        {/* Card Container Putih Solid */}
+        <div className="bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 rounded-3xl p-8 max-w-md w-full">
           <form onSubmit={handleLogin} className="space-y-4">
             {errorMessage && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
                 {errorMessage}
               </div>
             )}
 
-            {/* Email Field */}
+            {/* Email / Username Input */}
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                Alamat Email Resmi KPUM
+                Email / Username Admin
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  type="email"
+                  type="text"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -100,10 +113,10 @@ export default function AdminLoginPage() {
               </div>
             </div>
 
-            {/* Password Field */}
+            {/* Password Input dengan Eye / EyeOff Toggle */}
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                Kata Sandi Akses
+                Kata Sandi
               </label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -118,66 +131,59 @@ export default function AdminLoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5"
+                  aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
             </div>
 
-            {/* Submit Button */}
+            {/* Tombol Masuk: Deep Navy Solid */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-slate-900/10 disabled:opacity-70"
+              className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition-all shadow-md shadow-slate-900/15 flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer disabled:opacity-70"
             >
               {isLoading ? (
                 <span>Memverifikasi Akun...</span>
               ) : (
                 <>
-                  <span>Masuk ke Panel Kontrol</span>
+                  <span>Masuk ke Dashboard</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Quick Demo Credentials */}
+          {/* Akses Cepat Penguji / Demo Quick Login */}
           <div className="mt-6 pt-5 border-t border-slate-100">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase block mb-2">
-              Kredensial Default KPUM 2026:
+            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase block mb-2.5 text-center">
+              Akses Cepat Penguji
             </span>
-            <div className="space-y-1.5">
+            <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => handleFillDemo('admin@pemira2026.ac.id', 'kpum2026#secure')}
-                className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-left flex items-center justify-between text-xs transition-colors"
+                className="bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl py-2.5 px-3 text-xs font-semibold text-center transition-colors cursor-pointer"
               >
-                <div>
-                  <span className="font-bold text-slate-900 block">KPUM Utama (Akses Penuh)</span>
-                  <span className="text-[11px] text-slate-500 font-mono">admin@pemira2026.ac.id</span>
-                </div>
-                <KeyRound className="w-4 h-4 text-sky-600" />
+                ⚡ Super Admin
               </button>
-
               <button
                 type="button"
                 onClick={() => handleFillDemo('saksi01@pemira2026.ac.id', 'kpum2026#secure')}
-                className="w-full p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-left flex items-center justify-between text-xs transition-colors"
+                className="bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl py-2.5 px-3 text-xs font-semibold text-center transition-colors cursor-pointer"
               >
-                <div>
-                  <span className="font-bold text-slate-900 block">Saksi Paslon 01 (Monitoring)</span>
-                  <span className="text-[11px] text-slate-500 font-mono">saksi01@pemira2026.ac.id</span>
-                </div>
-                <KeyRound className="w-4 h-4 text-slate-400" />
+                👁️ Saksi Paslon
               </button>
             </div>
           </div>
         </div>
 
-        {/* Security Notice */}
-        <div className="mt-6 text-center text-xs text-slate-500">
-          <p>Hak Akses Dilindungi oleh Komisi Pemilihan Umum Mahasiswa UBTH 2026</p>
+        {/* Footer Info */}
+        <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+          <span>Sesi terenkripsi &amp; terlindungi sistem resmi KPR UBTH 2026</span>
         </div>
       </div>
     </div>
