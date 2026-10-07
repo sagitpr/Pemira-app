@@ -28,7 +28,8 @@ export interface Candidate {
 }
 
 export const FACULTIES_DATA: FacultyGroup[] = [
-  {\n    id: 'FTB',
+  {
+    id: 'FTB',
     name: 'FAKULTAS TEKNOLOGI & BISNIS (FTB)',
     shortName: 'FTB',
     prodis: [
