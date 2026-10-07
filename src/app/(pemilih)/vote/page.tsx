@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
-import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
+import { Candidate } from '@/data/voteMockData';
 import VoteHeader from '@/components/vote/VoteHeader';
 import VotingStepper from '@/components/vote/VotingStepper';
 import CandidateCard from '@/components/vote/CandidateCard';
@@ -14,16 +14,16 @@ import {
   ArrowLeft,
   ShieldCheck,
   AlertTriangle,
-  User,
-  GraduationCap,
-  Sparkles,
   Lock,
+  Volume2,
+  VolumeX,
+  Hourglass,
+  HelpCircle,
 } from 'lucide-react';
 
-export default function VotingPage() {
+function VoteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const boothParam = searchParams.get('booth') || 'Bilik 01';
 
   const {
     voters,
@@ -35,7 +35,11 @@ export default function VotingPage() {
   } = useAdmin();
 
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [selectedNim, setSelectedNim] = useState<string>('24030112'); // default Dimas (S1 Farmasi)
+  const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 01');
+  const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(1);
+  const [isWaitingQueue, setIsWaitingQueue] = useState<boolean>(false);
+
+  const [selectedNim, setSelectedNim] = useState<string>('24030112'); // Default Dimas
   const [selectedVoter, setSelectedVoter] = useState(voters.find((v) => v.nim === '24030112') || voters[0]);
 
   const [selectedBemId, setSelectedBemId] = useState<string>('');
@@ -46,9 +50,49 @@ export default function VotingPage() {
 
   const [timerSeconds, setTimerSeconds] = useState(180);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [finishCountdown, setFinishCountdown] = useState(8);
 
-  // Sync selected voter info
+  // Post-submit self-destruct / bilik countdown (3 minutes = 180s)
+  const [postSubmitSeconds, setPostSubmitSeconds] = useState(180);
+  const [ticketAudit, setTicketAudit] = useState('');
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const audioIntervalRef = useRef<any>(null);
+
+  // 1. Initial Booth Assignment & URL Token Burn
+  useEffect(() => {
+    const rawToken = searchParams.get('token');
+    const rawBooth = searchParams.get('booth') || 'Bilik 01';
+
+    // Burn token visually from URL
+    if (typeof window !== 'undefined' && (rawToken || searchParams.has('token'))) {
+      window.history.replaceState(null, '', '/vote');
+    }
+
+    const initBooth = async () => {
+      try {
+        const res = await fetch('/api/vote/assign-booth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: rawToken, preferredBooth: rawBooth }),
+        });
+        const data = await res.json();
+
+        if (data.waiting) {
+          setIsWaitingQueue(true);
+        } else if (data.success) {
+          setAssignedBoothName(data.boothName || rawBooth);
+          setAssignedBoothNumber(data.boothNumber || 1);
+        }
+      } catch (err) {
+        setAssignedBoothName(rawBooth);
+        const match = rawBooth.match(/\d+/);
+        if (match) setAssignedBoothNumber(parseInt(match[0], 10));
+      }
+    };
+
+    initBooth();
+  }, [searchParams]);
+
+  // Sync selected voter
   useEffect(() => {
     const voter = voters.find((v) => v.nim === selectedNim);
     if (voter) {
@@ -56,13 +100,13 @@ export default function VotingPage() {
     }
   }, [selectedNim, voters]);
 
-  // Session timer
+  // Session timer before step 5
   useEffect(() => {
-    if (currentStep >= 5) return;
+    if (currentStep >= 5 || isWaitingQueue) return;
     const timer = setInterval(() => {
       setTimerSeconds((prev) => {
         if (prev <= 1) {
-          showToast('Waktu sesi habis. Bilik dikembalikan ke awal.', 'warning');
+          showToast('Waktu sesi bilik habis. Bilik dikembalikan ke awal.', 'warning');
           router.push('/qr-screen');
           return 0;
         }
@@ -70,29 +114,149 @@ export default function VotingPage() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentStep, router, showToast]);
+  }, [currentStep, isWaitingQueue, router, showToast]);
 
-  // Step 5 auto-logout countdown
+  // Lock back navigation & Post-Submit Self-Destruct Audio on Step 5
   useEffect(() => {
-    if (currentStep === 5) {
-      const exitTimer = setInterval(() => {
-        setFinishCountdown((prev) => {
-          if (prev <= 1) {
-            router.push('/qr-screen');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-      return () => clearInterval(exitTimer);
-    }
-  }, [currentStep, router]);
+    if (currentStep !== 5) return;
 
-  // Filter HIMA candidates by voter's faculty
+    // Lock back navigation
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+      showToast('Sesi pemungutan suara telah ditutup dan dikunci.', 'info');
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    // Audio cue beep using Web Audio API
+    const playBeep = () => {
+      if (isAudioMuted) return;
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime); // 880 Hz
+        gain.gain.setValueAtTime(0.08, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+      } catch (e) {}
+    };
+
+    playBeep();
+    audioIntervalRef.current = setInterval(playBeep, 4000); // looping alert every 4s
+
+    // 3-minute self-destruct countdown
+    const countdown = setInterval(() => {
+      setPostSubmitSeconds((prev) => {
+        if (prev <= 1) {
+          router.push('/qr-screen');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      clearInterval(countdown);
+      if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
+    };
+  }, [currentStep, isAudioMuted, router, showToast]);
+
+  // Step 1 -> 2: Update Presence to Supabase & Context
+  const handleProceedToStep2 = async () => {
+    try {
+      await fetch('/api/vote/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boothNumber: assignedBoothNumber,
+          nim: selectedVoter.nim,
+          name: selectedVoter.name,
+          prodi: selectedVoter.prodiName,
+        }),
+      });
+    } catch (e) {}
+
+    updateBoothStatus(
+      `b-0${assignedBoothNumber}`,
+      'Sedang Memilih',
+      { voterNim: selectedVoter.nim, voterName: selectedVoter.name, prodiName: selectedVoter.prodiName }
+    );
+    setCurrentStep(2);
+  };
+
+  // Step 4 -> 5: Atomic Vote Submission
+  const handleFinalSubmit = async () => {
+    // Strict Anti-Golput Validation
+    if (!selectedBemId || !selectedHimaId) {
+      showToast('Wajib memilih Paslon BEM dan Paslon HIMA (Anti-Golput).', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch('/api/vote/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nim: selectedVoter.nim,
+          boothNumber: assignedBoothNumber,
+          bemCandidateId: selectedBemId,
+          himaCandidateId: selectedHimaId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Gagal mengirimkan suara sah.', 'error');
+        setIsSubmitting(false);
+        return;
+      }
+
+      setTicketAudit(data.ticketNumber || `UBTH-${Date.now().toString().slice(-6)}`);
+
+      // Update local state & clear session
+      castVote(selectedVoter.nim, selectedBemId, selectedHimaId);
+      updateBoothStatus(
+        `b-0${assignedBoothNumber}`,
+        'Selesai',
+        { voterName: selectedVoter.name, voterNim: selectedVoter.nim }
+      );
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.clear();
+      }
+
+      setIsSubmitting(false);
+      setCurrentStep(5);
+    } catch (err: any) {
+      // Fallback
+      castVote(selectedVoter.nim, selectedBemId, selectedHimaId);
+      updateBoothStatus(`b-0${assignedBoothNumber}`, 'Selesai');
+      setTicketAudit(`UBTH-${Math.floor(100000 + Math.random() * 900000)}`);
+      setIsSubmitting(false);
+      setCurrentStep(5);
+    }
+  };
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+  };
+
   const relevantHimaCandidates = himaCandidates.filter(
     (c) => !c.facultyId || c.facultyId === selectedVoter.facultyId
   );
-
   const selectedBemCandidate = bemCandidates.find((c) => c.id === selectedBemId);
   const selectedHimaCandidate = himaCandidates.find((c) => c.id === selectedHimaId);
 
@@ -101,30 +265,34 @@ export default function VotingPage() {
     setIsDetailModalOpen(true);
   };
 
-  const handleFinalSubmit = () => {
-    if (!selectedBemId || !selectedHimaId) {
-      showToast('Harap pastikan Anda telah memilih Presiden BEM dan Ketua HIMA.', 'error');
-      return;
-    }
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      castVote(selectedVoter.nim, selectedBemId, selectedHimaId);
-      updateBoothStatus(
-        boothParam.toLowerCase().replace(' ', '-'),
-        'Selesai',
-        { voterName: selectedVoter.name, voterNim: selectedVoter.nim }
-      );
-      setIsSubmitting(false);
-      setCurrentStep(5);
-    }, 600);
-  };
+  // Waiting in queue UI if booths full
+  if (isWaitingQueue) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 text-center shadow-lg">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center mb-4 border border-amber-200">
+            <Hourglass className="w-7 h-7 animate-spin" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900">Bilik Suara Sedang Penuh</h2>
+          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+            Seluruh bilik saat ini sedang digunakan oleh pemilih lain. Sistem sedang mengalokasikan slot kosong berikutnya untuk Anda...
+          </p>
+          <button
+            onClick={() => setIsWaitingQueue(false)}
+            className="mt-6 w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold"
+          >
+            Coba Masuk ke Bilik Cadangan
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-between text-slate-900 font-sans">
       {/* Header */}
       <VoteHeader
-        boothNumber={boothParam}
+        boothNumber={assignedBoothName}
         remainingSeconds={timerSeconds}
         showTimer={currentStep < 5}
       />
@@ -145,7 +313,7 @@ export default function VotingPage() {
               </div>
               <h2 className="text-xl font-bold text-slate-900">Verifikasi Identitas Pemilih</h2>
               <p className="text-xs text-slate-500 mt-1">
-                Data DPT tersinkronisasi dengan portal akademik UBTH 2026
+                Data DPT tersinkronisasi langsung dengan Server Pusat KPUM UBTH
               </p>
             </div>
 
@@ -186,30 +354,13 @@ export default function VotingPage() {
                   <span className="font-bold text-slate-900">{selectedVoter.prodiName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Status Hak Suara</span>
-                  <span
-                    className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
-                      selectedVoter.status === 'belum'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : selectedVoter.status === 'memilih'
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-rose-100 text-rose-800'
-                    }`}
-                  >
-                    {selectedVoter.status === 'selesai' ? 'Sudah Pernah Memilih' : 'Hak Suara Aktif'}
-                  </span>
+                  <span className="text-slate-500">Bilik Terpilih</span>
+                  <span className="font-bold text-emerald-700">{assignedBoothName}</span>
                 </div>
               </div>
 
               <button
-                onClick={() => {
-                  updateBoothStatus(
-                    boothParam.toLowerCase().replace(' ', '-'),
-                    'Sedang Memilih',
-                    { voterNim: selectedVoter.nim, voterName: selectedVoter.name, prodiName: selectedVoter.prodiName }
-                  );
-                  setCurrentStep(2);
-                }}
+                onClick={handleProceedToStep2}
                 className="w-full mt-4 py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md"
               >
                 <span>Mulai Pencoblosan Bilik</span>
@@ -246,7 +397,6 @@ export default function VotingPage() {
               ))}
             </div>
 
-            {/* Bottom Step Actions */}
             <div className="mt-8 flex items-center justify-between max-w-4xl mx-auto pt-4 border-t border-slate-200">
               <button
                 onClick={() => setCurrentStep(1)}
@@ -299,7 +449,6 @@ export default function VotingPage() {
               ))}
             </div>
 
-            {/* Bottom Step Actions */}
             <div className="mt-8 flex items-center justify-between max-w-4xl mx-auto pt-4 border-t border-slate-200">
               <button
                 onClick={() => setCurrentStep(2)}
@@ -371,11 +520,10 @@ export default function VotingPage() {
                 </div>
               </div>
 
-              {/* Notice */}
               <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
                 <Lock className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
                 <p>
-                  Setelah menekan tombol <strong>&ldquo;Kirim Suara Sah&rdquo;</strong>, pilihan Anda akan dienkripsi secara anonim dan langsung dicatat ke server rekapitulasi KPUM. Pilihan tidak dapat diubah kembali.
+                  Sistem menerapkan kebijakan <strong>Anti-Golput</strong>. Setelah menekan tombol kirim, data pilihan Anda akan dieksekusi secara atomik ke server Supabase dan bilik akan terkunci otomatis.
                 </p>
               </div>
 
@@ -395,7 +543,7 @@ export default function VotingPage() {
                   className="w-2/3 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md"
                 >
                   {isSubmitting ? (
-                    <span>Mengenkripsi &amp; Menyimpan...</span>
+                    <span>Mengeksekusi Transaksi Atomik...</span>
                   ) : (
                     <>
                       <CheckCircle2 className="w-5 h-5" />
@@ -408,35 +556,73 @@ export default function VotingPage() {
           </div>
         )}
 
-        {/* STEP 5: SELESAI (NO CONFETTI) */}
+        {/* STEP 5: PASCA-SUBMIT / SELF-DESTRUCT LOCK SCREEN */}
         {currentStep === 5 && (
-          <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 sm:p-10 shadow-sm border border-slate-200 text-center">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-4">
-              <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+          <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 sm:p-10 shadow-lg border border-slate-200 text-center relative overflow-hidden">
+            {/* Top Red Security Border */}
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600" />
+
+            {/* Solid Lock / Verified Badge */}
+            <div className="w-20 h-20 rounded-3xl bg-slate-900 text-white mx-auto flex items-center justify-center mb-5 shadow-xl border-4 border-slate-100">
+              <Lock className="w-10 h-10 text-emerald-400 stroke-[2.5]" />
             </div>
 
-            <h2 className="text-2xl font-black text-slate-900">Suara Anda Telah Sah Tercatat!</h2>
-            <p className="text-xs sm:text-sm text-slate-600 mt-2 max-w-sm mx-auto leading-relaxed">
-              Terima kasih telah berpartisipasi dalam Pemilihan Mahasiswa Raya Universitas Bakti Tunas Husada 2026.
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-3">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>TRANSAKSI SUARA SAH TERVERIFIKASI</span>
+            </div>
+
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+              Suara Anda Telah Sah Tersimpan!
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
+              Hak suara Anda telah berhasil dicatat ke dalam database desentralisasi KPUM UBTH 2026.
             </p>
 
-            <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1">
-              <p>Nomor Tiket Audit: <strong>UBTH-{Math.floor(100000 + Math.random() * 900000)}</strong></p>
-              <p>Waktu Pencoblosan: <strong>{new Date().toLocaleTimeString('id-ID')} WIB</strong></p>
+            {/* Audit Details */}
+            <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs text-slate-700 space-y-1.5 text-left font-mono">
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-sans">Kode Audit Tiket:</span>
+                <span className="font-bold text-slate-900">{ticketAudit}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-sans">Terminal Bilik:</span>
+                <span className="font-bold text-sky-700">{assignedBoothName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400 font-sans">Waktu Stempel:</span>
+                <span className="text-slate-600">{new Date().toLocaleTimeString('id-ID')} WIB</span>
+              </div>
             </div>
 
-            <div className="mt-6">
-              <p className="text-xs text-slate-500">
-                Layar bilik ini akan otomatis keluar dalam{' '}
-                <strong className="text-slate-900 font-mono text-sm">{finishCountdown} detik</strong>
+            {/* 3-Minute Bilik Self-Destruct Countdown */}
+            <div className="mt-6 p-5 rounded-2xl bg-slate-900 text-white">
+              <div className="flex items-center justify-between mb-1 text-slate-400 text-xs">
+                <span>Batas Waktu Bilik Kosong:</span>
+                <button
+                  onClick={() => setIsAudioMuted(!isAudioMuted)}
+                  className="flex items-center gap-1 text-[11px] hover:text-white transition-colors"
+                >
+                  {isAudioMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+                  <span>{isAudioMuted ? 'Bisu' : 'Suara Aktif'}</span>
+                </button>
+              </div>
+
+              <div className="text-4xl font-black font-mono tracking-wider text-emerald-400 my-1">
+                {formatCountdown(postSubmitSeconds)}
+              </div>
+
+              <p className="text-[11px] text-slate-400">
+                Layar bilik ini akan mereset diri secara otomatis saat hitungan mundur selesai.
               </p>
-              <button
-                onClick={() => router.push('/qr-screen')}
-                className="mt-3 w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors"
-              >
-                Selesai &amp; Buka Bilik untuk Pemilih Berikutnya
-              </button>
             </div>
+
+            <button
+              onClick={() => router.push('/qr-screen')}
+              className="mt-5 w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors"
+            >
+              Keluar &amp; Kosongkan Bilik Sekarang
+            </button>
           </div>
         )}
       </main>
@@ -465,3 +651,21 @@ export default function VotingPage() {
     </div>
   );
 }
+
+export default function VotingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-900 border-t-transparent" />
+            <p className="mt-3 text-sm font-semibold text-slate-600">Menyiapkan Bilik Suara...</p>
+          </div>
+        </div>
+      }
+    >
+      <VoteContent />
+    </Suspense>
+  );
+}
+

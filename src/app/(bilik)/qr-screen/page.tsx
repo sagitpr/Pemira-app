@@ -8,8 +8,11 @@ import { ShieldCheck, Video, HelpCircle } from 'lucide-react';
 
 export default function BilikQrScreenPage() {
   const router = useRouter();
-  const [currentToken, setCurrentToken] = useState('UBTH-TOKEN-89412');
-  const [expiresIn, setExpiresIn] = useState(120);
+  const generateToken = () =>
+    `PEMIRA-UBTH-${Math.floor(Date.now() / 180000)}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+  const [currentToken, setCurrentToken] = useState(generateToken());
+  const [expiresIn, setExpiresIn] = useState(180);
   const [boothNumber, setBoothNumber] = useState('Bilik 01');
 
   // Timer countdown for QR expiration
@@ -17,8 +20,8 @@ export default function BilikQrScreenPage() {
     const timer = setInterval(() => {
       setExpiresIn((prev) => {
         if (prev <= 1) {
-          setCurrentToken(`UBTH-TOKEN-${Math.floor(10000 + Math.random() * 90000)}`);
-          return 120;
+          setCurrentToken(generateToken());
+          return 180;
         }
         return prev - 1;
       });
@@ -28,8 +31,8 @@ export default function BilikQrScreenPage() {
   }, []);
 
   const handleRefresh = () => {
-    setCurrentToken(`UBTH-TOKEN-${Math.floor(10000 + Math.random() * 90000)}`);
-    setExpiresIn(120);
+    setCurrentToken(generateToken());
+    setExpiresIn(180);
   };
 
   const handleSimulateScan = () => {

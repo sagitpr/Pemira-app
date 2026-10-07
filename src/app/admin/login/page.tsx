@@ -16,20 +16,37 @@ export default function AdminLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
     setIsLoading(true);
 
-    setTimeout(() => {
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        login(email, password);
+        router.push('/admin/dashboard');
+        router.refresh();
+      } else {
+        setErrorMessage(data.message || 'Email atau kata sandi tidak cocok.');
+      }
+    } catch (err: any) {
+      // Fallback
       const success = login(email, password);
-      setIsLoading(false);
       if (success) {
         router.push('/admin/dashboard');
       } else {
-        setErrorMessage('Email atau kata sandi tidak cocok. Harap periksa kredensial Anda.');
+        setErrorMessage('Terjadi gangguan jaringan autentikasi.');
       }
-    }, 400);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleFillDemo = (demoEmail: string, demoPass: string) => {

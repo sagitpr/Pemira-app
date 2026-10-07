@@ -21,6 +21,17 @@ export interface ProdiRekap {
   abstain: number;
 }
 
+export interface ProdiRekapItem {
+  id: number | string;
+  name: string;
+  faculty?: 'FTB' | 'FIKES' | 'FARMASI';
+  facultyId?: 'FTB' | 'FIKES' | 'FARMASI';
+  totalDpt: number;
+  suaraMasuk: number;
+  sisa?: number;
+  partisipasi: number;
+}
+
 export interface GlobalRekapSummary {
   totalDpt: number;
   suaraMasuk: number;
@@ -60,7 +71,7 @@ export const BEM_REKAP_RESULTS: PaslonResult[] = [
   },
 ];
 
-export const PRODI_REKAP_DATA: ProdiRekap[] = [
+export const PRODI_REKAP_LIST: ProdiRekap[] = [
   // ===================== FTB =====================
   {
     id: 'bd',
@@ -515,3 +526,5 @@ export const PRODI_REKAP_DATA: ProdiRekap[] = [
     ],
   },
 ];
+
+export const PRODI_REKAP_DATA = PRODI_REKAP_LIST;

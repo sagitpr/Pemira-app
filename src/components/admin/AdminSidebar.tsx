@@ -106,7 +106,13 @@ export default function AdminSidebar() {
         </div>
 
         <button
-          onClick={logout}
+          onClick={async () => {
+            try {
+              await fetch('/api/admin/logout', { method: 'POST' });
+            } catch (e) {}
+            logout();
+            window.location.href = '/admin/login';
+          }}
           className="w-full py-2 px-3 rounded-xl border border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
         >
           <LogOut className="w-3.5 h-3.5" />
