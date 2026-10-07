@@ -99,11 +99,8 @@ export default function AdminDptPage() {
   const belumMemilihCount = voters.filter((v) => v.status === 'belum').length;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#F8FAFC] font-sans text-slate-800">
-      <AdminHeader
-        title="Selamat Datang, Admin KPUM"
-        subtitle="Pusat kendali bilik suara, data pemilih, dan rekapitulasi real-time."
-      />
+    <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
+      <AdminHeader />
 
       <main className="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
         {/* SECTION HEADER: MANAJEMEN DPT */}

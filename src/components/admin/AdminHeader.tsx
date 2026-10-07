@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAdmin } from '@/context/AdminContext';
+import AppLogo from '@/components/common/AppLogo';
 import {
   Eye,
   EyeOff,
@@ -19,8 +20,8 @@ interface AdminHeaderProps {
 }
 
 export default function AdminHeader({
-  title = 'Selamat Datang, Admin KPUM',
-  subtitle = 'Pusat kendali bilik suara, data pemilih, dan rekapitulasi real-time.',
+  title,
+  subtitle,
   actionButton,
 }: AdminHeaderProps) {
   const { currentAdmin, logout } = useAdmin();
@@ -45,55 +46,52 @@ export default function AdminHeader({
   };
 
   return (
-    <header className="h-20 bg-white/60 backdrop-blur-md border-b border-slate-200/80 px-6 sm:px-8 flex items-center justify-between sticky top-0 z-20">
-      {/* Left: Title & Subtitle */}
-      <div>
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
-            {title}
-          </h1>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Pemilihan Aktif</span>
-          </span>
-        </div>
-        <p className="text-xs text-slate-500 font-medium mt-0.5">{subtitle}</p>
+    <header className="h-18 bg-[#FAF9F5]/90 backdrop-blur-md border-b border-[#EBE7DF] px-6 sm:px-8 flex items-center justify-between sticky top-0 z-20 font-sans">
+      {/* Left: Emblem, Title & AKTIF Badge (Matching User Screenshot) */}
+      <div className="flex items-center gap-3">
+        <AppLogo size={28} showText={false} />
+        <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight">
+          {title || 'PEMIRA 2026 – KPR UBTH'}
+        </h1>
+        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#10B981] text-white shadow-2xs">
+          AKTIF
+        </span>
       </div>
 
       {/* Right: Actions */}
       <div className="flex items-center gap-3">
         {actionButton}
 
-        {/* Sensor Suara Button */}
+        {/* Sensor Button */}
         <button
           onClick={() => setIsSensorActive(!isSensorActive)}
-          className={`hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
             isSensorActive
               ? 'bg-amber-50 text-amber-800 border-amber-300'
-              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/90 shadow-2xs'
           }`}
-          title="Sensor/Sensor Tampilan Suara"
+          title="Sensor Tampilan Suara"
         >
-          {isSensorActive ? <EyeOff className="w-4 h-4 text-amber-600" /> : <Eye className="w-4 h-4 text-slate-500" />}
-          <span>{isSensorActive ? 'Suara Disensor' : 'Sensor Suara'}</span>
+          {isSensorActive ? <EyeOff className="w-3.5 h-3.5 text-amber-600" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
+          <span>{isSensorActive ? 'Disensor' : 'Sensor'}</span>
         </button>
 
         {/* Fullscreen Button */}
         <button
           onClick={toggleFullscreen}
-          className="p-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 hover:text-slate-900 transition-colors shadow-2xs"
+          className="p-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/90 text-slate-600 hover:text-slate-900 transition-colors shadow-2xs cursor-pointer"
           title="Layar Penuh"
         >
-          {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
         </button>
 
         {/* Profile Dropdown */}
         <div className="relative">
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 transition-colors shadow-2xs"
+            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200/90 transition-colors shadow-2xs cursor-pointer"
           >
-            <div className="w-7 h-7 rounded-full bg-[#0284c7] text-white flex items-center justify-center font-bold text-xs">
+            <div className="w-7 h-7 rounded-full bg-[#0F172A] text-white flex items-center justify-center font-bold text-xs">
               <User className="w-4 h-4" />
             </div>
             <span className="text-xs font-bold text-slate-800">
@@ -111,7 +109,7 @@ export default function AdminHeader({
               </div>
               <button
                 onClick={handleLogout}
-                className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Keluar Sistem</span>

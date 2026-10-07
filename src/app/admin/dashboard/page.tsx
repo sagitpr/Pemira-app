@@ -244,12 +244,9 @@ export default function AdminDashboardPage() {
   const countMemilih = booths10.filter((b) => b.status === 'Sedang Memilih').length;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#F8FAFC] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
       {/* Top Header */}
-      <AdminHeader
-        title="Selamat Datang, Admin KPUM"
-        subtitle="Pusat kendali bilik suara, data pemilih, dan rekapitulasi real-time."
-      />
+      <AdminHeader />
 
       <main className="p-6 sm:p-8 space-y-7 max-w-7xl w-full mx-auto">
         {/* 1. KONTROL STATUS PEMILIHAN (MASTER SWITCH) */}
