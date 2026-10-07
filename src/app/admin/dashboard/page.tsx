@@ -1,25 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useAdmin, BoothStatus } from '@/context/AdminContext';
 import AdminHeader from '@/components/admin/AdminHeader';
-import BeritaAcaraModal from '@/components/admin/BeritaAcaraModal';
+import { useAdmin, BoothStatus } from '@/context/AdminContext';
 import { createClient } from '@/lib/supabase/client';
 import {
-  Users,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
+  Radio,
+  Play,
+  Pause,
+  StopCircle,
   Monitor,
   RotateCcw,
-  FileText,
-  ExternalLink,
-  ShieldAlert,
-  ArrowUpRight,
-  Vote,
-  Radio,
-  RefreshCw,
+  TrendingUp,
+  Activity,
+  CheckCircle2,
+  Clock,
+  Sparkles,
 } from 'lucide-react';
 
 interface SupabaseBoothRecord {
@@ -37,26 +33,41 @@ interface SupabaseBoothRecord {
 // 10 default booths for auditorium layout
 const DEFAULT_10_BOOTHS: BoothStatus[] = Array.from({ length: 10 }, (_, i) => ({
   id: `b-${i + 1}`,
-  name: `Bilik ${String(i + 1).padStart(2, '0')}`,
-  status: i === 0 ? 'Sedang Memilih' : 'Tersedia',
-  voterNim: i === 0 ? '24030112' : undefined,
-  voterName: i === 0 ? 'Dimas Kurniawan' : undefined,
-  prodiName: i === 0 ? 'S1 Farmasi' : undefined,
-  durationSeconds: i === 0 ? 45 : undefined,
+  name: `Bilik ${i + 1}`,
+  status: 'Tersedia',
   ipAddress: `192.168.1.${100 + i + 1}`,
 }));
 
-export default function AdminDashboardPage() {
-  const {
-    globalSummary,
-    bemResults,
-    resetAllVotes,
-    showToast,
-  } = useAdmin();
+interface ActivityLogItem {
+  id: string;
+  time: string;
+  title: string;
+  description: string;
+  type: 'scan' | 'vote' | 'reset' | 'system';
+}
 
+const INITIAL_LOGS: ActivityLogItem[] = [
+  {
+    id: 'log-1',
+    time: 'Baru saja',
+    title: 'Sistem Bilik Tersinkronisasi',
+    description: '10 Bilik Suara terhubung dengan server dan siap menerima pemilih.',
+    type: 'system',
+  },
+  {
+    id: 'log-2',
+    time: '2 menit lalu',
+    title: 'Proyektor Bilik QR Aktif',
+    description: 'Token rotasi 30 detik aktif di layar bilik proyeksi auditorium.',
+    type: 'scan',
+  },
+];
+
+export default function AdminDashboardPage() {
+  const { showToast } = useAdmin();
+  const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'SELESAI'>('AKTIF');
   const [booths10, setBooths10] = useState<BoothStatus[]>(DEFAULT_10_BOOTHS);
-  const [isBeritaAcaraOpen, setIsBeritaAcaraOpen] = useState(false);
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>(INITIAL_LOGS);
   const [resettingBoothId, setResettingBoothId] = useState<number | null>(null);
 
   // Hook Realtime Bilik via Supabase Client
@@ -66,7 +77,6 @@ export default function AdminDashboardPage() {
     try {
       const supabase = createClient();
 
-      // 1. Load initial status bilik
       const fetchBooths = async () => {
         try {
           const { data, error } = await supabase
@@ -91,25 +101,24 @@ export default function AdminDashboardPage() {
               })
             );
           }
-        } catch (fetchErr) {
-          // Keep local mock resiliently
-        }
+        } catch (fetchErr) {}
       };
 
       fetchBooths();
 
-      // 2. Realtime subscription to booths table
+      // Realtime subscription
       channel = (supabase as any)
-        .channel('booth-realtime')
+        .channel('booth-realtime-dashboard')
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'booths' },
           (payload: any) => {
             const newRecord = payload?.new as SupabaseBoothRecord | undefined;
             if (newRecord?.booth_number) {
+              const boothNum = newRecord.booth_number;
               setBooths10((prev) =>
                 prev.map((b, idx) =>
-                  idx + 1 === newRecord.booth_number
+                  idx + 1 === boothNum
                     ? {
                         ...b,
                         status: newRecord.status || 'Tersedia',
@@ -120,6 +129,22 @@ export default function AdminDashboardPage() {
                     : b
                 )
               );
+
+              // Add to live activity feed
+              const newLog: ActivityLogItem = {
+                id: `log-${Date.now()}`,
+                time: 'Baru saja',
+                title:
+                  newRecord.status === 'Sedang Memilih'
+                    ? `Bilik ${boothNum} Sedang Memilih`
+                    : `Bilik ${boothNum} Kembali Tersedia`,
+                description:
+                  newRecord.status === 'Sedang Memilih'
+                    ? `Pemilih ${newRecord.current_voter_name || 'Mahasiswa'} (NIM: ${newRecord.current_voter_nim || '-'}) aktif di bilik.`
+                    : `Sesi bilik telah selesai dan token dibersihkan.`,
+                type: newRecord.status === 'Sedang Memilih' ? 'vote' : 'reset',
+              };
+              setActivityLogs((prev) => [newLog, ...prev.slice(0, 9)]);
             }
           }
         )
@@ -139,7 +164,7 @@ export default function AdminDashboardPage() {
   }, []);
 
   // Force Reset Booth via RPC /api/admin/booths/reset
-  const handleForceResetBooth = async (boothNum: number) => {
+  const handleResetBooth = async (boothNum: number) => {
     setResettingBoothId(boothNum);
 
     try {
@@ -160,12 +185,11 @@ export default function AdminDashboardPage() {
                   voterNim: undefined,
                   voterName: undefined,
                   prodiName: undefined,
-                  durationSeconds: undefined,
                 }
               : b
           )
         );
-        showToast(`Bilik 0${boothNum} berhasil di-reset paksa ke status Tersedia.`, 'info');
+        showToast(`Bilik ${boothNum} berhasil di-reset ulang ke status Kosong.`, 'info');
       }
     } catch (err) {
       setBooths10((prev) =>
@@ -175,228 +199,166 @@ export default function AdminDashboardPage() {
             : b
         )
       );
-      showToast(`Bilik 0${boothNum} direset secara lokal.`, 'info');
+      showToast(`Bilik ${boothNum} direset ulang secara lokal.`, 'info');
     } finally {
       setResettingBoothId(null);
     }
   };
 
+  // Simulate voter entering booth
+  const handleTestFillBooth = (boothNum: number) => {
+    const mockNames = [
+      { name: 'Dimas Kurniawan', nim: '24030112', prodi: 'S1 Farmasi' },
+      { name: 'Alya Putri', nim: '23010045', prodi: 'Bisnis Digital' },
+      { name: 'Rian Pratama', nim: '22020089', prodi: 'S1 Keperawatan' },
+      { name: 'Nabila Zahra', nim: '24010034', prodi: 'Sistem Informasi' },
+    ];
+    const picked = mockNames[(boothNum - 1) % mockNames.length];
+
+    setBooths10((prev) =>
+      prev.map((b, idx) =>
+        idx + 1 === boothNum
+          ? {
+              ...b,
+              status: 'Sedang Memilih',
+              voterNim: picked.nim,
+              voterName: picked.name,
+              prodiName: picked.prodi,
+            }
+          : b
+      )
+    );
+
+    const newLog: ActivityLogItem = {
+      id: `log-${Date.now()}`,
+      time: 'Baru saja',
+      title: `Bilik ${boothNum} Dimasuki Pemilih`,
+      description: `${picked.name} (${picked.nim}) memindai token dan memulai voting.`,
+      type: 'vote',
+    };
+    setActivityLogs((prev) => [newLog, ...prev.slice(0, 9)]);
+    showToast(`Bilik ${boothNum} sekarang diisi oleh ${picked.name}.`, 'success');
+  };
+
+  const countTersedia = booths10.filter((b) => b.status === 'Tersedia').length;
+  const countMemilih = booths10.filter((b) => b.status === 'Sedang Memilih').length;
+
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#F8FAFC] font-sans text-slate-800">
+      {/* Top Header */}
       <AdminHeader
-        title="Dashboard Pemantauan Pemilu"
-        subtitle="Monitoring Real-Time Pemilihan Mahasiswa Raya UBTH 2026"
-        actionButton={
-          <button
-            onClick={() => setIsBeritaAcaraOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm"
-          >
-            <FileText className="w-3.5 h-3.5 text-sky-400" />
-            <span>Berita Acara</span>
-          </button>
-        }
+        title="Selamat Datang, Admin KPUM"
+        subtitle="Pusat kendali bilik suara, data pemilih, dan rekapitulasi real-time."
       />
 
-      <main className="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
-        {/* TOP KPI CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Card 1: Total DPT */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total DPT</span>
-              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
-                <Users className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-black text-slate-900 tracking-tight">
-              {globalSummary.totalDpt.toLocaleString('id-ID')}
-            </div>
-            <p className="text-[11px] text-slate-500 mt-1">Pemilih Tetap Terdaftar</p>
-          </div>
-
-          {/* Card 2: Suara Masuk */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Suara Masuk</span>
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-black text-emerald-700 tracking-tight">
-              {globalSummary.suaraMasuk.toLocaleString('id-ID')}
-            </div>
-            <p className="text-[11px] text-emerald-600 mt-1">Suara Sah Terverifikasi</p>
-          </div>
-
-          {/* Card 3: Belum Memilih */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Belum Memilih</span>
-              <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-600">
-                <Clock className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-black text-slate-700 tracking-tight">
-              {globalSummary.belumMemilih.toLocaleString('id-ID')}
-            </div>
-            <p className="text-[11px] text-amber-600 mt-1">Sisa DPT Belum Hadir</p>
-          </div>
-
-          {/* Card 4: Partisipasi */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Partisipasi</span>
-              <div className="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center text-sky-600">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-2xl font-black text-sky-700 tracking-tight">
-              {globalSummary.tingkatPartisipasi}%
-            </div>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
-              <div
-                className="bg-sky-600 h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(globalSummary.tingkatPartisipasi, 100)}%` }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* SECTION 2: BEM SNAPSHOT & QUICK ACTIONS */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* BEM Election Quick Snapshot */}
-          <div className="lg:col-span-2 bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                  <Vote className="w-4 h-4 text-sky-600" />
-                  Perolehan Suara BEM UBTH 2026
-                </h3>
-                <p className="text-xs text-slate-500">Hasil real-time perolehan suara calon presiden mahasiswa</p>
-              </div>
-
-              <Link
-                href="/admin/rekap"
-                className="text-xs font-semibold text-sky-700 hover:text-sky-800 flex items-center gap-1 transition-colors"
-              >
-                <span>Lihat 14 Prodi</span>
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {bemResults.map((cand) => (
-                <div
-                  key={cand.id}
-                  className={`p-5 rounded-2xl border transition-all ${
-                    cand.isLeading
-                      ? 'bg-sky-50/50 border-sky-200 ring-2 ring-sky-100'
-                      : 'bg-white border-slate-200/90'
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <span className="w-8 h-8 rounded-lg bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center">
-                      {cand.number}
-                    </span>
-                    {cand.isLeading && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                        Memimpin
-                      </span>
-                    )}
-                  </div>
-
-                  <h4 className="text-sm font-bold text-slate-900 leading-snug">{cand.name}</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {cand.leaderName} &amp; {cand.viceLeaderName}
-                  </p>
-
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <div className="flex justify-between items-baseline mb-1.5">
-                      <span className="text-2xl font-black text-slate-900 font-mono">
-                        {cand.votes.toLocaleString('id-ID')}
-                      </span>
-                      <span className="text-xs font-bold text-slate-600">{cand.percentage}%</span>
-                    </div>
-
-                    <div className="w-full bg-slate-200/70 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-sky-600 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${cand.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Quick Operations Box */}
-          <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs flex flex-col justify-between">
+      <main className="p-6 sm:p-8 space-y-7 max-w-7xl w-full mx-auto">
+        {/* 1. KONTROL STATUS PEMILIHAN (MASTER SWITCH) */}
+        <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div>
-              <h3 className="text-base font-bold text-slate-900 tracking-tight mb-1">
-                Operasi Khusus KPUM
-              </h3>
-              <p className="text-xs text-slate-500 mb-5">
-                Alat kendali cepat untuk saksi dan pengawas
-              </p>
-
-              <div className="space-y-2.5">
-                <Link
-                  href="/qr-screen"
-                  target="_blank"
-                  className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-semibold text-slate-800 transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    <Monitor className="w-4 h-4 text-sky-600" />
-                    Buka Layar Bilik QR
-                  </span>
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                </Link>
-
-                <button
-                  type="button"
-                  onClick={() => setIsBeritaAcaraOpen(true)}
-                  className="w-full p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left flex items-center justify-between text-xs font-semibold text-slate-800 transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-indigo-600" />
-                    Cetak Berita Acara Pleno
-                  </span>
-                  <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
-                </button>
+              <div className="flex items-center gap-2.5 mb-1">
+                <Radio className="w-5 h-5 text-emerald-600 animate-pulse" />
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                  Kontrol Status Pemilihan (Master Switch)
+                </h2>
               </div>
+              <p className="text-xs text-slate-500 font-medium">
+                Atur status operasional proyektor bilik suara dan penerbitan token pemilih secara terpusat.
+              </p>
             </div>
 
-            <div className="pt-6 border-t border-slate-100">
+            {/* 3 Status Buttons */}
+            <div className="flex flex-wrap items-center gap-3">
               <button
-                type="button"
-                onClick={() => setConfirmResetOpen(true)}
-                className="w-full py-2.5 px-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                onClick={() => {
+                  setElectionStatus('AKTIF');
+                  showToast('Sistem Pemilihan AKTIF. Layar bilik memancarkan QR Token.', 'success');
+                }}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                  electionStatus === 'AKTIF'
+                    ? 'bg-[#059669] text-white shadow-md shadow-emerald-500/20'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Nol-kan Seluruh Suara (Reset Awal)</span>
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>PEMILIHAN AKTIF</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setElectionStatus('JEDA');
+                  showToast('Sistem Pemilihan DIJEDA sementara.', 'info');
+                }}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                  electionStatus === 'JEDA'
+                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Pause className="w-3.5 h-3.5 fill-current" />
+                <span>JEDA ISTIRAHAT</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setElectionStatus('SELESAI');
+                  showToast('Sistem Pemilihan DITUTUP. Seluruh bilik terkunci.', 'warning');
+                }}
+                className={`px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+                  electionStatus === 'SELESAI'
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <StopCircle className="w-3.5 h-3.5" />
+                <span>SELESAI</span>
               </button>
             </div>
           </div>
-        </div>
 
-        {/* SECTION 3: MONITORING 10 BILIK SUARA REAL-TIME */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-2xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100 mb-5">
+          <div className="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="font-semibold text-slate-900">Status Operasional Saat Ini:</span>
+              <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Proyektor bilik otomatis terus men-generate QR token dinamis per 180 detik
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4 text-[11px] font-semibold text-slate-500">
+              <span>Total Bilik Fisik: <strong className="text-slate-900 font-mono">10</strong></span>
+              <span>Bilik Kosong: <strong className="text-emerald-600 font-mono">{countTersedia}</strong></span>
+              <span>Bilik Terisi: <strong className="text-sky-600 font-mono">{countMemilih}</strong></span>
+            </div>
+          </div>
+        </section>
+
+        {/* 2. MONITORING 10 BILIK SUARA REALTIME */}
+        <section className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                <Monitor className="w-4 h-4 text-sky-600" />
-                Live Monitoring 10 Bilik Suara Realtime
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <Radio className="w-3 h-3 text-emerald-600 animate-pulse" />
-                  Supabase WebSocket Aktif
-                </span>
-              </h3>
-              <p className="text-xs text-slate-500">Terminal bilik suara pemilih di Auditorium &amp; Gedung Utama UBTH</p>
+              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                Monitoring 10 Bilik Suara Realtime
+              </h2>
+              <p className="text-xs text-slate-500 font-medium">
+                Pantau status aktivitas pemilih di masing-masing bilik fisik 1 sampai 10 secara langsung.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                Tersedia ({countTersedia})
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200">
+                <span className="w-2 h-2 rounded-full bg-sky-500" />
+                Sedang Memilih ({countMemilih})
+              </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+          {/* 10 Bilik Cards Grid (5 columns x 2 rows) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
             {booths10.map((booth, idx) => {
               const boothNum = idx + 1;
               const isOccupied = booth.status === 'Sedang Memilih';
@@ -405,103 +367,223 @@ export default function AdminDashboardPage() {
               return (
                 <div
                   key={booth.id}
-                  className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                  className={`p-4 rounded-2xl bg-white border transition-all flex flex-col justify-between shadow-2xs hover:shadow-xs ${
                     isOccupied
-                      ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-100 shadow-xs'
-                      : isAvailable
-                      ? 'bg-white border-slate-200/90'
-                      : 'bg-slate-50 border-slate-200'
+                      ? 'border-sky-300 ring-2 ring-sky-100 bg-sky-50/20'
+                      : 'border-slate-100'
                   }`}
                 >
+                  {/* Card Header */}
                   <div>
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span className="text-xs font-bold text-slate-900">{booth.name}</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-slate-100 text-slate-700 font-bold font-mono text-xs flex items-center justify-center">
+                          {boothNum}
+                        </span>
+                        <span className="text-xs font-bold text-slate-900">Bilik {boothNum}</span>
+                      </div>
+
                       <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                           isOccupied
-                            ? 'bg-amber-100 text-amber-800'
+                            ? 'bg-sky-50 text-sky-700 border-sky-200'
                             : isAvailable
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-slate-200 text-slate-700'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
                         }`}
                       >
-                        {booth.status}
+                        {isOccupied ? '● MEMILIH' : '● KOSONG'}
                       </span>
                     </div>
 
-                    <div className="min-h-[58px] text-xs text-slate-600 space-y-1">
+                    {/* Card Body */}
+                    <div className="py-4 text-center flex flex-col items-center justify-center min-h-[120px]">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 text-slate-400 flex items-center justify-center mb-2.5">
+                        <Monitor className="w-6 h-6 text-slate-400" />
+                      </div>
+
                       {isOccupied ? (
-                        <>
-                          <p className="font-bold text-slate-900 truncate">{booth.voterName || 'Pemilih Baru'}</p>
-                          <p className="text-[11px] text-slate-500 font-mono truncate">NIM: {booth.voterNim || '-'}</p>
-                          <p className="text-[10px] text-sky-700 font-semibold truncate">{booth.prodiName || '-'}</p>
-                        </>
+                        <div className="space-y-0.5 max-w-full px-1">
+                          <p className="text-xs font-bold text-slate-900 truncate">
+                            {booth.voterName || 'Pemilih Aktif'}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            NIM: {booth.voterNim || '-'}
+                          </p>
+                          <p className="text-[10px] text-[#0284c7] font-semibold truncate">
+                            {booth.prodiName || 'S1 Farmasi'}
+                          </p>
+                        </div>
                       ) : (
-                        <p className="text-slate-400 italic pt-3 text-[11px]">Siap digunakan</p>
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-slate-800">Siap Digunakan</p>
+                          <p className="text-[10px] text-slate-400 max-w-[130px] leading-tight mx-auto">
+                            Menunggu pemilih scan QR di proyektor
+                          </p>
+                          <div className="flex items-center justify-center gap-2 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleTestFillBooth(boothNum)}
+                              className="text-[11px] font-bold text-[#0284c7] hover:underline cursor-pointer"
+                            >
+                              + Tes Isi
+                            </button>
+                            <span className="text-slate-300">•</span>
+                            <a
+                              href={`/vote?booth=0${boothNum}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] font-semibold text-slate-500 hover:text-[#0284c7] cursor-pointer"
+                            >
+                              Buka Layar ↗
+                            </a>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
 
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400 font-mono text-[10px]">Slot #{boothNum}</span>
+                  {/* Card Footer: Reset / Token Ulang */}
+                  <div className="pt-2 border-t border-slate-100">
                     <button
+                      type="button"
                       disabled={resettingBoothId === boothNum}
-                      onClick={() => handleForceResetBooth(boothNum)}
-                      className="px-2 py-1 rounded-md text-[10px] font-bold border border-slate-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-slate-600 transition-colors flex items-center gap-1"
+                      onClick={() => handleResetBooth(boothNum)}
+                      className="w-full py-1.5 px-2 rounded-xl text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      {resettingBoothId === boothNum ? (
-                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
-                      ) : null}
-                      <span>Force Reset</span>
+                      <RotateCcw className={`w-3 h-3 text-slate-500 ${resettingBoothId === boothNum ? 'animate-spin' : ''}`} />
+                      <span>Reset / Token Ulang</span>
                     </button>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      </main>
+        </section>
 
-      {/* Berita Acara Modal */}
-      <BeritaAcaraModal
-        isOpen={isBeritaAcaraOpen}
-        onClose={() => setIsBeritaAcaraOpen(false)}
-      />
+        {/* 3. LOWER SECTION: TRAFIK BILIK & LIVE ACTIVITY FEED */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* TRAFIK BILIK */}
+          <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[#0284c7]" />
+                  <h3 className="text-sm font-bold text-slate-900">Trafik Bilik</h3>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-100">
+                  Realtime Ready
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium mb-6">Pemilih per 10 menit</p>
 
-      {/* Confirmation Modal for Resetting Votes */}
-      {confirmResetOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center mb-3 border border-rose-200">
-              <ShieldAlert className="w-6 h-6" />
+              {/* Chart Visualization */}
+              <div className="relative h-44 w-full">
+                {/* Horizontal Grid lines */}
+                <div className="absolute inset-0 flex flex-col justify-between text-[10px] font-mono text-slate-400 pointer-events-none">
+                  <div className="border-b border-dashed border-slate-100 pb-0.5 flex justify-between">
+                    <span>50 pemilih</span>
+                  </div>
+                  <div className="border-b border-dashed border-slate-100 pb-0.5 flex justify-between">
+                    <span>25 pemilih</span>
+                  </div>
+                  <div className="border-b border-slate-200 pb-0.5 flex justify-between">
+                    <span>0</span>
+                  </div>
+                </div>
+
+                {/* SVG Line Graph */}
+                <svg className="w-full h-full overflow-visible" viewBox="0 0 500 140" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#0284c7" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#0284c7" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
+                  {/* Fill area */}
+                  <path
+                    d="M 0 130 Q 70 120 140 85 T 280 40 T 420 55 L 500 20 L 500 140 L 0 140 Z"
+                    fill="url(#chartGradient)"
+                  />
+                  {/* Stroke path */}
+                  <path
+                    d="M 0 130 Q 70 120 140 85 T 280 40 T 420 55 L 500 20"
+                    fill="none"
+                    stroke="#0284c7"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                  {/* Data Points */}
+                  <circle cx="140" cy="85" r="4" fill="#0284c7" className="shadow-xs" />
+                  <circle cx="280" cy="40" r="4" fill="#0284c7" className="shadow-xs" />
+                  <circle cx="420" cy="55" r="4" fill="#0284c7" className="shadow-xs" />
+                  <circle cx="500" cy="20" r="5" fill="#0284c7" stroke="#ffffff" strokeWidth="2" />
+                </svg>
+              </div>
+
+              {/* X Axis Time Labels */}
+              <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-3 pt-2 border-t border-slate-100">
+                <span>08:00</span>
+                <span>09:00</span>
+                <span>10:00</span>
+                <span>11:00</span>
+                <span>12:00</span>
+                <span>13:00</span>
+                <span>14:00</span>
+                <span>15:00</span>
+              </div>
             </div>
-            <h3 className="text-base font-bold text-slate-900">Nol-kan Semua Suara?</h3>
-            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              Tindakan ini akan mereset perolehan suara BEM dan 14 HIMA ke angka 0 serta mengembalikan seluruh status DPT ke belum memilih.
-            </p>
+          </div>
 
-            <div className="mt-5 flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmResetOpen(false)}
-                className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  resetAllVotes();
-                  setConfirmResetOpen(false);
-                }}
-                className="w-1/2 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-sm"
-              >
-                Ya, Reset ke 0
-              </button>
+          {/* LIVE ACTIVITY FEED */}
+          <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-[#0284c7]" />
+                  <h3 className="text-sm font-bold text-slate-900">Live Activity Feed</h3>
+                </div>
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Listen
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium mb-4">
+                Riwayat rekaman kejadian dan perpindahan status bilik secara instan.
+              </p>
+
+              {/* Activity Log list */}
+              <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                {activityLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-xl bg-slate-50/70 border border-slate-100 flex items-start gap-3 text-xs transition-colors hover:bg-slate-50"
+                  >
+                    <div className="mt-0.5 shrink-0">
+                      {log.type === 'vote' ? (
+                        <CheckCircle2 className="w-4 h-4 text-sky-600" />
+                      ) : log.type === 'scan' ? (
+                        <Radio className="w-4 h-4 text-emerald-600" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 text-amber-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-800 truncate">{log.title}</span>
+                        <span className="text-[10px] text-slate-400 font-mono shrink-0">{log.time}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                        {log.description}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </main>
     </div>
   );
 }

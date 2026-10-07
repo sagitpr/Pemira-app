@@ -72,7 +72,7 @@ export default function QrScreenPage() {
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         <iframe
           className="absolute top-1/2 left-1/2 h-[56.25vw] min-h-screen w-[177.77vh] min-w-full -translate-x-1/2 -translate-y-1/2 opacity-40 scale-125 pointer-events-none"
-          src={`https://www.youtube.com/embed/${DEFAULT_YOUTUBE_ID}?autoplay=1&mute=1&controls=0&loop=1&playlist=${DEFAULT_YOUTUBE_ID}&playsinline=1&rel=0&showinfo=0&modestbranding=1&enablejsapi=1`}
+          src="https://www.youtube.com/embed/uQFd91AhFes?autoplay=1&mute=1&controls=0&loop=1&playlist=uQFd91AhFes&playsinline=1&rel=0&showinfo=0&modestbranding=1"
           title="Background Kampus UBTH"
           allow="autoplay; encrypted-media"
         />
@@ -150,6 +150,16 @@ export default function QrScreenPage() {
             {formattedTime}
           </span>
         </div>
+
+        {/* Direct Link to Bilik Vote for Testing / Desktop Simulation */}
+        <a
+          href={`/vote?token=${token}&booth=01`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/90 hover:bg-white text-[#0284c7] font-bold text-xs border border-sky-200 shadow-xs transition hover:shadow-md cursor-pointer"
+        >
+          <span>🖥️ Masuk ke Layar Bilik Suara (Vote)</span>
+        </a>
       </div>
 
       {/* Footer */}

@@ -4,11 +4,10 @@ import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
-import VoteHeader from '@/components/vote/VoteHeader';
-import VotingStepper from '@/components/vote/VotingStepper';
-import CandidateCard from '@/components/vote/CandidateCard';
+import AppLogo from '@/components/common/AppLogo';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
 import {
+  Check,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
@@ -17,8 +16,11 @@ import {
   Lock,
   Volume2,
   VolumeX,
-  Hourglass,
-  HelpCircle,
+  Clock,
+  Eye,
+  User,
+  Monitor,
+  Info,
 } from 'lucide-react';
 
 function VoteContent() {
@@ -34,26 +36,27 @@ function VoteContent() {
     showToast,
   } = useAdmin();
 
+  // Current Step: 0 = Penugasan Bilik, 1 = Validasi Pemilih, 2 = BEM, 3 = HIMA, 4 = Konfirmasi, 5 = Selesai
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 01');
   const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(1);
-  const [isWaitingQueue, setIsWaitingQueue] = useState<boolean>(false);
 
-  const [selectedNim, setSelectedNim] = useState<string>('24030112'); // Default Dimas
-  const [selectedVoter, setSelectedVoter] = useState(voters.find((v) => v.nim === '24030112') || voters[0]);
+  // Form State
+  const [inputNim, setInputNim] = useState<string>('24030112'); // Default Dimas
+  const [detectedVoter, setDetectedVoter] = useState<any>(null);
 
-  const [selectedBemId, setSelectedBemId] = useState<string>('');
-  const [selectedHimaId, setSelectedHimaId] = useState<string>('');
+  // Selections
+  const [selectedBemId, setSelectedBemId] = useState<string>('bem-01');
+  const [selectedHimaId, setSelectedHimaId] = useState<string>('hima-ftb-01');
 
+  // Modal
   const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  const [timerSeconds, setTimerSeconds] = useState(180);
+  // Timers
+  const [timerSeconds, setTimerSeconds] = useState(130); // 02:10 default
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Post-submit self-destruct / bilik countdown (3 minutes = 180s)
-  const [postSubmitSeconds, setPostSubmitSeconds] = useState(180);
-  const [ticketAudit, setTicketAudit] = useState('');
+  const [postSubmitSeconds, setPostSubmitSeconds] = useState(170); // 02:50 default
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const audioIntervalRef = useRef<any>(null);
 
@@ -61,6 +64,15 @@ function VoteContent() {
   useEffect(() => {
     const rawToken = searchParams.get('token');
     const rawBooth = searchParams.get('booth') || 'Bilik 01';
+
+    // If coming from QR with booth param, start at Tahap 0 (Penugasan Bilik)
+    if (rawBooth && searchParams.has('booth')) {
+      const match = rawBooth.match(/\d+/);
+      const num = match ? parseInt(match[0], 10) : 1;
+      setAssignedBoothNumber(num);
+      setAssignedBoothName(`Bilik 0${num}`);
+      setCurrentStep(0);
+    }
 
     // Burn token visually from URL
     if (typeof window !== 'undefined' && (rawToken || searchParams.has('token'))) {
@@ -75,34 +87,42 @@ function VoteContent() {
           body: JSON.stringify({ token: rawToken, preferredBooth: rawBooth }),
         });
         const data = await res.json();
-
-        if (data.waiting) {
-          setIsWaitingQueue(true);
-        } else if (data.success) {
+        if (data.success) {
           setAssignedBoothName(data.boothName || rawBooth);
           setAssignedBoothNumber(data.boothNumber || 1);
         }
       } catch (err) {
         setAssignedBoothName(rawBooth);
-        const match = rawBooth.match(/\d+/);
-        if (match) setAssignedBoothNumber(parseInt(match[0], 10));
       }
     };
 
     initBooth();
   }, [searchParams]);
 
-  // Sync selected voter
+  // 2. Real-time NIM detection
   useEffect(() => {
-    const voter = voters.find((v) => v.nim === selectedNim);
-    if (voter) {
-      setSelectedVoter(voter);
+    if (!inputNim) {
+      setDetectedVoter(null);
+      return;
     }
-  }, [selectedNim, voters]);
+    const found = voters.find((v) => v.nim.trim() === inputNim.trim());
+    if (found) {
+      setDetectedVoter(found);
+    } else {
+      // Fallback pseudo detection for UBTH simulation
+      setDetectedVoter({
+        nim: inputNim,
+        name: 'Mahasiswa UBTH',
+        facultyId: 'FTB',
+        prodiName: 'Bisnis Digital',
+        status: 'belum',
+      });
+    }
+  }, [inputNim, voters]);
 
-  // Session timer before step 5
+  // 3. Voting Session Countdown (Steps 2 - 4)
   useEffect(() => {
-    if (currentStep >= 5 || isWaitingQueue) return;
+    if (currentStep < 2 || currentStep >= 5) return;
     const timer = setInterval(() => {
       setTimerSeconds((prev) => {
         if (prev <= 1) {
@@ -114,17 +134,17 @@ function VoteContent() {
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentStep, isWaitingQueue, router, showToast]);
+  }, [currentStep, router, showToast]);
 
-  // Lock back navigation & Post-Submit Self-Destruct Audio on Step 5
+  // 4. Post-Submit Step 5 (Alarm & 02:50 Countdown)
   useEffect(() => {
     if (currentStep !== 5) return;
 
-    // Lock back navigation
+    // Prevent back navigation
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
-      showToast('Sesi pemungutan suara telah ditutup dan dikunci.', 'info');
+      showToast('Sesi pemungutan suara telah selesai dan terkunci.', 'info');
     };
     window.addEventListener('popstate', handlePopState);
 
@@ -138,7 +158,7 @@ function VoteContent() {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(880, ctx.currentTime); // 880 Hz
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
         gain.gain.setValueAtTime(0.08, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
         osc.connect(gain);
@@ -149,9 +169,8 @@ function VoteContent() {
     };
 
     playBeep();
-    audioIntervalRef.current = setInterval(playBeep, 4000); // looping alert every 4s
+    audioIntervalRef.current = setInterval(playBeep, 4000);
 
-    // 3-minute self-destruct countdown
     const countdown = setInterval(() => {
       setPostSubmitSeconds((prev) => {
         if (prev <= 1) {
@@ -169,17 +188,22 @@ function VoteContent() {
     };
   }, [currentStep, isAudioMuted, router, showToast]);
 
-  // Step 1 -> 2: Update Presence to Supabase & Context
+  // Step 1 -> 2
   const handleProceedToStep2 = async () => {
+    if (!detectedVoter) {
+      showToast('Masukkan NIM mahasiswa yang valid.', 'error');
+      return;
+    }
+
     try {
       await fetch('/api/vote/presence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           boothNumber: assignedBoothNumber,
-          nim: selectedVoter.nim,
-          name: selectedVoter.name,
-          prodi: selectedVoter.prodiName,
+          nim: detectedVoter.nim,
+          name: detectedVoter.name,
+          prodi: detectedVoter.prodiName,
         }),
       });
     } catch (e) {}
@@ -187,442 +211,609 @@ function VoteContent() {
     updateBoothStatus(
       `b-0${assignedBoothNumber}`,
       'Sedang Memilih',
-      { voterNim: selectedVoter.nim, voterName: selectedVoter.name, prodiName: selectedVoter.prodiName }
+      { voterNim: detectedVoter.nim, voterName: detectedVoter.name, prodiName: detectedVoter.prodiName }
     );
+
+    // Auto set default candidate if not selected
+    if (!selectedBemId && bemCandidates.length > 0) {
+      setSelectedBemId(bemCandidates[0].id);
+    }
+    if (!selectedHimaId && himaCandidates.length > 0) {
+      setSelectedHimaId(himaCandidates[0].id);
+    }
+
     setCurrentStep(2);
   };
 
-  // Step 4 -> 5: Atomic Vote Submission
+  // Step 4 -> 5: Final atomic vote
   const handleFinalSubmit = async () => {
-    // Strict Anti-Golput Validation
     if (!selectedBemId || !selectedHimaId) {
-      showToast('Wajib memilih Paslon BEM dan Paslon HIMA (Anti-Golput).', 'error');
+      showToast('Wajib memilih Paslon BEM dan Paslon HIMA.', 'error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/vote/submit', {
+      await fetch('/api/vote/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nim: selectedVoter.nim,
+          nim: detectedVoter?.nim || '24030112',
           boothNumber: assignedBoothNumber,
           bemCandidateId: selectedBemId,
           himaCandidateId: selectedHimaId,
         }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        showToast(data.message || 'Gagal mengirimkan suara sah.', 'error');
-        setIsSubmitting(false);
-        return;
-      }
-
-      setTicketAudit(data.ticketNumber || `UBTH-${Date.now().toString().slice(-6)}`);
-
-      // Update local state & clear session
-      castVote(selectedVoter.nim, selectedBemId, selectedHimaId);
-      updateBoothStatus(
-        `b-0${assignedBoothNumber}`,
-        'Selesai',
-        { voterName: selectedVoter.name, voterNim: selectedVoter.nim }
-      );
-
-      if (typeof window !== 'undefined') {
-        sessionStorage.clear();
-      }
-
+      castVote(detectedVoter?.nim || '24030112', selectedBemId, selectedHimaId);
+      updateBoothStatus(`b-0${assignedBoothNumber}`, 'Selesai');
       setIsSubmitting(false);
       setCurrentStep(5);
-    } catch (err: any) {
-      // Fallback
-      castVote(selectedVoter.nim, selectedBemId, selectedHimaId);
+    } catch (err) {
+      castVote(detectedVoter?.nim || '24030112', selectedBemId, selectedHimaId);
       updateBoothStatus(`b-0${assignedBoothNumber}`, 'Selesai');
-      setTicketAudit(`UBTH-${Math.floor(100000 + Math.random() * 900000)}`);
       setIsSubmitting(false);
       setCurrentStep(5);
     }
   };
 
-  const formatCountdown = (secs: number) => {
+  const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    return `${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+    return `0${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const relevantHimaCandidates = himaCandidates.filter(
-    (c) => !c.facultyId || c.facultyId === selectedVoter.facultyId
-  );
-  const selectedBemCandidate = bemCandidates.find((c) => c.id === selectedBemId);
-  const selectedHimaCandidate = himaCandidates.find((c) => c.id === selectedHimaId);
-
-  const handleOpenDetail = (cand: Candidate) => {
-    setDetailModalCandidate(cand);
-    setIsDetailModalOpen(true);
-  };
-
-  // Waiting in queue UI if booths full
-  if (isWaitingQueue) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 text-center shadow-lg">
-          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center mb-4 border border-amber-200">
-            <Hourglass className="w-7 h-7 animate-spin" />
-          </div>
-          <h2 className="text-xl font-black text-slate-900">Bilik Suara Sedang Penuh</h2>
-          <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-            Seluruh bilik saat ini sedang digunakan oleh pemilih lain. Sistem sedang mengalokasikan slot kosong berikutnya untuk Anda...
-          </p>
-          <button
-            onClick={() => setIsWaitingQueue(false)}
-            className="mt-6 w-full py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold"
-          >
-            Coba Masuk ke Bilik Cadangan
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const selectedBemCandidate = bemCandidates.find((c) => c.id === selectedBemId) || bemCandidates[0];
+  const selectedHimaCandidate = himaCandidates.find((c) => c.id === selectedHimaId) || himaCandidates[0];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-between text-slate-900 font-sans">
-      {/* Header */}
-      <VoteHeader
-        boothNumber={assignedBoothName}
-        remainingSeconds={timerSeconds}
-        showTimer={currentStep < 5}
-      />
-
-      {/* Stepper Indicator */}
-      <div className="bg-white border-b border-slate-200/80 shadow-2xs">
-        <VotingStepper currentStep={currentStep} />
+    <div className="relative min-h-screen bg-[#F0F6FF] flex flex-col justify-between overflow-hidden font-sans text-slate-800 select-none">
+      {/* Decorative Campus Background Wave Graphic (Bottom Left & Right) */}
+      <div className="pointer-events-none absolute -bottom-24 -left-20 w-[420px] h-[340px] opacity-75 z-0">
+        <svg viewBox="0 0 400 320" fill="none" className="w-full h-full">
+          <path
+            d="M -50 200 C 50 120, 180 320, 320 220 C 380 180, 420 280, 420 350 L -50 350 Z"
+            fill="url(#waveGrad1)"
+          />
+          <path
+            d="M -50 260 C 80 160, 220 300, 350 240 L -50 350 Z"
+            fill="url(#waveGrad2)"
+            opacity="0.8"
+          />
+          <defs>
+            <linearGradient id="waveGrad1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#0284c7" />
+              <stop offset="100%" stopColor="#f59e0b" />
+            </linearGradient>
+            <linearGradient id="waveGrad2" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#0284c7" />
+              <stop offset="100%" stopColor="#38bdf8" />
+            </linearGradient>
+          </defs>
+        </svg>
       </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8 sm:px-6">
-        {/* STEP 1: VERIFIKASI IDENTITAS DPT */}
-        {currentStep === 1 && (
-          <div className="max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200">
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-700 mx-auto flex items-center justify-center mb-3 border border-sky-100">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900">Verifikasi Identitas Pemilih</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Data DPT tersinkronisasi langsung dengan Server Pusat KPUM UBTH
-              </p>
+      <div className="pointer-events-none absolute -bottom-28 -right-20 w-[420px] h-[340px] opacity-75 z-0">
+        <svg viewBox="0 0 400 320" fill="none" className="w-full h-full">
+          <path
+            d="M 450 200 C 350 120, 220 320, 80 220 C 20 180, -20 280, -20 350 L 450 350 Z"
+            fill="url(#waveGrad3)"
+          />
+          <defs>
+            <linearGradient id="waveGrad3" x1="1" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#0284c7" />
+              <stop offset="100%" stopColor="#38bdf8" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      {/* TOP HEADER */}
+      <header className="relative z-20 px-6 sm:px-12 py-4 flex items-center justify-between">
+        {/* Logo */}
+        <div className="flex items-center gap-3">
+          <AppLogo size={36} showText={false} />
+          <span className="text-base sm:text-lg font-black tracking-tight text-slate-900">
+            PEMIRA 2026
+          </span>
+        </div>
+
+        {/* Right Badges */}
+        <div className="flex items-center gap-3">
+          {/* Active Timer (Shown in steps 2 to 4) */}
+          {currentStep >= 2 && currentStep <= 4 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 border border-rose-200 text-rose-600 font-bold font-mono text-xs shadow-2xs">
+              <Clock className="w-3.5 h-3.5 text-rose-500" />
+              <span>Time: {formatTimer(timerSeconds)}</span>
             </div>
+          )}
 
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-bold text-slate-700 block mb-1">
-                  Pilih Mahasiswa DPT (Simulasi Bilik)
-                </label>
-                <select
-                  value={selectedNim}
-                  onChange={(e) => setSelectedNim(e.target.value)}
-                  className="w-full p-3 rounded-xl border border-slate-300 text-sm font-medium focus:ring-2 focus:ring-sky-500 focus:outline-hidden bg-white"
-                >
-                  {voters.map((v) => (
-                    <option key={v.id} value={v.nim}>
-                      {v.nim} - {v.name} ({v.prodiName}) [{v.status.toUpperCase()}]
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Verified Card Preview */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Nama Lengkap</span>
-                  <span className="font-bold text-slate-900">{selectedVoter.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Nomor Induk Mahasiswa</span>
-                  <span className="font-mono font-bold text-slate-900">{selectedVoter.nim}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Fakultas</span>
-                  <span className="font-bold text-sky-700">{selectedVoter.facultyId}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Program Studi</span>
-                  <span className="font-bold text-slate-900">{selectedVoter.prodiName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Bilik Terpilih</span>
-                  <span className="font-bold text-emerald-700">{assignedBoothName}</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleProceedToStep2}
-                className="w-full mt-4 py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md"
-              >
-                <span>Mulai Pencoblosan Bilik</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+          {/* Booth Badge */}
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/80 border border-slate-200/90 text-xs font-bold text-slate-700 shadow-2xs">
+            <span>Bilik Suara Digital</span>
+            <Monitor className="w-3.5 h-3.5 text-sky-600" />
           </div>
-        )}
+        </div>
+      </header>
 
-        {/* STEP 2: PILIH PRESIDEN BEM */}
-        {currentStep === 2 && (
-          <div>
-            <div className="text-center mb-6">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-3 py-1 rounded-full border border-sky-200">
-                TAHAP 1 DARI 2
-              </span>
-              <h2 className="text-2xl font-black text-slate-900 mt-2">
-                Pemilihan Calon Presiden &amp; Wapres BEM UBTH
+      {/* MAIN CONTENT WRAPPER */}
+      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-4 sm:py-6 flex items-center">
+        {/* TAHAP 0: PENUGASAN BILIK SUARA (SCREEN SEBELUM MASUK) */}
+        {currentStep === 0 && (
+          <div className="w-full max-w-md mx-auto bg-white/95 backdrop-blur-md rounded-3xl p-8 border border-sky-100 shadow-xl text-center space-y-6 animate-in fade-in zoom-in-95">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
+              <Check className="w-3.5 h-3.5" />
+              <span>Terverifikasi</span>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                PENUGASAN BILIK SUARA
+              </p>
+              <h2 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight mt-1">
+                {assignedBoothName.toUpperCase()}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Gunakan hak suara Anda untuk memilih pemimpin Badan Eksekutif Mahasiswa Universitas
-              </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-              {bemCandidates.map((cand) => (
-                <CandidateCard
-                  key={cand.id}
-                  candidate={cand}
-                  isSelected={selectedBemId === cand.id}
-                  onSelect={() => setSelectedBemId(cand.id)}
-                  onOpenDetail={() => handleOpenDetail(cand)}
-                />
-              ))}
-            </div>
-
-            <div className="mt-8 flex items-center justify-between max-w-4xl mx-auto pt-4 border-t border-slate-200">
-              <button
-                onClick={() => setCurrentStep(1)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Kembali</span>
-              </button>
-
-              <button
-                disabled={!selectedBemId}
-                onClick={() => setCurrentStep(3)}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
-                  selectedBemId
-                    ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <span>Lanjut ke Pemilihan HIMA</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 3: PILIH KETUA HIMA PRODI */}
-        {currentStep === 3 && (
-          <div>
-            <div className="text-center mb-6">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-3 py-1 rounded-full border border-sky-200">
-                TAHAP 2 DARI 2
-              </span>
-              <h2 className="text-2xl font-black text-slate-900 mt-2">
-                Pemilihan Ketua &amp; Wakil HIMA {selectedVoter.facultyId}
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Himpunan Mahasiswa Program Studi: <strong>{selectedVoter.prodiName}</strong>
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-              {relevantHimaCandidates.map((cand) => (
-                <CandidateCard
-                  key={cand.id}
-                  candidate={cand}
-                  isSelected={selectedHimaId === cand.id}
-                  onSelect={() => setSelectedHimaId(cand.id)}
-                  onOpenDetail={() => handleOpenDetail(cand)}
-                />
-              ))}
-            </div>
-
-            <div className="mt-8 flex items-center justify-between max-w-4xl mx-auto pt-4 border-t border-slate-200">
-              <button
-                onClick={() => setCurrentStep(2)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Ubah Pilihan BEM</span>
-              </button>
-
-              <button
-                disabled={!selectedHimaId}
-                onClick={() => setCurrentStep(4)}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
-                  selectedHimaId
-                    ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-md'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
-              >
-                <span>Konfirmasi Akhir Suara</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 4: KONFIRMASI AKHIR PILIHAN */}
-        {currentStep === 4 && (
-          <div className="max-w-2xl mx-auto bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-slate-200">
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 mx-auto flex items-center justify-center mb-3 border border-amber-200">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900">Konfirmasi Pilihan Suara Anda</h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Periksa kembali surat suara elektronik Anda sebelum dimasukkan ke dalam kotak suara digital
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {/* Selected BEM */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Pilihan Presiden &amp; Wapres BEM
-                  </span>
-                  <h4 className="text-base font-bold text-slate-900 mt-0.5">
-                    {selectedBemCandidate?.leaderName} &amp; {selectedBemCandidate?.viceLeaderName}
-                  </h4>
-                  <p className="text-xs text-slate-500 italic">&ldquo;{selectedBemCandidate?.tagline}&rdquo;</p>
-                </div>
-                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white font-mono font-black text-lg flex items-center justify-center shrink-0">
-                  {selectedBemCandidate?.number}
-                </div>
-              </div>
-
-              {/* Selected HIMA */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Pilihan Ketua &amp; Wakil HIMA ({selectedVoter.facultyId})
-                  </span>
-                  <h4 className="text-base font-bold text-slate-900 mt-0.5">
-                    {selectedHimaCandidate?.leaderName} &amp; {selectedHimaCandidate?.viceLeaderName}
-                  </h4>
-                  <p className="text-xs text-slate-500 italic">&ldquo;{selectedHimaCandidate?.tagline}&rdquo;</p>
-                </div>
-                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white font-mono font-black text-lg flex items-center justify-center shrink-0">
-                  {selectedHimaCandidate?.number}
-                </div>
-              </div>
-
-              <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-amber-900 text-xs flex items-start gap-2.5">
-                <Lock className="w-4 h-4 shrink-0 text-amber-700 mt-0.5" />
-                <p>
-                  Sistem menerapkan kebijakan <strong>Anti-Golput</strong>. Setelah menekan tombol kirim, data pilihan Anda akan dieksekusi secara atomik ke server Supabase dan bilik akan terkunci otomatis.
-                </p>
-              </div>
-
-              <div className="pt-4 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep(3)}
-                  className="w-1/3 py-3 px-3 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors"
-                >
-                  Ganti Pilihan
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isSubmitting}
-                  onClick={handleFinalSubmit}
-                  className="w-2/3 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md"
-                >
-                  {isSubmitting ? (
-                    <span>Mengeksekusi Transaksi Atomik...</span>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-5 h-5" />
-                      <span>KIRIM SUARA SAH</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* STEP 5: PASCA-SUBMIT / SELF-DESTRUCT LOCK SCREEN */}
-        {currentStep === 5 && (
-          <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 sm:p-10 shadow-lg border border-slate-200 text-center relative overflow-hidden">
-            {/* Top Red Security Border */}
-            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-500 via-sky-500 to-indigo-600" />
-
-            {/* Solid Lock / Verified Badge */}
-            <div className="w-20 h-20 rounded-3xl bg-slate-900 text-white mx-auto flex items-center justify-center mb-5 shadow-xl border-4 border-slate-100">
-              <Lock className="w-10 h-10 text-emerald-400 stroke-[2.5]" />
-            </div>
-
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold mb-3">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>TRANSAKSI SUARA SAH TERVERIFIKASI</span>
-            </div>
-
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-              Suara Anda Telah Sah Tersimpan!
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
-              Hak suara Anda telah berhasil dicatat ke dalam database desentralisasi KPUM UBTH 2026.
-            </p>
-
-            {/* Audit Details */}
-            <div className="mt-6 p-4 rounded-2xl bg-slate-50 border border-slate-200/90 text-xs text-slate-700 space-y-1.5 text-left font-mono">
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Kode Audit Tiket:</span>
-                <span className="font-bold text-slate-900">{ticketAudit}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Terminal Bilik:</span>
-                <span className="font-bold text-sky-700">{assignedBoothName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400 font-sans">Waktu Stempel:</span>
-                <span className="text-slate-600">{new Date().toLocaleTimeString('id-ID')} WIB</span>
-              </div>
-            </div>
-
-            {/* 3-Minute Bilik Self-Destruct Countdown */}
-            <div className="mt-6 p-5 rounded-2xl bg-slate-900 text-white">
-              <div className="flex items-center justify-between mb-1 text-slate-400 text-xs">
-                <span>Batas Waktu Bilik Kosong:</span>
-                <button
-                  onClick={() => setIsAudioMuted(!isAudioMuted)}
-                  className="flex items-center gap-1 text-[11px] hover:text-white transition-colors"
-                >
-                  {isAudioMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-                  <span>{isAudioMuted ? 'Bisu' : 'Suara Aktif'}</span>
-                </button>
-              </div>
-
-              <div className="text-4xl font-black font-mono tracking-wider text-emerald-400 my-1">
-                {formatCountdown(postSubmitSeconds)}
-              </div>
-
-              <p className="text-[11px] text-slate-400">
-                Layar bilik ini akan mereset diri secara otomatis saat hitungan mundur selesai.
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-left text-xs text-slate-600 space-y-1">
+              <strong className="text-slate-800 block">Petunjuk Bilik:</strong>
+              <p>
+                Silakan menuju ke <strong>{assignedBoothName.toUpperCase()}</strong>. Pastikan Anda berada di bilik fisik yang tepat sebelum membuka surat suara digital.
               </p>
             </div>
 
             <button
-              onClick={() => router.push('/qr-screen')}
-              className="mt-5 w-full py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-colors"
+              onClick={() => setCurrentStep(1)}
+              className="w-full py-3.5 px-6 rounded-2xl bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-slate-900/20 cursor-pointer"
             >
-              Keluar &amp; Kosongkan Bilik Sekarang
+              <span>Saya Sudah di Bilik, Mulai Memilih</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
+          </div>
+        )}
+
+        {/* TAHAP 1 - 5: 5-STEP BALLET FLOW WITH LEFT VERTICAL STEPPER */}
+        {currentStep >= 1 && (
+          <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+            {/* Left Column: Vertical Stepper Indicator (Steps 1 to 5) */}
+            <div className="hidden md:flex md:col-span-1 flex-col items-center justify-center py-6">
+              {[1, 2, 3, 4, 5].map((step, idx) => {
+                const isPassed = currentStep > step;
+                const isCurrent = currentStep === step;
+
+                return (
+                  <React.Fragment key={step}>
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                        isPassed
+                          ? 'bg-[#0284c7] text-white shadow-xs'
+                          : isCurrent
+                          ? 'bg-[#0284c7] text-white ring-4 ring-sky-100 shadow-md'
+                          : 'border-2 border-slate-300 text-slate-400 bg-white'
+                      }`}
+                    >
+                      {isPassed ? <Check className="w-4 h-4 stroke-[3]" /> : step}
+                    </div>
+
+                    {idx < 4 && (
+                      <div
+                        className={`w-0.5 h-12 transition-colors ${
+                          currentStep > step ? 'bg-[#0284c7]' : 'bg-slate-200'
+                        }`}
+                      />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            {/* Right Column: Main Voting Card */}
+            <div className="md:col-span-11 w-full">
+              {/* STEP 1: VALIDASI PEMILIH */}
+              {currentStep === 1 && (
+                <div className="bg-white/95 backdrop-blur-md rounded-3xl p-6 sm:p-10 border border-sky-100 shadow-xl max-w-2xl mx-auto space-y-6 animate-in fade-in">
+                  <div>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                      Validasi Pemilih
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                      Masukkan NIM Anda untuk memulai.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="NIM (Contoh: 210401xx)"
+                        value={inputNim}
+                        onChange={(e) => setInputNim(e.target.value)}
+                        className="w-full pl-12 pr-4 py-3.5 rounded-2xl border border-slate-200 bg-white text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-[#0284c7] focus:ring-4 focus:ring-sky-100 transition-all"
+                      />
+                    </div>
+
+                    {/* Live Detection Info Box */}
+                    {detectedVoter ? (
+                      <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-200 text-xs text-sky-900 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
+                          <span>
+                            Mahasiswa Terdeteksi: <strong>{detectedVoter.name}</strong> ({detectedVoter.prodiName})
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-200 text-sky-800">
+                          {detectedVoter.facultyId}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-xs text-sky-600 bg-sky-50 px-3.5 py-2.5 rounded-xl border border-sky-100">
+                        <Info className="w-4 h-4 shrink-0 text-sky-500" />
+                        <span>Prodi akan terdeteksi setelah NIM diisi.</span>
+                      </div>
+                    )}
+
+                    {/* Quick Demo NIMs */}
+                    <div className="pt-1">
+                      <span className="text-[11px] font-bold text-slate-400 block mb-1.5">
+                        Pilih Cepat Sampel Demo:
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { nim: '24030112', label: 'Dimas (Farmasi)' },
+                          { nim: '23010045', label: 'Alya (Bisnis Digital)' },
+                          { nim: '22020089', label: 'Rian (Keperawatan)' },
+                        ].map((d) => (
+                          <button
+                            key={d.nim}
+                            type="button"
+                            onClick={() => setInputNim(d.nim)}
+                            className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 border border-slate-200 transition-colors cursor-pointer"
+                          >
+                            {d.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex items-center justify-between border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => router.push('/qr-screen')}
+                      className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      ← Kembali
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleProceedToStep2}
+                      className="px-6 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold transition-all shadow-md shadow-sky-500/25 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Mulai</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: PILIHAN KETUA & WAKIL BEM */}
+              {currentStep === 2 && (
+                <div className="bg-white/95 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-sky-100 shadow-xl space-y-6 animate-in fade-in">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                      Tahap 1: Ketua &amp; Wakil BEM
+                    </h3>
+                    <div className="w-full bg-slate-100 h-1 rounded-full mt-2 overflow-hidden">
+                      <div className="w-1/2 bg-[#0284c7] h-full rounded-full" />
+                    </div>
+                  </div>
+
+                  {/* 2 Candidate Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {bemCandidates.slice(0, 2).map((cand) => {
+                      const isSelected = selectedBemId === cand.id;
+
+                      return (
+                        <div
+                          key={cand.id}
+                          className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-[#0284c7] ring-2 ring-sky-200 bg-sky-50/20 shadow-sm'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div>
+                            {/* Blue Candidate Photo Header */}
+                            <div className="h-32 sm:h-36 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-between p-3 text-white relative overflow-hidden shadow-xs mb-3">
+                              <span className="text-xs font-mono font-bold bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-xs">
+                                {cand.number}
+                              </span>
+                              <div className="text-right">
+                                <span className="text-[11px] opacity-80 block">Kandidat BEM</span>
+                                <span className="text-xs font-bold">UBTH 2026</span>
+                              </div>
+                            </div>
+
+                            <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                              No. {cand.number}
+                            </span>
+                            <h4 className="text-sm font-bold text-slate-900">
+                              Paslon {cand.number}
+                            </h4>
+                            <p className="text-xs text-slate-600 font-medium mt-0.5">
+                              {cand.leaderName} &amp; {cand.viceLeaderName}
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDetailModalCandidate(cand);
+                                setIsDetailModalOpen(true);
+                              }}
+                              className="mt-2 text-[11px] font-bold text-[#0284c7] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat Visi Misi</span>
+                            </button>
+                          </div>
+
+                          {/* Selection Button */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBemId(cand.id)}
+                            className={`mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#0284c7] text-white shadow-sm flex items-center justify-center gap-1.5'
+                                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Pilih {cand.number}</span>
+                              </>
+                            ) : (
+                              `Pilih ${cand.number}`
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Bottom Navigation */}
+                  <div className="flex justify-end pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      disabled={!selectedBemId}
+                      onClick={() => setCurrentStep(3)}
+                      className="px-6 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold transition-all shadow-md shadow-sky-500/25 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <span>Lanjut ke Himpunan</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3: PILIHAN KETUA & WAKIL HIMPUNAN */}
+              {currentStep === 3 && (
+                <div className="bg-white/95 backdrop-blur-md rounded-3xl p-6 sm:p-8 border border-sky-100 shadow-xl space-y-6 animate-in fade-in">
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                      Tahap 2: Ketua &amp; Wakil Himpunan
+                    </h3>
+                    <div className="w-full bg-slate-100 h-1 rounded-full mt-2 overflow-hidden">
+                      <div className="w-full bg-[#0284c7] h-full rounded-full" />
+                    </div>
+                  </div>
+
+                  {/* Candidate Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {himaCandidates.slice(0, 2).map((cand) => {
+                      const isSelected = selectedHimaId === cand.id;
+
+                      return (
+                        <div
+                          key={cand.id}
+                          className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                            isSelected
+                              ? 'border-[#0284c7] ring-2 ring-sky-200 bg-sky-50/20 shadow-sm'
+                              : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <div>
+                            {/* Blue Candidate Photo Header */}
+                            <div className="h-32 sm:h-36 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-between p-3 text-white relative overflow-hidden shadow-xs mb-3">
+                              <span className="text-xs font-mono font-bold bg-black/20 px-2 py-0.5 rounded-md backdrop-blur-xs">
+                                {cand.number}
+                              </span>
+                              <div className="text-right">
+                                <span className="text-[11px] opacity-80 block">Kandidat HIMA</span>
+                                <span className="text-xs font-bold">{cand.facultyId || 'UBTH'}</span>
+                              </div>
+                            </div>
+
+                            <span className="text-[10px] font-bold text-slate-400 block uppercase">
+                              No. {cand.number}
+                            </span>
+                            <h4 className="text-sm font-bold text-slate-900">
+                              Paslon {cand.number}
+                            </h4>
+                            <p className="text-xs text-slate-600 font-medium mt-0.5">
+                              {cand.leaderName} &amp; {cand.viceLeaderName}
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDetailModalCandidate(cand);
+                                setIsDetailModalOpen(true);
+                              }}
+                              className="mt-2 text-[11px] font-bold text-[#0284c7] hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat Visi Misi</span>
+                            </button>
+                          </div>
+
+                          {/* Selection Button */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedHimaId(cand.id)}
+                            className={`mt-4 w-full py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#0284c7] text-white shadow-sm flex items-center justify-center gap-1.5'
+                                : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {isSelected ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Pilih {cand.number}</span>
+                              </>
+                            ) : (
+                              `Pilih ${cand.number}`
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Bottom Navigation */}
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(2)}
+                      className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+                    >
+                      ← Kembali ke BEM
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!selectedHimaId}
+                      onClick={() => setCurrentStep(4)}
+                      className="px-6 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold transition-all shadow-md shadow-sky-500/25 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <span>Lanjut ke Verifikasi</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4: KONFIRMASI PILIHAN */}
+              {currentStep === 4 && (
+                <div className="bg-white/95 backdrop-blur-md rounded-3xl p-6 sm:p-10 border border-sky-100 shadow-xl max-w-lg mx-auto text-center space-y-6 animate-in fade-in">
+                  <div className="w-14 h-14 rounded-2xl bg-sky-50 text-[#0284c7] mx-auto flex items-center justify-center border border-sky-200">
+                    <ShieldCheck className="w-7 h-7" />
+                  </div>
+
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                    KONFIRMASI PILIHAN
+                  </h3>
+
+                  {/* Choices Box */}
+                  <div className="p-5 rounded-2xl bg-sky-50/60 border border-sky-100 text-left space-y-3 text-xs font-semibold">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">BEM :</span>
+                      <span className="font-bold text-slate-900 font-mono">
+                        Paslon {selectedBemCandidate?.number} ({selectedBemCandidate?.leaderName})
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-500">HIMA :</span>
+                      <span className="font-bold text-slate-900 font-mono">
+                        Paslon {selectedHimaCandidate?.number} ({selectedHimaCandidate?.leaderName})
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Red Warning Box */}
+                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-bold flex items-center gap-2 text-left">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Pilihan TIDAK DAPAT diubah setelah ini.</span>
+                  </div>
+
+                  <div className="pt-2 flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(3)}
+                      className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={handleFinalSubmit}
+                      className="w-1/2 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold shadow-md shadow-sky-500/25 transition-all cursor-pointer"
+                    >
+                      {isSubmitting ? 'Memproses...' : 'YA, SUBMIT!'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 5: HALAMAN BERHASIL SUBMIT */}
+              {currentStep === 5 && (
+                <div className="bg-white/95 backdrop-blur-md rounded-3xl p-8 sm:p-12 border border-sky-100 shadow-xl max-w-lg mx-auto text-center space-y-6 animate-in fade-in">
+                  {/* Concentric Ripple Rings Lock */}
+                  <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full bg-sky-100 animate-ping opacity-30" />
+                    <div className="absolute inset-2 rounded-full bg-sky-100/60" />
+                    <div className="relative w-16 h-16 rounded-2xl bg-[#0284c7] text-white flex items-center justify-center shadow-lg">
+                      <Lock className="w-8 h-8" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                      TERIMA KASIH TELAH MEMILIH!
+                    </h2>
+                    <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                      Suara Anda Sudah Sah Terrekam.
+                    </p>
+                  </div>
+
+                  {/* Sound Wave Indicator */}
+                  <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-600 max-w-xs mx-auto">
+                    <button
+                      type="button"
+                      onClick={() => setIsAudioMuted(!isAudioMuted)}
+                      className="hover:text-slate-900"
+                    >
+                      {isAudioMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-500" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-600" />}
+                    </button>
+                    <span>NYALA HINGGA TIMER SELESAI</span>
+                  </div>
+
+                  {/* Red Countdown Box */}
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+                    <span className="text-xs text-slate-500 block">Silakan keluar bilik</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+                      Meninggalkan Bilik Dalam:
+                    </span>
+                    <div className="text-3xl font-black text-rose-600 font-mono tracking-tight">
+                      ⏱️ {formatTimer(postSubmitSeconds)}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push('/qr-screen')}
+                    className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Selesai &amp; Keluar Bilik Sekarang
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>
@@ -656,10 +847,10 @@ export default function VotingPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex min-h-screen items-center justify-center bg-[#F0F6FF]">
           <div className="text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-900 border-t-transparent" />
-            <p className="mt-3 text-sm font-semibold text-slate-600">Menyiapkan Bilik Suara...</p>
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-[#0284c7] border-t-transparent" />
+            <p className="mt-3 text-xs font-bold text-slate-600">Menyiapkan Bilik Suara...</p>
           </div>
         </div>
       }
@@ -668,4 +859,3 @@ export default function VotingPage() {
     </Suspense>
   );
 }
-
