@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-slate-100 text-slate-900 antialiased min-h-screen;
+  }
+}
+
+@keyframes scanBeam {
+  0% {
+    top: 4%;
+    opacity: 0.15;
+  }
+  50% {
+    top: 93%;
+    opacity: 0.95;
+  }
+  100% {
+    top: 4%;
+    opacity: 0.15;
+  }
+}
+
+.animate-scan-beam {
+  animation: scanBeam 2.6s ease-in-out infinite;
+}

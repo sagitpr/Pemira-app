@@ -1,0 +1,517 @@
+export interface PaslonResult {
+  id: string;
+  number: string;
+  name: string;
+  leaderName: string;
+  viceLeaderName: string;
+  votes: number;
+  percentage: number;
+  isLeading?: boolean;
+}
+
+export interface ProdiRekap {
+  id: string;
+  name: string;
+  facultyId: 'FTB' | 'FIKES' | 'FARMASI';
+  facultyName: string;
+  totalDpt: number;
+  suaraMasuk: number;
+  partisipasi: number; // percentage, e.g. 65.5
+  paslonList: PaslonResult[];
+  abstain: number;
+}
+
+export interface GlobalRekapSummary {
+  totalDpt: number;
+  suaraMasuk: number;
+  belumMemilih: number;
+  tingkatPartisipasi: number;
+  lastUpdated: string;
+}
+
+export const GLOBAL_REKAP_SUMMARY: GlobalRekapSummary = {
+  totalDpt: 2300,
+  suaraMasuk: 1450,
+  belumMemilih: 850,
+  tingkatPartisipasi: 63.04,
+  lastUpdated: '06 Okt 2026, 21:00 WIB',
+};
+
+export const BEM_REKAP_RESULTS: PaslonResult[] = [
+  {
+    id: 'bem-01',
+    number: '01',
+    name: 'Andi Pratama & Siti Nurhaliza',
+    leaderName: 'Andi Pratama',
+    viceLeaderName: 'Siti Nurhaliza',
+    votes: 870,
+    percentage: 60.0,
+    isLeading: true,
+  },
+  {
+    id: 'bem-02',
+    number: '02',
+    name: 'Budi Santoso & Rina Amalia',
+    leaderName: 'Budi Santoso',
+    viceLeaderName: 'Rina Amalia',
+    votes: 580,
+    percentage: 40.0,
+    isLeading: false,
+  },
+];
+
+export const PRODI_REKAP_DATA: ProdiRekap[] = [
+  // ===================== FTB =====================
+  {
+    id: 'bd',
+    name: 'Bisnis Digital',
+    facultyId: 'FTB',
+    facultyName: 'Fakultas Teknologi & Bisnis',
+    totalDpt: 220,
+    suaraMasuk: 154,
+    partisipasi: 70.0,
+    abstain: 4,
+    paslonList: [
+      {
+        id: 'bd-01',
+        number: '01',
+        name: 'Andi Saputra & Dewi Lestari',
+        leaderName: 'Andi Saputra',
+        viceLeaderName: 'Dewi Lestari',
+        votes: 95,
+        percentage: 63.33,
+        isLeading: true,
+      },
+      {
+        id: 'bd-02',
+        number: '02',
+        name: 'Rizky Maulana & Farah Aulia',
+        leaderName: 'Rizky Maulana',
+        viceLeaderName: 'Farah Aulia',
+        votes: 55,
+        percentage: 36.67,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 'si',
+    name: 'Sistem Informasi',
+    facultyId: 'FTB',
+    facultyName: 'Fakultas Teknologi & Bisnis',
+    totalDpt: 240,
+    suaraMasuk: 168,
+    partisipasi: 70.0,
+    abstain: 3,
+    paslonList: [
+      {
+        id: 'si-01',
+        number: '01',
+        name: 'Andi Saputra & Dewi Lestari',
+        leaderName: 'Andi Saputra',
+        viceLeaderName: 'Dewi Lestari',
+        votes: 102,
+        percentage: 61.82,
+        isLeading: true,
+      },
+      {
+        id: 'si-02',
+        number: '02',
+        name: 'Rizky Maulana & Farah Aulia',
+        leaderName: 'Rizky Maulana',
+        viceLeaderName: 'Farah Aulia',
+        votes: 63,
+        percentage: 38.18,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 'tp',
+    name: 'Teknologi Pangan',
+    facultyId: 'FTB',
+    facultyName: 'Fakultas Teknologi & Bisnis',
+    totalDpt: 150,
+    suaraMasuk: 89,
+    partisipasi: 59.33,
+    abstain: 2,
+    paslonList: [
+      {
+        id: 'tp-01',
+        number: '01',
+        name: 'Andi Saputra & Dewi Lestari',
+        leaderName: 'Andi Saputra',
+        viceLeaderName: 'Dewi Lestari',
+        votes: 41,
+        percentage: 47.13,
+        isLeading: false,
+      },
+      {
+        id: 'tp-02',
+        number: '02',
+        name: 'Rizky Maulana & Farah Aulia',
+        leaderName: 'Rizky Maulana',
+        viceLeaderName: 'Farah Aulia',
+        votes: 46,
+        percentage: 52.87,
+        isLeading: true,
+      },
+    ],
+  },
+  {
+    id: 'kw',
+    name: 'Kewirausahaan',
+    facultyId: 'FTB',
+    facultyName: 'Fakultas Teknologi & Bisnis',
+    totalDpt: 110,
+    suaraMasuk: 65,
+    partisipasi: 59.09,
+    abstain: 1,
+    paslonList: [
+      {
+        id: 'kw-01',
+        number: '01',
+        name: 'Andi Saputra & Dewi Lestari',
+        leaderName: 'Andi Saputra',
+        viceLeaderName: 'Dewi Lestari',
+        votes: 38,
+        percentage: 59.38,
+        isLeading: true,
+      },
+      {
+        id: 'kw-02',
+        number: '02',
+        name: 'Rizky Maulana & Farah Aulia',
+        leaderName: 'Rizky Maulana',
+        viceLeaderName: 'Farah Aulia',
+        votes: 26,
+        percentage: 40.62,
+        isLeading: false,
+      },
+    ],
+  },
+
+  // ===================== FIKES =====================
+  {
+    id: 'ars',
+    name: 'S1 Administrasi Rumah Sakit (ARS)',
+    facultyId: 'FIKES',
+    facultyName: 'Fakultas Ilmu Kesehatan',
+    totalDpt: 160,
+    suaraMasuk: 98,
+    partisipasi: 61.25,
+    abstain: 3,
+    paslonList: [
+      {
+        id: 'ars-01',
+        number: '01',
+        name: 'Muhammad Ilham & Nurul Fitriani',
+        leaderName: 'Muhammad Ilham',
+        viceLeaderName: 'Nurul Fitriani',
+        votes: 56,
+        percentage: 58.95,
+        isLeading: true,
+      },
+      {
+        id: 'ars-02',
+        number: '02',
+        name: 'Dimas Aditya & Sarah Salsabila',
+        leaderName: 'Dimas Aditya',
+        viceLeaderName: 'Sarah Salsabila',
+        votes: 39,
+        percentage: 41.05,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 's1-kep',
+    name: 'S1 Keperawatan',
+    facultyId: 'FIKES',
+    facultyName: 'Fakultas Ilmu Kesehatan',
+    totalDpt: 260,
+    suaraMasuk: 182,
+    partisipasi: 70.0,
+    abstain: 5,
+    paslonList: [
+      {
+        id: 's1-kep-01',
+        number: '01',
+        name: 'Muhammad Ilham & Nurul Fitriani',
+        leaderName: 'Muhammad Ilham',
+        viceLeaderName: 'Nurul Fitriani',
+        votes: 112,
+        percentage: 63.28,
+        isLeading: true,
+      },
+      {
+        id: 's1-kep-02',
+        number: '02',
+        name: 'Dimas Aditya & Sarah Salsabila',
+        leaderName: 'Dimas Aditya',
+        viceLeaderName: 'Sarah Salsabila',
+        votes: 65,
+        percentage: 36.72,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 's1-gz',
+    name: 'S1 Gizi',
+    facultyId: 'FIKES',
+    facultyName: 'Fakultas Ilmu Kesehatan',
+    totalDpt: 140,
+    suaraMasuk: 88,
+    partisipasi: 62.86,
+    abstain: 2,
+    paslonList: [
+      {
+        id: 's1-gz-01',
+        number: '01',
+        name: 'Muhammad Ilham & Nurul Fitriani',
+        leaderName: 'Muhammad Ilham',
+        viceLeaderName: 'Nurul Fitriani',
+        votes: 42,
+        percentage: 48.84,
+        isLeading: false,
+      },
+      {
+        id: 's1-gz-02',
+        number: '02',
+        name: 'Dimas Aditya & Sarah Salsabila',
+        leaderName: 'Dimas Aditya',
+        viceLeaderName: 'Sarah Salsabila',
+        votes: 44,
+        percentage: 51.16,
+        isLeading: true,
+      },
+    ],
+  },
+  {
+    id: 'd3-kep',
+    name: 'D3 Keperawatan',
+    facultyId: 'FIKES',
+    facultyName: 'Fakultas Ilmu Kesehatan',
+    totalDpt: 180,
+    suaraMasuk: 115,
+    partisipasi: 63.89,
+    abstain: 3,
+    paslonList: [
+      {
+        id: 'd3-kep-01',
+        number: '01',
+        name: 'Muhammad Ilham & Nurul Fitriani',
+        leaderName: 'Muhammad Ilham',
+        viceLeaderName: 'Nurul Fitriani',
+        votes: 68,
+        percentage: 60.71,
+        isLeading: true,
+      },
+      {
+        id: 'd3-kep-02',
+        number: '02',
+        name: 'Dimas Aditya & Sarah Salsabila',
+        leaderName: 'Dimas Aditya',
+        viceLeaderName: 'Sarah Salsabila',
+        votes: 44,
+        percentage: 39.29,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 'd3-ro',
+    name: 'D3 Refraksi Optisi (RO)',
+    facultyId: 'FIKES',
+    facultyName: 'Fakultas Ilmu Kesehatan',
+    totalDpt: 90,
+    suaraMasuk: 54,
+    partisipasi: 60.0,
+    abstain: 1,
+    paslonList: [
+      {
+        id: 'd3-ro-01',
+        number: '01',
+        name: 'Muhammad Ilham & Nurul Fitriani',
+        leaderName: 'Muhammad Ilham',
+        viceLeaderName: 'Nurul Fitriani',
+        votes: 28,
+        percentage: 52.83,
+        isLeading: true,
+      },
+      {
+        id: 'd3-ro-02',
+        number: '02',
+        name: 'Dimas Aditya & Sarah Salsabila',
+        leaderName: 'Dimas Aditya',
+        viceLeaderName: 'Sarah Salsabila',
+        votes: 25,
+        percentage: 47.17,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 'd3-tlm',
+    name: 'D3 Teknologi Laboratorium Medis (TLM)',
+    facultyId: 'FIKES',
+    facultyName: 'Fakultas Ilmu Kesehatan',
+    totalDpt: 120,
+    suaraMasuk: 72,
+    partisipasi: 60.0,
+    abstain: 2,
+    paslonList: [
+      {
+        id: 'd3-tlm-01',
+        number: '01',
+        name: 'Muhammad Ilham & Nurul Fitriani',
+        leaderName: 'Muhammad Ilham',
+        viceLeaderName: 'Nurul Fitriani',
+        votes: 43,
+        percentage: 61.43,
+        isLeading: true,
+      },
+      {
+        id: 'd3-tlm-02',
+        number: '02',
+        name: 'Dimas Aditya & Sarah Salsabila',
+        leaderName: 'Dimas Aditya',
+        viceLeaderName: 'Sarah Salsabila',
+        votes: 27,
+        percentage: 38.57,
+        isLeading: false,
+      },
+    ],
+  },
+
+  // ===================== FARMASI =====================
+  {
+    id: 's1-far',
+    name: 'S1 Farmasi',
+    facultyId: 'FARMASI',
+    facultyName: 'Fakultas Farmasi',
+    totalDpt: 310,
+    suaraMasuk: 202,
+    partisipasi: 65.16,
+    abstain: 4,
+    paslonList: [
+      {
+        id: 's1-far-01',
+        number: '01',
+        name: 'Kevin Ardiansyah & Nabila Putri',
+        leaderName: 'Kevin Ardiansyah',
+        viceLeaderName: 'Nabila Putri',
+        votes: 125,
+        percentage: 63.13,
+        isLeading: true,
+      },
+      {
+        id: 's1-far-02',
+        number: '02',
+        name: 'Arya Pratama & Zahra Maharani',
+        leaderName: 'Arya Pratama',
+        viceLeaderName: 'Zahra Maharani',
+        votes: 73,
+        percentage: 36.87,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 's1-kos',
+    name: 'S1 Rekayasa Kosmetik',
+    facultyId: 'FARMASI',
+    facultyName: 'Fakultas Farmasi',
+    totalDpt: 130,
+    suaraMasuk: 82,
+    partisipasi: 63.08,
+    abstain: 2,
+    paslonList: [
+      {
+        id: 's1-kos-01',
+        number: '01',
+        name: 'Kevin Ardiansyah & Nabila Putri',
+        leaderName: 'Kevin Ardiansyah',
+        viceLeaderName: 'Nabila Putri',
+        votes: 48,
+        percentage: 60.0,
+        isLeading: true,
+      },
+      {
+        id: 's1-kos-02',
+        number: '02',
+        name: 'Arya Pratama & Zahra Maharani',
+        leaderName: 'Arya Pratama',
+        viceLeaderName: 'Zahra Maharani',
+        votes: 32,
+        percentage: 40.0,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 'psppa',
+    name: 'PSPPA (Profesi Apoteker)',
+    facultyId: 'FARMASI',
+    facultyName: 'Fakultas Farmasi',
+    totalDpt: 110,
+    suaraMasuk: 66,
+    partisipasi: 60.0,
+    abstain: 1,
+    paslonList: [
+      {
+        id: 'psppa-01',
+        number: '01',
+        name: 'Kevin Ardiansyah & Nabila Putri',
+        leaderName: 'Kevin Ardiansyah',
+        viceLeaderName: 'Nabila Putri',
+        votes: 41,
+        percentage: 63.08,
+        isLeading: true,
+      },
+      {
+        id: 'psppa-02',
+        number: '02',
+        name: 'Arya Pratama & Zahra Maharani',
+        leaderName: 'Arya Pratama',
+        viceLeaderName: 'Zahra Maharani',
+        votes: 24,
+        percentage: 36.92,
+        isLeading: false,
+      },
+    ],
+  },
+  {
+    id: 's2-far',
+    name: 'S2 Farmasi',
+    facultyId: 'FARMASI',
+    facultyName: 'Fakultas Farmasi',
+    totalDpt: 90,
+    suaraMasuk: 46,
+    partisipasi: 51.11,
+    abstain: 1,
+    paslonList: [
+      {
+        id: 's2-far-01',
+        number: '01',
+        name: 'Kevin Ardiansyah & Nabila Putri',
+        leaderName: 'Kevin Ardiansyah',
+        viceLeaderName: 'Nabila Putri',
+        votes: 26,
+        percentage: 57.78,
+        isLeading: true,
+      },
+      {
+        id: 's2-far-02',
+        number: '02',
+        name: 'Arya Pratama & Zahra Maharani',
+        leaderName: 'Arya Pratama',
+        viceLeaderName: 'Zahra Maharani',
+        votes: 19,
+        percentage: 42.22,
+        isLeading: false,
+      },
+    ],
+  },
+];
