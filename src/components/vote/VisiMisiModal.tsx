@@ -28,14 +28,15 @@ export default function VisiMisiModal({
         <div className="p-6 border-b border-slate-100 flex items-start justify-between bg-slate-50/70">
           <div className="flex items-center gap-3">
             <span className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center">
-              {candidate.number}
+              {candidate.number || candidate.candidateNumber || candidate.candidate_number || '01'}
             </span>
             <div>
               <h2 className="text-lg font-bold text-slate-900">
-                {candidate.leaderName} &amp; {candidate.viceLeaderName}
+                {candidate.leaderName || candidate.leader_name || 'Kandidat'}
+                {(candidate.viceLeaderName || candidate.vice_leader_name) ? ` & ${candidate.viceLeaderName || candidate.vice_leader_name}` : ''}
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                {candidate.type === 'BEM' ? 'Calon Presiden & Wakil Presiden BEM' : `Calon HIMA ${candidate.facultyName || ''}`}
+                {candidate.type === 'BEM' ? 'Calon Presiden & Wakil Presiden BEM' : `Calon HIMA ${candidate.facultyName || candidate.facultyId || ''}`}
               </p>
             </div>
           </div>
@@ -67,7 +68,7 @@ export default function VisiMisiModal({
               <span>VISI</span>
             </div>
             <p className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-slate-700 leading-relaxed font-medium">
-              {candidate.visi}
+              {candidate.visi || candidate.vision || 'Mewujudkan kepengurusan yang berintegritas, transformatif, dan melayani mahasiswa UBTH.'}
             </p>
           </div>
 
@@ -78,7 +79,16 @@ export default function VisiMisiModal({
               <span>MISI KERJA</span>
             </div>
             <ul className="space-y-2.5">
-              {candidate.misi.map((m, idx) => (
+              {(Array.isArray(candidate.misi)
+                ? candidate.misi
+                : Array.isArray(candidate.mission)
+                ? candidate.mission
+                : typeof candidate.mission === 'string'
+                ? [candidate.mission]
+                : typeof candidate.misi === 'string'
+                ? [candidate.misi]
+                : ['Membangun sinergi aktif seluruh elemen mahasiswa.', 'Mendorong inovasi dan transparansi program kerja.']
+              ).map((m, idx) => (
                 <li key={idx} className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50/80 border border-slate-100">
                   <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-800 font-bold text-[11px] flex items-center justify-center shrink-0 mt-0.5">
                     {idx + 1}

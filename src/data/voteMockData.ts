@@ -13,18 +13,30 @@ export interface FacultyGroup {
 }
 
 export interface Candidate {
-  id: string;
-  number: string; // '01' | '02'
-  type: 'BEM' | 'HIMA';
-  facultyId?: 'FTB' | 'FIKES' | 'FARMASI';
+  id: string | number;
+  number?: string | number;
+  candidateNumber?: number;
+  candidate_number?: number;
+  leaderName?: string;
+  leader_name?: string;
+  viceLeaderName?: string;
+  vice_leader_name?: string;
+  photoUrl?: string;
+  photo_url?: string;
+  tagline?: string;
+  faculty?: string;
+  facultyId?: 'FTB' | 'FIKES' | 'FARMASI' | string;
+  faculty_id?: string;
   facultyName?: string;
-  leaderName: string;
-  viceLeaderName: string;
-  tagline: string;
-  visi: string;
-  misi: string[];
-  programs: string[];
-  avatarGradient: string;
+  prodiId?: string;
+  prodi_id?: string;
+  type?: 'BEM' | 'HIMA';
+  visi?: string;
+  vision?: string;
+  misi?: string[];
+  mission?: string[] | string;
+  programs?: string[];
+  avatarGradient?: string;
 }
 
 export const FACULTIES_DATA: FacultyGroup[] = [

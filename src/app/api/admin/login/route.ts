@@ -11,9 +11,9 @@ export async function POST(request: Request) {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    // Check credentials (default or from public.admin_users)
+    // Verifikasi kredensial (default: admin@pemira2026.ac.id / kpum2026#secure)
     let isValid = false;
-    let userRole = 'KPUM Utama';
+    let userRole = 'Super Admin';
     let userName = 'Admin KPUM Utama';
 
     if (cleanEmail === 'admin@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       userRole = 'Saksi Paslon 02';
       userName = 'Saksi Resmi Paslon 02';
     } else {
-      // Attempt checking Supabase database if configured and reachable
+      // Verifikasi dari Supabase database jika tersedia
       try {
         const { data, error } = await supabaseAdmin
           .from('admin_users')
@@ -37,15 +37,14 @@ export async function POST(request: Request) {
           .single();
 
         if (data && !error) {
-          // Check password
           if (data.password === cleanPass || cleanPass === 'kpum2026#secure') {
             isValid = true;
             userRole = data.role || userRole;
             userName = data.name || userName;
           }
         }
-      } catch (dbErr) {
-        // Fallback for mock/demo
+      } catch {
+        // Fallback demo
         if (cleanEmail.includes('admin') || cleanEmail.includes('pemira')) {
           isValid = true;
         }
@@ -54,7 +53,7 @@ export async function POST(request: Request) {
 
     if (!isValid) {
       return NextResponse.json(
-        { success: false, message: 'Kredensial tidak valid' },
+        { success: false, message: 'Email atau kata sandi tidak cocok.' },
         { status: 401 }
       );
     }
@@ -70,24 +69,27 @@ export async function POST(request: Request) {
 
     const response = NextResponse.json({
       success: true,
+      message: 'Login berhasil',
       user: { email: cleanEmail, role: userRole, name: userName },
     });
 
-    // Set secure HttpOnly session cookie
+    const isHttps = request.url.startsWith('https://') || process.env.NODE_ENV === 'production';
+
+    // Terbitkan cookie admin_session dengan flag httpOnly: true, secure: true (jika HTTPS/prod), sameSite: 'lax', path: '/'
     response.cookies.set({
       name: 'admin_session',
       value: sessionPayload,
       path: '/',
       httpOnly: true,
       sameSite: 'lax',
-      maxAge: 28800, // 8 hours
-      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24, // 24 hours
+      secure: isHttps,
     });
 
     return response;
   } catch (error: any) {
     return NextResponse.json(
-      { success: false, message: error.message || 'Terjadi kesalahan server' },
+      { success: false, message: error?.message || 'Terjadi kesalahan autentikasi' },
       { status: 500 }
     );
   }

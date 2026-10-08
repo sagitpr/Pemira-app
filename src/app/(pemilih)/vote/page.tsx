@@ -536,13 +536,17 @@ function VoteContent() {
 
                   {/* 2 Candidate Cards Grid (Soft Squircle & Deep Navy Selected State) */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {safeBemList.slice(0, 2).map((cand) => {
+                    {(safeBemList || []).slice(0, 2).map((cand) => {
                       const isSelected = selectedBemId === cand?.id;
+                      const displayPhoto = cand?.photoUrl || cand?.photo_url;
+                      const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
+                      const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
+                      const displayNumber = cand?.number ?? cand?.candidateNumber ?? cand?.candidate_number ?? '01';
 
                       return (
                         <div
-                          key={cand?.id}
-                          onClick={() => setSelectedBemId(cand?.id)}
+                          key={String(cand?.id || displayNumber)}
+                          onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
                           className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
                             isSelected
                               ? 'border-slate-900 bg-slate-50/50 ring-4 ring-slate-900/10 shadow-lg'
@@ -554,35 +558,35 @@ function VoteContent() {
                             <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
                               <div>
                                 <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
-                                  Nomor Urut {cand?.number}: Pasangan Calon BEM
+                                  Nomor Urut {displayNumber}: Pasangan Calon BEM
                                 </span>
                                 <h4 className="text-base font-black text-slate-900 mt-0.5">
-                                  {cand?.leaderName} &amp; {cand?.viceLeaderName}
+                                  {displayName} {displayVice ? `& ${displayVice}` : ''}
                                 </h4>
                                 <p className="text-xs text-slate-500 italic mt-0.5">
                                   &ldquo;{cand?.tagline || 'Inovatif, Transparan, dan Mengayomi Seluruh Mahasiswa UBTH'}&rdquo;
                                 </p>
                               </div>
                               <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                                {cand?.number}
+                                {displayNumber}
                               </div>
                             </div>
 
                             {/* Foto Paslon (Wadah Melengkung Berbingkai Rapi 3:4) */}
                             <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                              {cand?.photoUrl ? (
+                              {displayPhoto ? (
                                 <img
-                                  src={cand.photoUrl}
-                                  alt={cand.leaderName}
+                                  src={displayPhoto}
+                                  alt={displayName}
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
                                 <div className="text-center p-3">
                                   <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                                    {cand?.number}
+                                    {displayNumber}
                                   </div>
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                                    Paslon {cand?.number}
+                                    Paslon {displayNumber}
                                   </span>
                                 </div>
                               )}
@@ -660,13 +664,17 @@ function VoteContent() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {safeHimaList.slice(0, 2).map((cand) => {
+                    {(safeHimaList || []).slice(0, 2).map((cand) => {
                       const isSelected = selectedHimaId === cand?.id;
+                      const displayPhoto = cand?.photoUrl || cand?.photo_url;
+                      const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
+                      const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
+                      const displayNumber = cand?.number ?? cand?.candidateNumber ?? cand?.candidate_number ?? '01';
 
                       return (
                         <div
-                          key={cand?.id}
-                          onClick={() => setSelectedHimaId(cand?.id)}
+                          key={String(cand?.id || displayNumber)}
+                          onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
                           className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
                             isSelected
                               ? 'border-slate-900 bg-slate-50/50 ring-4 ring-slate-900/10 shadow-lg'
@@ -678,35 +686,35 @@ function VoteContent() {
                             <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
                               <div>
                                 <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
-                                  Nomor Urut {cand?.number}: Pasangan Calon HIMA
+                                  Nomor Urut {displayNumber}: Pasangan Calon HIMA
                                 </span>
                                 <h4 className="text-base font-black text-slate-900 mt-0.5">
-                                  {cand?.leaderName} &amp; {cand?.viceLeaderName}
+                                  {displayName} {displayVice ? `& ${displayVice}` : ''}
                                 </h4>
                                 <p className="text-xs text-slate-500 italic mt-0.5">
                                   &ldquo;{cand?.tagline || 'Sinergi Bersama Memajukan Potensi Mahasiswa Jurusan'}&rdquo;
                                 </p>
                               </div>
                               <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                                {cand?.number}
+                                {displayNumber}
                               </div>
                             </div>
 
                             {/* Foto Paslon (Wadah Melengkung Berbingkai Rapi 3:4) */}
                             <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                              {cand?.photoUrl ? (
+                              {displayPhoto ? (
                                 <img
-                                  src={cand.photoUrl}
-                                  alt={cand.leaderName}
+                                  src={displayPhoto}
+                                  alt={displayName}
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
                                 <div className="text-center p-3">
                                   <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                                    {cand?.number}
+                                    {displayNumber}
                                   </div>
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                                    Paslon {cand?.number}
+                                    Paslon {displayNumber}
                                   </span>
                                 </div>
                               )}

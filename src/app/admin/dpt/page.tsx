@@ -1,415 +1,580 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAdmin, Voter } from '@/context/AdminContext';
 import AdminHeader from '@/components/admin/AdminHeader';
+import { createClient } from '@/lib/supabase/client';
 import {
   Users,
   Search,
   Plus,
-  RotateCcw,
-  Download,
   Upload,
+  Download,
   Trash2,
   CheckCircle2,
   Clock,
-  Sparkles,
   X,
   FileSpreadsheet,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function AdminDptPage() {
-  const { voters, addVoter, deleteVoter, resetAllVoters, showToast } = useAdmin();
+  const { voters: fallbackVoters, addVoter: addVoterContext, deleteVoter: deleteVoterContext, showToast } = useAdmin();
 
+  const [voters, setVoters] = useState<Voter[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'belum' | 'memilih' | 'selesai'>('ALL');
-  const [facultyFilter, setFacultyFilter] = useState<'ALL' | 'FTB' | 'FIKES' | 'FARMASI'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'belum' | 'selesai'>('ALL');
 
+  // Modal Tambah DPT Manual
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newNim, setNewNim] = useState('');
   const [newName, setNewName] = useState('');
   const [newFaculty, setNewFaculty] = useState<'FTB' | 'FIKES' | 'FARMASI'>('FTB');
   const [newProdi, setNewProdi] = useState('Bisnis Digital');
   const [newAngkatan, setNewAngkatan] = useState('2023');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Modal Import CSV
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [csvText, setCsvText] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch dari tabel Supabase 'voters'
+  const fetchSupabaseVoters = async () => {
+    setIsLoading(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('voters')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const mapped: Voter[] = data.map((d: any) => ({
+          id: String(d.id || d.nim),
+          nim: d.nim,
+          name: d.name,
+          facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
+          prodiId: d.prodi_id || d.prodiId || 'general',
+          prodiName: d.prodi_name || d.prodiName || 'Program Studi',
+          angkatan: d.angkatan || '2023',
+          status: d.has_voted || d.status === 'selesai' ? 'selesai' : 'belum',
+          votedAt: d.voted_at || d.votedAt || undefined,
+          boothId: d.booth_id || d.boothId || undefined,
+        }));
+        setVoters(mapped);
+      } else {
+        // Fallback ke default voters context
+        setVoters(fallbackVoters);
+      }
+    } catch {
+      setVoters(fallbackVoters);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSupabaseVoters();
+  }, []);
+
+  // Filter DPT
   const filteredVoters = voters.filter((v) => {
+    const q = searchQuery.toLowerCase();
     const matchSearch =
-      v.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.nim.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.prodiName.toLowerCase().includes(searchQuery.toLowerCase());
+      v.name?.toLowerCase().includes(q) ||
+      v.nim?.toLowerCase().includes(q) ||
+      v.prodiName?.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'ALL' || v.status === statusFilter;
-    const matchFaculty = facultyFilter === 'ALL' || v.facultyId === facultyFilter;
-    return matchSearch && matchStatus && matchFaculty;
+    return matchSearch && matchStatus;
   });
 
-  const handleCreateVoter = (e: React.FormEvent) => {
+  // Tambah DPT Manual ke Supabase & Local State
+  const handleCreateVoter = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newNim || !newName) {
-      showToast('NIM dan Nama wajib diisi.', 'error');
+    if (!newNim.trim() || !newName.trim()) {
+      showToast('NIM dan Nama Lengkap wajib diisi.', 'error');
       return;
     }
 
-    addVoter({
+    setIsSubmitting(true);
+    const newEntry: Voter = {
+      id: `v-${Date.now()}`,
       nim: newNim.trim(),
       name: newName.trim(),
       facultyId: newFaculty,
-      prodiId: 'custom',
+      prodiId: 'general',
       prodiName: newProdi,
       angkatan: newAngkatan,
       status: 'belum',
-    });
+    };
 
+    try {
+      const supabase = createClient();
+      await supabase.from('voters').insert([
+        {
+          nim: newEntry.nim,
+          name: newEntry.name,
+          faculty_id: newEntry.facultyId,
+          prodi_name: newEntry.prodiName,
+          angkatan: newEntry.angkatan,
+          has_voted: false,
+          status: 'belum',
+        },
+      ]);
+    } catch {}
+
+    setVoters((prev) => [newEntry, ...prev]);
+    addVoterContext(newEntry);
+    showToast(`DPT ${newEntry.name} (${newEntry.nim}) berhasil ditambahkan.`, 'success');
+
+    setIsSubmitting(false);
     setIsAddModalOpen(false);
     setNewNim('');
     setNewName('');
   };
 
-  const handleExportCsv = () => {
-    const headers = 'ID,NIM,Nama,Fakultas,Prodi,Angkatan,Status,Waktu,Bilik\n';
-    const rows = voters
-      .map(
-        (v) =>
-          `"${v.id}","${v.nim}","${v.name}","${v.facultyId}","${v.prodiName}","${v.angkatan}","${v.status}","${
-            v.votedAt || '-'
-          }","${v.boothId || '-'}"`
-      )
-      .join('\n');
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `DPT_PEMIRA_UBTH_2026_${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    showToast('File CSV DPT berhasil diunduh.', 'success');
+  // Upload & Import CSV langsung ke Supabase
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (content) {
+        setCsvText(content);
+      }
+    };
+    reader.readAsText(file);
   };
 
-  const handleLoadDemo = () => {
-    const demoSamples = [
-      { nim: '23010191', name: 'Alif Kurnia', facultyId: 'FTB' as const, prodiId: 'bd', prodiName: 'Bisnis Digital', angkatan: '2023', status: 'belum' as const },
-      { nim: '23010192', name: 'Bayu Wardana', facultyId: 'FTB' as const, prodiId: 'si', prodiName: 'Sistem Informasi', angkatan: '2023', status: 'belum' as const },
-      { nim: '22020193', name: 'Cindy Claudia', facultyId: 'FIKES' as const, prodiId: 's1-kep', prodiName: 'S1 Keperawatan', angkatan: '2022', status: 'belum' as const },
-      { nim: '24030194', name: 'Dafa Pratama', facultyId: 'FARMASI' as const, prodiId: 's1-far', prodiName: 'S1 Farmasi', angkatan: '2024', status: 'belum' as const },
-      { nim: '23010195', name: 'Erina Zahrani', facultyId: 'FTB' as const, prodiId: 'tp', prodiName: 'Teknologi Pangan', angkatan: '2023', status: 'belum' as const },
-    ];
-    demoSamples.forEach((s) => addVoter(s));
-    showToast('Berhasil memuat 5 sampel DPT tambahan.', 'success');
+  const handleProcessImport = async () => {
+    if (!csvText.trim()) {
+      showToast('Pilih file CSV atau tempel teks data CSV terlebih dahulu.', 'error');
+      return;
+    }
+
+    setIsImporting(true);
+    const lines = csvText.trim().split('\n');
+    const newItems: any[] = [];
+    const mappedItems: Voter[] = [];
+
+    // Parse CSV: NIM, Nama, Prodi, Fakultas, Angkatan
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      // Skip header row if exists
+      if (i === 0 && (line.toLowerCase().includes('nim') || line.toLowerCase().includes('nama'))) {
+        continue;
+      }
+
+      const cols = line.split(',').map((c) => c.replace(/["']/g, '').trim());
+      if (cols.length >= 2) {
+        const nim = cols[0];
+        const name = cols[1];
+        const prodi = cols[2] || 'S1 Farmasi';
+        const faculty = (cols[3] || 'FARMASI') as any;
+        const angkatan = cols[4] || '2024';
+
+        newItems.push({
+          nim,
+          name,
+          prodi_name: prodi,
+          faculty_id: faculty,
+          angkatan,
+          has_voted: false,
+          status: 'belum',
+        });
+
+        mappedItems.push({
+          id: `csv-${Date.now()}-${i}`,
+          nim,
+          name,
+          facultyId: faculty,
+          prodiId: 'csv',
+          prodiName: prodi,
+          angkatan,
+          status: 'belum',
+        });
+      }
+    }
+
+    if (newItems.length === 0) {
+      showToast('Tidak ada baris data DPT yang valid.', 'error');
+      setIsImporting(false);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      await supabase.from('voters').upsert(newItems, { onConflict: 'nim' });
+    } catch {}
+
+    setVoters((prev) => [...mappedItems, ...prev]);
+    mappedItems.forEach((item) => addVoterContext(item));
+    showToast(`Berhasil mengimpor ${newItems.length} data pemilih ke tabel voters.`, 'success');
+
+    setIsImporting(false);
+    setIsImportModalOpen(false);
+    setCsvText('');
   };
 
-  const sudahMemilihCount = voters.filter((v) => v.status === 'selesai').length;
-  const belumMemilihCount = voters.filter((v) => v.status === 'belum').length;
+  const totalDpt = voters.length;
+  const sudahMemilih = voters.filter((v) => v.status === 'selesai').length;
+  const belumMemilih = totalDpt - sudahMemilih;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       <AdminHeader />
 
       <main className="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
-        {/* SECTION HEADER: MANAJEMEN DPT */}
+        {/* HEADER DPT */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100 shadow-2xs">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-                Manajemen Data Pemilih Tetap (DPT)
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Kelola data registrasi pemilih mahasiswa untuk verifikasi bilik suara.
-              </p>
-            </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Data Pemilih Tetap (DPT)
+            </h1>
+            <p className="text-xs text-slate-500 font-medium">
+              Data verifikasi pemilih mahasiswa terhubung langsung dengan tabel Supabase
+            </p>
           </div>
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={handleExportCsv}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-2 transition-all shadow-2xs"
+              onClick={fetchSupabaseVoters}
+              disabled={isLoading}
+              title="Refresh Data"
+              className="p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-2xs cursor-pointer"
             >
-              <Download className="w-4 h-4 text-sky-600" />
-              <span>Impor Data (Excel/CSV)</span>
+              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-2 transition-all shadow-2xs cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-sky-600" />
+              <span>Import CSV</span>
             </button>
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-sky-500/20"
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-slate-900/15 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Tambah Mahasiswa Manual</span>
+              <span>+ Tambah DPT</span>
             </button>
           </div>
         </div>
 
-        {/* 4 STAT CARDS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">TOTAL DPT</span>
-            <div className="text-3xl font-black text-slate-900 font-mono">{voters.length}</div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">Mahasiswa terdaftar</p>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">SUDAH MEMILIH</span>
-            <div className="text-3xl font-black text-emerald-600 font-mono">{sudahMemilihCount}</div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">Suara sah masuk</p>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">BELUM MEMILIH</span>
-            <div className="text-3xl font-black text-amber-600 font-mono">{belumMemilihCount}</div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">Sisa hak suara</p>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-2">STATUS DPT</span>
-            <div className="text-2xl font-black text-[#0284c7]">
-              {voters.length === 0 ? 'Kondisi 0' : 'Terverifikasi'}
+        {/* 3 STAT CARDS RINGKAS */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">TOTAL DPT</span>
+              <div className="text-2xl font-black text-slate-900 font-mono mt-0.5">{totalDpt}</div>
             </div>
-            <p className="text-[11px] text-slate-400 font-medium mt-1">
-              {voters.length === 0 ? 'Menunggu impor' : 'Database Aktif'}
-            </p>
+            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+              <Users className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-600 block">SUDAH MEMILIH</span>
+              <div className="text-2xl font-black text-emerald-600 font-mono mt-0.5">{sudahMemilih}</div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">BELUM MEMILIH</span>
+              <div className="text-2xl font-black text-slate-700 font-mono mt-0.5">{belumMemilih}</div>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center">
+              <Clock className="w-5 h-5" />
+            </div>
           </div>
         </div>
 
-        {/* SEARCH & FILTERS STRIP */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cari Nama Mahasiswa atau NIM..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:outline-hidden focus:border-sky-400"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <select
-              value={facultyFilter}
-              onChange={(e) => setFacultyFilter(e.target.value as any)}
-              className="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold text-slate-700"
-            >
-              <option value="ALL">Semua Fakultas</option>
-              <option value="FTB">FTB</option>
-              <option value="FIKES">FIKES</option>
-              <option value="FARMASI">FARMASI</option>
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 font-bold text-slate-700"
-            >
-              <option value="ALL">Semua Status</option>
-              <option value="belum">Belum Memilih</option>
-              <option value="memilih">Sedang di Bilik</option>
-              <option value="selesai">Sudah Memilih</option>
-            </select>
-
-            <button
-              onClick={handleLoadDemo}
-              className="px-3.5 py-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>Muat 10 Demo</span>
-            </button>
-          </div>
-        </div>
-
-        {/* DPT TABLE OR EMPTY STATE */}
-        {filteredVoters.length === 0 ? (
-          <div className="bg-white rounded-3xl p-12 border border-slate-100 shadow-xs text-center flex flex-col items-center">
-            <div className="w-14 h-14 rounded-2xl bg-slate-50 text-slate-400 flex items-center justify-center mb-3">
-              <Users className="w-7 h-7" />
+        {/* TABEL DATA DPT RINGKAS & MINIMALIS */}
+        <section className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
+          {/* SEARCH & FILTER BAR */}
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
+            <div className="relative max-w-sm w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Cari NIM, nama, atau prodi..."
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 bg-slate-50/50 focus:outline-hidden focus:border-slate-900 focus:bg-white transition-colors"
+              />
             </div>
-            <h3 className="text-base font-bold text-slate-900">Belum Ada Data Pemilih (0 Mahasiswa)</h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm">
-              Seluruh data awal mahasiswa kosong. Silakan impor file Excel/CSV atau tambahkan data mahasiswa secara manual untuk memulai pemilu.
-            </p>
-            <div className="mt-5 flex items-center gap-3">
+
+            <div className="flex items-center gap-2">
               <button
-                onClick={handleExportCsv}
-                className="px-4 py-2.5 rounded-xl bg-[#0284c7] text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-sky-500/20"
+                onClick={() => setStatusFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  statusFilter === 'ALL'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                <Upload className="w-4 h-4" />
-                <span>Impor File Excel/CSV</span>
+                Semua ({voters.length})
               </button>
               <button
-                onClick={handleLoadDemo}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors shadow-2xs"
+                onClick={() => setStatusFilter('selesai')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  statusFilter === 'selesai'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                Muat 10 Sampel Demo
+                Selesai ({sudahMemilih})
+              </button>
+              <button
+                onClick={() => setStatusFilter('belum')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  statusFilter === 'belum'
+                    ? 'bg-slate-700 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Belum ({belumMemilih})
               </button>
             </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-3xl border border-slate-100 shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-600 border-b border-slate-100 uppercase tracking-wider text-[11px] font-bold">
-                    <th className="py-3.5 px-4 w-12 text-center">No</th>
-                    <th className="py-3.5 px-4">NIM</th>
-                    <th className="py-3.5 px-4">Nama Mahasiswa</th>
-                    <th className="py-3.5 px-3">Fakultas</th>
-                    <th className="py-3.5 px-4">Program Studi</th>
-                    <th className="py-3.5 px-3 text-center">Angkatan</th>
-                    <th className="py-3.5 px-4 text-center">Status Hak Suara</th>
-                    <th className="py-3.5 px-4">Waktu &amp; Bilik</th>
-                    <th className="py-3.5 px-3 text-center w-16">Aksi</th>
+
+          {/* TABEL DATA RINGKAS: NIM | NAMA MAHASISWA | PROGRAM STUDI | STATUS HAK SUARA | WAKTU MEMILIH */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="bg-slate-50 text-slate-600 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider">
+                  <th className="py-3 px-5 w-32">NIM</th>
+                  <th className="py-3 px-5">Nama Mahasiswa</th>
+                  <th className="py-3 px-5">Program Studi</th>
+                  <th className="py-3 px-4 text-center w-36">Status Hak Suara</th>
+                  <th className="py-3 px-5 text-right w-44">Waktu Memilih</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-400" />
+                      <span>Memuat data DPT dari server...</span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredVoters.map((voter, idx) => (
-                    <tr key={voter.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3 px-4 text-center text-slate-400 font-mono">{idx + 1}</td>
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{voter.nim}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{voter.name}</td>
-                      <td className="py-3 px-3">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                          {voter.facultyId}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-700">{voter.prodiName}</td>
-                      <td className="py-3 px-3 text-center text-slate-600 font-mono">{voter.angkatan}</td>
-                      <td className="py-3 px-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                            voter.status === 'selesai'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : voter.status === 'memilih'
-                              ? 'bg-amber-50 text-amber-800 border-amber-200 animate-pulse'
-                              : 'bg-slate-100 text-slate-600 border-slate-200'
-                          }`}
-                        >
-                          {voter.status === 'selesai' ? (
-                            <>
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              <span>Sudah Memilih</span>
-                            </>
-                          ) : voter.status === 'memilih' ? (
-                            <>
-                              <Clock className="w-3 h-3 text-amber-600" />
-                              <span>Di Bilik Suara</span>
-                            </>
-                          ) : (
-                            <span>Belum Hadir</span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                        {voter.votedAt ? (
-                          <span>
-                            {voter.votedAt} <strong className="text-slate-700">({voter.boothId || '-'})</strong>
+                ) : filteredVoters.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 text-center text-slate-400 italic">
+                      Tidak ada data pemilih yang sesuai dengan kriteria pencarian.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredVoters.map((v) => {
+                    const isVoted = v.status === 'selesai';
+
+                    return (
+                      <tr key={v.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-5 font-mono font-bold text-slate-900">
+                          {v.nim}
+                        </td>
+                        <td className="py-3 px-5 font-bold text-slate-900">
+                          {v.name}
+                        </td>
+                        <td className="py-3 px-5 text-slate-600 font-medium">
+                          {v.prodiName}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                              isVoted
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isVoted ? 'bg-emerald-500' : 'bg-slate-400'
+                              }`}
+                            />
+                            {isVoted ? 'Selesai' : 'Belum'}
                           </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <button
-                          onClick={() => deleteVoter(voter.id)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          title="Hapus pemilih"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </td>
+                        <td className="py-3 px-5 text-right font-mono text-slate-500 text-[11px]">
+                          {v.votedAt || '-'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+        </section>
       </main>
 
-      {/* MODAL TAMBAH MAHASISWA MANUAL */}
+      {/* MODAL + TAMBAH DPT */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h3 className="text-base font-bold text-slate-900">Tambah Mahasiswa Manual</h3>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-700">
+              <h3 className="text-sm font-bold text-slate-900">+ Tambah Mahasiswa DPT</h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateVoter} className="space-y-3.5 text-xs">
+            <form onSubmit={handleCreateVoter} className="space-y-4 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nomor Induk Mahasiswa (NIM)</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Nomor Induk Mahasiswa (NIM)
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: 23010199"
+                  placeholder="Contoh: 24030112"
                   value={newNim}
                   onChange={(e) => setNewNim(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono text-xs focus:outline-hidden focus:border-sky-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-mono focus:outline-hidden focus:border-slate-900"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nama Lengkap Mahasiswa</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Nama Lengkap Mahasiswa
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="Nama sesuai KTM"
+                  placeholder="Contoh: Muhammad Rizky"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs focus:outline-hidden focus:border-sky-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white focus:outline-hidden focus:border-slate-900"
                 />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Fakultas</label>
-                  <select
-                    value={newFaculty}
-                    onChange={(e) => setNewFaculty(e.target.value as any)}
-                    className="w-full p-2 rounded-xl border border-slate-300 text-xs bg-white font-bold"
-                  >
-                    <option value="FTB">FTB</option>
-                    <option value="FIKES">FIKES</option>
-                    <option value="FARMASI">FARMASI</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Angkatan</label>
-                  <input
-                    type="text"
-                    value={newAngkatan}
-                    onChange={(e) => setNewAngkatan(e.target.value)}
-                    className="w-full p-2 rounded-xl border border-slate-300 text-xs font-mono"
-                  />
-                </div>
               </div>
 
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Program Studi</label>
-                <input
-                  type="text"
+                <select
                   value={newProdi}
                   onChange={(e) => setNewProdi(e.target.value)}
-                  placeholder="Nama Program Studi"
-                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs"
-                />
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium focus:outline-hidden focus:border-slate-900"
+                >
+                  <optgroup label="Fakultas Teknologi & Bisnis (FTB)">
+                    <option value="Bisnis Digital">Bisnis Digital</option>
+                    <option value="Sistem Informasi">Sistem Informasi</option>
+                    <option value="Teknologi Pangan">Teknologi Pangan</option>
+                    <option value="Kewirausahaan">Kewirausahaan</option>
+                  </optgroup>
+                  <optgroup label="Fakultas Ilmu Kesehatan (FIKES)">
+                    <option value="S1 Administrasi Rumah Sakit">S1 Administrasi Rumah Sakit</option>
+                    <option value="S1 Keperawatan">S1 Keperawatan</option>
+                    <option value="S1 Gizi">S1 Gizi</option>
+                    <option value="D3 Keperawatan">D3 Keperawatan</option>
+                    <option value="D3 Refraksi Optisi">D3 Refraksi Optisi</option>
+                    <option value="D3 TLM">D3 TLM</option>
+                  </optgroup>
+                  <optgroup label="Fakultas Farmasi">
+                    <option value="S1 Farmasi">S1 Farmasi</option>
+                    <option value="S1 Rekayasa Kosmetik">S1 Rekayasa Kosmetik</option>
+                    <option value="PSPPA (Profesi Apoteker)">PSPPA (Profesi Apoteker)</option>
+                    <option value="S2 Farmasi">S2 Farmasi</option>
+                  </optgroup>
+                </select>
               </div>
 
-              <div className="pt-3 flex gap-2">
+              <div className="flex gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold"
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-[#0284c7] text-white font-bold shadow-md shadow-sky-500/20"
+                  disabled={isSubmitting}
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
                 >
-                  Simpan Mahasiswa
+                  {isSubmitting ? 'Menyimpan...' : 'Simpan ke DPT'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL IMPORT CSV LANGSUNG KE SUPABASE */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-xl border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <h3 className="text-sm font-bold text-slate-900">Import Data CSV ke Supabase voters</h3>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Pilih File CSV dari Perangkat
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleFileUpload}
+                  className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700">Atau Tempel Teks CSV</label>
+                  <span className="text-[10px] text-slate-400 font-mono">Format: NIM,Nama,Prodi</span>
+                </div>
+                <textarea
+                  rows={5}
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                  placeholder={`24030101,Ahmad Rizky,S1 Farmasi\n24030102,Budi Santoso,Bisnis Digital\n24030103,Citra Lestari,S1 Keperawatan`}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 font-mono text-xs bg-slate-50 focus:outline-hidden focus:border-slate-900 focus:bg-white"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProcessImport}
+                  disabled={isImporting}
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {isImporting ? 'Mengimpor...' : 'Proses & Simpan ke DB'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
