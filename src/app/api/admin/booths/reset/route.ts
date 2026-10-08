@@ -91,6 +91,27 @@ export async function POST(request: Request) {
 
     await boothUpdateQuery;
 
+    // C. Simpan ke tabel activity_logs
+    try {
+      const numStr = String(actualBoothNumber).padStart(2, '0');
+      const timeStr = new Date().toLocaleTimeString('id-ID');
+      const logText = voterNim
+        ? `Bilik ${numStr} di-reset oleh Admin KPUM. Mahasiswa dengan NIM ${voterNim} dipersilakan scan ulang QR.`
+        : `Bilik ${numStr} di-reset ke status Tersedia oleh Admin KPUM.`;
+
+      await supabaseAdmin.from('activity_logs').insert([
+        {
+          text: logText,
+          type: 'status',
+          booth_number: actualBoothNumber,
+          time: timeStr,
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch (logErr) {
+      console.warn('Log insert error note:', logErr);
+    }
+
     return NextResponse.json({
       success: true,
       boothNumber: actualBoothNumber,

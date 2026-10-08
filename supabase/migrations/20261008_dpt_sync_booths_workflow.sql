@@ -205,3 +205,48 @@ AS $$
   GROUP BY time_slot
   ORDER BY time_slot ASC;
 $$;
+
+-- 5. Table activity_logs for live activity feed
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id BIGSERIAL PRIMARY KEY,
+  text TEXT NOT NULL,
+  type TEXT DEFAULT 'info',
+  booth_number INT,
+  time TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable Realtime for tables
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE activity_logs;
+    EXCEPTION WHEN duplicate_object THEN
+    END;
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE booths;
+    EXCEPTION WHEN duplicate_object THEN
+    END;
+    BEGIN
+      ALTER PUBLICATION supabase_realtime ADD TABLE voters;
+    EXCEPTION WHEN duplicate_object THEN
+    END;
+  END IF;
+END $$;
+
+-- Allow public read for booths, voters, and activity_logs
+ALTER TABLE IF EXISTS activity_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public select activity_logs" ON activity_logs;
+CREATE POLICY "Allow public select activity_logs" ON activity_logs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert activity_logs" ON activity_logs;
+CREATE POLICY "Allow public insert activity_logs" ON activity_logs FOR INSERT WITH CHECK (true);
+
+ALTER TABLE IF EXISTS booths ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public select booths" ON booths;
+CREATE POLICY "Allow public select booths" ON booths FOR SELECT USING (true);
+
+ALTER TABLE IF EXISTS voters ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public select voters" ON voters;
+CREATE POLICY "Allow public select voters" ON voters FOR SELECT USING (true);
+

@@ -48,6 +48,9 @@ interface BoothItem {
   voter_name?: string | null;
   voter_nim?: string | null;
   voter_prodi?: string | null;
+  current_voter_name?: string | null;
+  current_voter_nim?: string | null;
+  current_voter_prodi?: string | null;
   started_at?: string | null;
   ip_address?: string;
   updated_at?: string;
@@ -72,9 +75,9 @@ function BoothCard({
   const st = (booth.status || '').toUpperCase();
   const isAvailable = st === 'TERSEDIA' || st === 'KOSONG';
   const boothNumStr = String(booth.booth_number).padStart(2, '0');
-  const voterName = booth.voter_name || 'Memproses Sesi...';
-  const voterNim = booth.voter_nim || '-';
-  const voterProdi = booth.voter_prodi || '-';
+  const voterName = booth.voter_name || booth.current_voter_name || 'Memproses Sesi...';
+  const voterNim = booth.voter_nim || booth.current_voter_nim || '-';
+  const voterProdi = booth.voter_prodi || booth.current_voter_prodi || '-';
 
   // Live timer berjalan untuk bilik yang sedang digunakan
   const [elapsed, setElapsed] = useState<string>('00:00');
@@ -180,60 +183,45 @@ export default function AdminDashboardPage() {
   const [trafficData, setTrafficData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // Activity Log Stream
-  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([
-    {
-      id: 'log-1',
-      time: '09:12:04',
-      text: 'Bilik 03 dialokasikan untuk pemilih.',
-      type: 'alloc',
-    },
-    {
-      id: 'log-2',
-      time: '09:10:45',
-      text: 'Bilik 01 menyelesaikan pemungutan suara.',
-      type: 'done',
-    },
-    {
-      id: 'log-3',
-      time: '08:58:20',
-      text: 'Admin mengubah status pemilihan menjadi AKTIF.',
-      type: 'status',
-    },
-  ]);
+  // Live Activity Log Stream (Murni dari Database Supabase)
+  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
 
-  // Fetch real-time voters count & stats from Supabase / API
-  const fetchVotersAndStats = async () => {
+  // 1. Fetch real-time voters count & stats from Supabase / API (TOTAL DPT 97)
+  const fetchVotersStats = async () => {
     try {
-      // 1. Coba panggil /api/admin/stats yang menggunakan service role supabaseAdmin
+      const supabase = createClient();
+      const { data: votersData, error } = await supabase
+        .from('voters')
+        .select('id, has_voted, voting_status');
+
+      if (!error && Array.isArray(votersData) && votersData.length > 0) {
+        const totalDpt = votersData.length;
+        const sudahMemilih = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
+        setTotalDpt(totalDpt);
+        setSuaraMasuk(sudahMemilih);
+        setIsStatsLoaded(true);
+        return;
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    try {
+      // Fallback service role API jika client terhalang RLS
       const res = await fetch('/api/admin/stats');
       const json = await res.json();
       if (json?.success && json?.stats) {
         setTotalDpt(json.stats.totalDpt);
         setSuaraMasuk(json.stats.suaraMasuk);
         setIsStatsLoaded(true);
-        return;
-      }
-    } catch (e) {
-      // Fallback query langsung Supabase
-    }
-
-    try {
-      const supabase = createClient();
-      const { data: votersData } = await supabase.from('voters').select('*');
-      if (votersData) {
-        const tDpt = votersData.length;
-        const sMasuk = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
-        setTotalDpt(tDpt);
-        setSuaraMasuk(sMasuk);
-        setIsStatsLoaded(true);
       }
     } catch (err) {
       console.warn('Fetch voters stats note:', err);
     }
   };
+  const fetchVotersAndStats = fetchVotersStats;
 
-  // Fetch Trafik Pengunjung Bilik (Interval 10 Menit)
+  // 2. Fetch Trafik Pengunjung Bilik (Interval 10 Menit)
   const fetchTraffic = async () => {
     try {
       const res = await fetch('/api/admin/stats/traffic');
@@ -246,8 +234,51 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Fetch Dynamic Booths from Supabase (Hapus limit 10 statis)
-  const fetchBoothsFromSupabase = async () => {
+  // 3. Fetch Live Activity Logs dari tabel activity_logs di Supabase
+  const fetchActivityLogs = async () => {
+    try {
+      const supabase = createClient();
+      const { data: logsData, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (!error && Array.isArray(logsData) && logsData.length > 0) {
+        setActivityLogs(
+          logsData.map((l: any) => ({
+            id: String(l.id),
+            time: l.time || (l.created_at ? new Date(l.created_at).toLocaleTimeString('id-ID') : new Date().toLocaleTimeString('id-ID')),
+            text: l.text,
+            type: l.type || 'info',
+          }))
+        );
+        return;
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    try {
+      const res = await fetch('/api/admin/activity-logs');
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+        setActivityLogs(
+          json.data.map((l: any) => ({
+            id: String(l.id),
+            time: l.time || (l.created_at ? new Date(l.created_at).toLocaleTimeString('id-ID') : new Date().toLocaleTimeString('id-ID')),
+            text: l.text,
+            type: l.type || 'info',
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn('Fetch activity logs error:', err);
+    }
+  };
+
+  // 4. Fetch Bilik Langsung dari Supabase (16 Bilik)
+  const fetchBooths = async () => {
     try {
       const supabase = createClient();
       const { data, error } = await supabase
@@ -255,7 +286,7 @@ export default function AdminDashboardPage() {
         .select('*')
         .order('booth_number', { ascending: true });
 
-      if (!error && Array.isArray(data)) {
+      if (!error && data && data.length > 0) {
         setBooths(
           data.map((d: any) => ({
             id: d.id,
@@ -265,29 +296,63 @@ export default function AdminDashboardPage() {
             voter_name: d.voter_name || d.current_voter_name || null,
             voter_nim: d.voter_nim || d.current_voter_nim || null,
             voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
+            current_voter_name: d.current_voter_name || d.voter_name || null,
+            current_voter_nim: d.current_voter_nim || d.voter_nim || null,
+            current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
+            started_at: d.started_at || null,
+            ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+            updated_at: d.updated_at,
+          }))
+        );
+        return;
+      }
+    } catch (err) {
+      console.warn('Gagal memuat bilik dari Supabase:', err);
+    }
+
+    // Fallback melalui API service role jika anon RLS terhalang
+    try {
+      const res = await fetch('/api/admin/booths');
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+        setBooths(
+          json.data.map((d: any) => ({
+            id: d.id,
+            booth_number: d.booth_number,
+            name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+            status: (d.status || 'TERSEDIA').toUpperCase(),
+            voter_name: d.voter_name || d.current_voter_name || null,
+            voter_nim: d.voter_nim || d.current_voter_nim || null,
+            voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
+            current_voter_name: d.current_voter_name || d.voter_name || null,
+            current_voter_nim: d.current_voter_nim || d.voter_nim || null,
+            current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
             started_at: d.started_at || null,
             ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
             updated_at: d.updated_at,
           }))
         );
       }
-    } catch (err) {
-      console.warn('Gagal memuat bilik dari Supabase:', err);
+    } catch (apiErr) {
+      console.warn('API booths fallback error:', apiErr);
     }
   };
+  const fetchBoothsFromSupabase = fetchBooths;
 
   useEffect(() => {
     setIsMounted(true);
-    fetchVotersAndStats();
-    fetchBoothsFromSupabase();
+    fetchVotersStats();
+    fetchBooths();
+    fetchActivityLogs();
     fetchTraffic();
 
-    // Polling interval tiap 20 detik
+    // Polling interval tiap 15 detik
     const interval = setInterval(() => {
-      fetchVotersAndStats();
-      fetchBoothsFromSupabase();
+      fetchVotersStats();
+      fetchBooths();
+      fetchActivityLogs();
       fetchTraffic();
-    }, 20000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, []);
@@ -296,44 +361,22 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const supabase = createClient();
 
-    // 1. Realtime sync voters
-    const votersChannel = supabase
-      .channel('realtime_voters_sync_dashboard')
+    const channel = supabase
+      .channel('admin_dashboard_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
+        fetchBooths();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchVotersAndStats();
+        fetchVotersStats();
         fetchTraffic();
       })
-      .subscribe();
-
-    // 2. Realtime sync booths & activity feed
-    const boothsChannel = supabase
-      .channel('dashboard_booths_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, (payload: any) => {
-        fetchBoothsFromSupabase();
-
-        const newRecord = payload?.new as any;
-        if (newRecord?.booth_number) {
-          const num = String(newRecord.booth_number).padStart(2, '0');
-          const st = (newRecord.status || '').toUpperCase();
-          const isOccupied = st === 'DIGUNAKAN' || st === 'TERISI' || st === 'SEDANG MEMILIH';
-          const timeStr = new Date().toLocaleTimeString('id-ID');
-
-          const newLog: ActivityLogItem = {
-            id: `log-${Date.now()}`,
-            time: timeStr,
-            text: isOccupied
-              ? `Bilik ${num} dialokasikan untuk pemilih.`
-              : `Bilik ${num} menyelesaikan pemungutan suara / tersedia.`,
-            type: isOccupied ? 'alloc' : 'done',
-          };
-          setActivityLogs((prev) => [newLog, ...prev.slice(0, 19)]);
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => {
+        fetchActivityLogs();
       })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(votersChannel);
-      supabase.removeChannel(boothsChannel);
+      supabase.removeChannel(channel);
     };
   }, []);
 
@@ -662,14 +705,21 @@ export default function AdminDashboardPage() {
 
           {/* DYNAMIC GRID BOOTHS */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {booths.map((booth) => (
-              <BoothCard
-                key={booth.id || booth.booth_number}
-                booth={booth}
-                isResetting={resettingBoothId === booth.booth_number}
-                onReset={handleResetSingleBooth}
-              />
-            ))}
+            {booths.length === 0 ? (
+              <div className="col-span-full py-10 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
+                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span>Memuat status bilik suara terhubung...</span>
+              </div>
+            ) : (
+              booths.map((booth) => (
+                <BoothCard
+                  key={booth.id || booth.booth_number}
+                  booth={booth}
+                  isResetting={resettingBoothId === booth.booth_number}
+                  onReset={handleResetSingleBooth}
+                />
+              ))
+            )}
           </div>
         </section>
 
@@ -692,19 +742,25 @@ export default function AdminDashboardPage() {
 
               {/* Feed Stream List */}
               <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                {activityLogs.map((log) => (
-                  <div
-                    key={log.id}
-                    className="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors flex items-start gap-2.5 text-xs"
-                  >
-                    <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 pt-0.5">
-                      [{log.time}]
-                    </span>
-                    <p className="text-slate-700 font-medium leading-relaxed flex-1">
-                      {log.text}
-                    </p>
+                {activityLogs.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                    Belum ada aktivitas bilik terbaru tercatat.
                   </div>
-                ))}
+                ) : (
+                  activityLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors flex items-start gap-2.5 text-xs"
+                    >
+                      <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 pt-0.5">
+                        [{log.time}]
+                      </span>
+                      <p className="text-slate-700 font-medium leading-relaxed flex-1">
+                        {log.text}
+                      </p>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

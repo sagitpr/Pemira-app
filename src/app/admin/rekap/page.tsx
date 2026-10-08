@@ -61,7 +61,26 @@ export default function AdminRekapPage() {
   // 1. Fetch DPT & Realtime Stats
   const fetchVotersAndStats = async () => {
     try {
-      // 1. Coba panggil /api/admin/stats yang menggunakan service role supabaseAdmin
+      const supabase = createClient();
+      const { data: votersList, error } = await supabase.from('voters').select('*');
+      if (!error && Array.isArray(votersList) && votersList.length > 0) {
+        setRawVoters(votersList);
+        const totalDptCount = votersList.length;
+        const sudahMemilihCount = votersList.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
+        const belumMemilihCount = Math.max(0, totalDptCount - sudahMemilihCount);
+        const part = totalDptCount > 0 ? Number(((sudahMemilihCount / totalDptCount) * 100).toFixed(1)) : 0;
+        setTotalDpt(totalDptCount);
+        setSuaraMasuk(sudahMemilihCount);
+        setBelumMemilih(belumMemilihCount);
+        setTingkatPartisipasi(part);
+        return;
+      }
+    } catch (err) {
+      console.warn('Fetch voters direct error in rekap:', err);
+    }
+
+    try {
+      // Fallback service role API jika anon client terhalang RLS
       const res = await fetch('/api/admin/stats');
       const json = await res.json();
       if (json?.success && Array.isArray(json?.voters) && json.voters.length > 0) {
@@ -75,28 +94,9 @@ export default function AdminRekapPage() {
         setSuaraMasuk(sMasuk);
         setBelumMemilih(bMemilih);
         setTingkatPartisipasi(part);
-        return;
       }
     } catch (e) {
-      // Fallback direct supabase query
-    }
-
-    try {
-      const supabase = createClient();
-      const { data: votersData } = await supabase.from('voters').select('*');
-      if (votersData) {
-        setRawVoters(votersData);
-        const tDpt = votersData.length;
-        const sMasuk = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
-        const bMemilih = Math.max(0, tDpt - sMasuk);
-        const part = tDpt > 0 ? Number(((sMasuk / tDpt) * 100).toFixed(1)) : 0;
-        setTotalDpt(tDpt);
-        setSuaraMasuk(sMasuk);
-        setBelumMemilih(bMemilih);
-        setTingkatPartisipasi(part);
-      }
-    } catch (err) {
-      console.warn('Fetch voters in rekap error:', err);
+      console.warn('Fetch stats fallback in rekap error:', e);
     }
   };
 

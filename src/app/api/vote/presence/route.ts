@@ -31,6 +31,19 @@ export async function POST(request: Request) {
         .eq('booth_number', num);
 
       if (!error) {
+        try {
+          const numStr = String(num).padStart(2, '0');
+          const timeStr = new Date().toLocaleTimeString('id-ID');
+          await supabaseAdmin.from('activity_logs').insert([
+            {
+              text: `Bilik ${numStr} dialokasikan untuk pemilih (${name || nim || 'Mahasiswa'}).`,
+              type: 'alloc',
+              booth_number: num,
+              time: timeStr,
+              created_at: nowIso,
+            },
+          ]);
+        } catch {}
         return NextResponse.json({ success: true, updated: data });
       }
     } catch (dbErr) {
