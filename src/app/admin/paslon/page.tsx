@@ -4,17 +4,19 @@ import React, { useState } from 'react';
 import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
 import AdminHeader from '@/components/admin/AdminHeader';
+import VisiMisiModal from '@/components/vote/VisiMisiModal';
 import {
   Vote,
   Plus,
   Trash2,
-  Edit2,
+  Eye,
   X,
   Target,
   User,
-  Award,
-  Upload,
   Image as ImageIcon,
+  Link as LinkIcon,
+  Upload,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function AdminPaslonPage() {
@@ -28,80 +30,107 @@ export default function AdminPaslonPage() {
 
   const [activeTab, setActiveTab] = useState<'BEM' | 'HIMA'>('BEM');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
 
   // Form states
-  const [formNumber, setFormNumber] = useState('01');
+  const [formNumber, setFormNumber] = useState<number>(1);
   const [formType, setFormType] = useState<'BEM' | 'HIMA'>('BEM');
+  const [formFaculty, setFormFaculty] = useState<'FTB' | 'FIKES' | 'FARMASI'>('FTB');
+  const [formProdi, setFormProdi] = useState('Bisnis Digital');
   const [formLeader, setFormLeader] = useState('');
   const [formVice, setFormVice] = useState('');
-  const [formTagline, setFormTagline] = useState('');
-  const [formVisi, setFormVisi] = useState('');
-  const [formMisi, setFormMisi] = useState('');
-  const [formFaculty, setFormFaculty] = useState<'FTB' | 'FIKES' | 'FARMASI'>('FTB');
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [formSlogan, setFormSlogan] = useState('');
+  const [formPhotoUrl, setFormPhotoUrl] = useState('');
+  const [formVision, setFormVision] = useState('');
+  const [formMission, setFormMission] = useState('');
 
   const currentCandidates = activeTab === 'BEM' ? bemCandidates : himaCandidates;
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setPhotoPreview(reader.result as string);
+        setFormPhotoUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleDelete = (id: string | number) => {
+    if (confirm('Yakin ingin menghapus data pasangan calon ini?')) {
+      deleteCandidate(String(id));
+    }
+  };
+
+  const handleSaveCandidate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formLeader || !formVice) {
-      showToast('Nama Calon Ketua dan Wakil wajib diisi.', 'error');
+    if (!formLeader.trim() || !formVice.trim()) {
+      showToast('Nama Calon Ketua dan Wakil Ketua wajib diisi.', 'error');
       return;
     }
 
-    const newCand: Candidate = {
+    const paddedNumber = formNumber < 10 ? `0${formNumber}` : `${formNumber}`;
+    const missionArray = formMission
+      ? formMission.split('\n').map((m) => m.trim()).filter(Boolean)
+      : ['Membangun sinergi aktif seluruh mahasiswa.', 'Mendorong transparansi dan karya nyata.'];
+
+    const newCandidate: Candidate = {
       id: `${formType.toLowerCase()}-${Date.now()}`,
-      number: formNumber,
+      candidate_number: Number(formNumber),
+      candidateNumber: Number(formNumber),
+      number: paddedNumber,
       type: formType,
+      faculty_id: formType === 'HIMA' ? formFaculty : undefined,
       facultyId: formType === 'HIMA' ? formFaculty : undefined,
+      prodi_id: formType === 'HIMA' ? formProdi : undefined,
+      prodiId: formType === 'HIMA' ? formProdi : undefined,
       facultyName: formType === 'HIMA' ? `Fakultas ${formFaculty}` : undefined,
-      leaderName: formLeader,
-      viceLeaderName: formVice,
-      tagline: formTagline || 'Bakti Berkelanjutan Menuju Prestasi',
-      visi: formVisi || 'Terwujudnya kepengurusan yang sinergis, inklusif, dan berorientasi karya.',
-      misi: formMisi ? formMisi.split('\n').filter(Boolean) : ['Meningkatkan kualitas pelayanan advokasi mahasiswa', 'Mengembangkan riset dan inovasi kampus'],
-      programs: ['Program Inovasi 1', 'Program Advokasi Terbuka'],
+      leader_name: formLeader.trim(),
+      leaderName: formLeader.trim(),
+      vice_leader_name: formVice.trim(),
+      viceLeaderName: formVice.trim(),
+      slogan: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
+      tagline: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
+      photo_url: formPhotoUrl.trim() || undefined,
+      photoUrl: formPhotoUrl.trim() || undefined,
+      vision: formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
+      visi: formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
+      mission: missionArray,
+      misi: missionArray,
+      programs: ['Program Sinergi Mahasiswa', 'Advokasi Terbuka Terpadu'],
       avatarGradient: 'from-sky-700 to-indigo-900',
     };
 
-    addCandidate(newCand);
+    addCandidate(newCandidate);
     setIsAddModalOpen(false);
+
+    // Reset Form
     setFormLeader('');
     setFormVice('');
-    setFormTagline('');
-    setFormVisi('');
-    setFormMisi('');
-    setPhotoPreview(null);
-    showToast(`Paslon ${formNumber} (${formLeader} & ${formVice}) berhasil ditambahkan.`, 'success');
+    setFormSlogan('');
+    setFormPhotoUrl('');
+    setFormVision('');
+    setFormMission('');
+    showToast(`Paslon ${paddedNumber} (${formLeader} & ${formVice}) berhasil didaftarkan.`, 'success');
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       {/* Top Header */}
       <AdminHeader />
 
-      <main className="p-6 sm:p-8 space-y-7 max-w-7xl w-full mx-auto">
+      <main className="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
         {/* SECTION HEADER: KELOLA PASLON */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-2xs">
-              <Vote className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-slate-900 flex items-center justify-center border border-slate-200 shadow-2xs">
+              <Vote className="w-5 h-5 text-slate-900" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 Manajemen Pasangan Calon (Paslon)
-              </h2>
+              </h1>
               <p className="text-xs text-slate-500 font-medium">
                 Daftarkan dan perbarui data profil calon pemimpin mahasiswa UBTH 2026.
               </p>
@@ -112,24 +141,24 @@ export default function AdminPaslonPage() {
             <button
               onClick={() => {
                 setFormType(activeTab);
-                setFormNumber(`0${currentCandidates.length + 1}`);
+                setFormNumber(currentCandidates.length + 1);
                 setIsAddModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-sky-500/20 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-slate-900/15 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>+ Tambah Paslon Baru</span>
+              <span>+ Tambah Paslon</span>
             </button>
           </div>
         </div>
 
         {/* TAB TOGGLE: BEM vs HIMA */}
-        <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-xs w-fit">
+        <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
           <button
             onClick={() => setActiveTab('BEM')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'BEM'
-                ? 'bg-[#0284c7] text-white shadow-2xs'
+                ? 'bg-slate-900 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
@@ -140,7 +169,7 @@ export default function AdminPaslonPage() {
             onClick={() => setActiveTab('HIMA')}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeTab === 'HIMA'
-                ? 'bg-[#0284c7] text-white shadow-2xs'
+                ? 'bg-slate-900 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
@@ -150,8 +179,8 @@ export default function AdminPaslonPage() {
 
         {/* CANDIDATES GRID */}
         {currentCandidates.length === 0 ? (
-          <div className="bg-white rounded-3xl p-12 border border-slate-100 shadow-xs text-center flex flex-col items-center">
-            <div className="w-14 h-14 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center mb-3 border border-sky-100">
+          <div className="bg-white rounded-3xl p-12 border border-slate-200 shadow-xs text-center flex flex-col items-center">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mb-3 border border-slate-200">
               <User className="w-7 h-7" />
             </div>
             <h3 className="text-base font-bold text-slate-800">
@@ -163,67 +192,112 @@ export default function AdminPaslonPage() {
             <button
               onClick={() => {
                 setFormType(activeTab);
-                setFormNumber('01');
+                setFormNumber(1);
                 setIsAddModalOpen(true);
               }}
-              className="mt-5 px-5 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold shadow-md shadow-sky-500/20 cursor-pointer"
+              className="mt-5 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md shadow-slate-900/15 cursor-pointer"
             >
               + Tambah Paslon Pertama
             </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {currentCandidates.map((cand) => (
-              <div
-                key={cand.id}
-                className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow"
-              >
-                <div>
-                  <div className="flex items-start justify-between mb-4">
-                    <span className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
-                      {cand.number}
-                    </span>
-                    <button
-                      onClick={() => deleteCandidate(cand.id)}
-                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                      title="Hapus Paslon"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+            {currentCandidates.map((cand) => {
+              const displayPhoto = cand.photo_url || cand.photoUrl;
+              const displayName = cand.leader_name || cand.leaderName || 'Calon Ketua';
+              const displayVice = cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil';
+              const displaySlogan = cand.slogan || cand.tagline || 'Menuju Kampus BTH Berkemajuan dan Berintegritas';
+              const displayNumber = cand.number || (cand.candidate_number ? `0${cand.candidate_number}` : '01');
 
-                  <h3 className="text-base font-bold text-slate-900 leading-snug">
-                    {cand.leaderName} &amp; {cand.viceLeaderName}
-                  </h3>
-                  <p className="text-xs text-slate-500 italic mt-1">&quot;{cand.tagline}&quot;</p>
+              return (
+                <div
+                  key={String(cand.id)}
+                  className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow"
+                >
+                  <div>
+                    {/* Header: Badge Nomor Urut & Aksi Hapus */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
+                          {displayNumber}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                          No. {displayNumber}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDelete(cand.id)}
+                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Hapus Paslon"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-2 text-xs">
-                    <div>
-                      <strong className="text-slate-700 block text-[11px] uppercase tracking-wider">Visi:</strong>
-                      <p className="text-slate-500 mt-0.5 line-clamp-2">{cand.visi}</p>
+                    {/* Thumbnail Foto Paslon (Rasio 3:4) */}
+                    <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[120px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
+                      {displayPhoto ? (
+                        <img
+                          src={displayPhoto}
+                          alt={displayName}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="text-center p-3">
+                          <ImageIcon className="w-8 h-8 text-slate-300 mx-auto mb-1" />
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                            Foto 3:4
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Nama Ketua & Wakil */}
+                    <div className="text-center">
+                      <h3 className="text-base font-black text-slate-900 leading-snug">
+                        {displayName} &amp; {displayVice}
+                      </h3>
+                      <p className="text-xs text-slate-500 italic mt-1 line-clamp-2">
+                        &ldquo;{displaySlogan}&rdquo;
+                      </p>
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400">
-                  <span>{cand.type} {cand.facultyId ? `(${cand.facultyId})` : 'UBTH'}</span>
-                  <span className="font-semibold text-emerald-600">● Terdaftar</span>
+                  {/* Footer Kartu Paslon: Kategori & Tombol Preview Detail */}
+                  <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-500 text-[11px]">
+                      {cand.type === 'BEM' ? 'BEM Universitas' : `HIMA (${cand.prodi_id || cand.faculty_id || 'Prodi'})`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDetailModalCandidate(cand)}
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-900 hover:text-sky-600 transition-colors cursor-pointer"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Preview Detail</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
 
-      {/* MODAL TAMBAH PASLON (MATCHING SCREENSHOT) */}
+      {/* MODAL + TAMBAH PASLON LENGKAP */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
-              <h3 className="text-base font-bold text-slate-900">
-                Tambah Kandidat / Paslon Baru
-              </h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  + Tambah Data Pasangan Calon (Paslon)
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">
+                  Lengkapi identitas kandidat, foto resmi, slogan, serta visi dan misi
+                </p>
+              </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
                 className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
@@ -233,49 +307,17 @@ export default function AdminPaslonPage() {
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleCreate} className="p-6 space-y-4 text-xs">
-              {/* Foto Pasangan Calon */}
-              <div>
-                <label className="font-bold text-slate-800 block mb-2">
-                  Foto Pasangan Calon (Rasio 3:4 atau Persegi)
-                </label>
-                <div className="flex items-center gap-4">
-                  <div className="w-20 h-24 rounded-2xl border-2 border-dashed border-sky-300 bg-sky-50/50 flex flex-col items-center justify-center text-center p-2 shrink-0">
-                    {photoPreview ? (
-                      <img src={photoPreview} alt="Preview" className="w-full h-full object-cover rounded-xl" />
-                    ) : (
-                      <>
-                        <ImageIcon className="w-6 h-6 text-[#0284c7] mb-1" />
-                        <span className="text-[10px] font-bold text-[#0284c7]">3:4 Preview</span>
-                      </>
-                    )}
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white font-bold text-xs cursor-pointer shadow-2xs">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Pilih File</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePhotoChange}
-                        className="hidden"
-                      />
-                    </label>
-                    <p className="text-[11px] text-slate-400 leading-tight">
-                      Instruksi: Format WebP/JPG (maksimal 200 KB). Disarankan foto studio berdua.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Kategori Pemilihan & Nomor Urut */}
+            <form onSubmit={handleSaveCandidate} className="p-6 space-y-4 text-xs">
+              {/* 1. Kategori & Nomor Urut */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Kategori Pemilihan</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Kategori Paslon
+                  </label>
                   <select
                     value={formType}
                     onChange={(e) => setFormType(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 font-semibold text-slate-800 focus:outline-hidden focus:border-sky-400"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold text-slate-800 focus:outline-hidden focus:border-slate-900"
                   >
                     <option value="BEM">BEM Universitas</option>
                     <option value="HIMA">HIMA Program Studi</option>
@@ -283,93 +325,214 @@ export default function AdminPaslonPage() {
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Nomor Urut</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nomor Urut Paslon
+                  </label>
                   <input
-                    type="text"
+                    type="number"
+                    min="1"
+                    max="99"
                     required
                     value={formNumber}
-                    onChange={(e) => setFormNumber(e.target.value)}
-                    placeholder="01"
-                    className="w-full p-2.5 rounded-xl border border-slate-200 font-mono text-xs bg-slate-50 focus:outline-hidden focus:border-sky-400 font-bold"
+                    onChange={(e) => setFormNumber(Number(e.target.value))}
+                    placeholder="1"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono text-xs bg-white focus:outline-hidden focus:border-slate-900 font-bold"
                   />
                 </div>
               </div>
 
+              {/* Dropdown Fakultas & Program Studi (Khusus HIMA) */}
               {formType === 'HIMA' && (
-                <div>
-                  <label className="font-bold text-slate-700 block mb-1">Fakultas</label>
-                  <select
-                    value={formFaculty}
-                    onChange={(e) => setFormFaculty(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 font-semibold focus:outline-hidden focus:border-sky-400"
-                  >
-                    <option value="FTB">FTB (Fakultas Teknologi &amp; Bisnis)</option>
-                    <option value="FIKES">FIKES (Fakultas Ilmu Kesehatan)</option>
-                    <option value="FARMASI">FARMASI (Fakultas Farmasi)</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-4 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Fakultas</label>
+                    <select
+                      value={formFaculty}
+                      onChange={(e) => setFormFaculty(e.target.value as any)}
+                      className="w-full p-2 rounded-xl border border-slate-300 text-xs bg-white font-semibold focus:outline-hidden focus:border-slate-900"
+                    >
+                      <option value="FTB">FTB (Teknologi &amp; Bisnis)</option>
+                      <option value="FIKES">FIKES (Ilmu Kesehatan)</option>
+                      <option value="FARMASI">FARMASI (Farmasi)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-slate-700 block mb-1">Program Studi</label>
+                    <select
+                      value={formProdi}
+                      onChange={(e) => setFormProdi(e.target.value)}
+                      className="w-full p-2 rounded-xl border border-slate-300 text-xs bg-white font-semibold focus:outline-hidden focus:border-slate-900"
+                    >
+                      {formFaculty === 'FTB' && (
+                        <>
+                          <option value="Bisnis Digital">Bisnis Digital</option>
+                          <option value="Sistem Informasi">Sistem Informasi</option>
+                          <option value="Teknologi Pangan">Teknologi Pangan</option>
+                          <option value="Kewirausahaan">Kewirausahaan</option>
+                        </>
+                      )}
+                      {formFaculty === 'FIKES' && (
+                        <>
+                          <option value="S1 Administrasi Rumah Sakit">S1 Administrasi Rumah Sakit</option>
+                          <option value="S1 Keperawatan">S1 Keperawatan</option>
+                          <option value="S1 Gizi">S1 Gizi</option>
+                          <option value="D3 Keperawatan">D3 Keperawatan</option>
+                          <option value="D3 Refraksi Optisi">D3 Refraksi Optisi</option>
+                          <option value="D3 TLM">D3 TLM</option>
+                        </>
+                      )}
+                      {formFaculty === 'FARMASI' && (
+                        <>
+                          <option value="S1 Farmasi">S1 Farmasi</option>
+                          <option value="S1 Rekayasa Kosmetik">S1 Rekayasa Kosmetik</option>
+                          <option value="PSPPA (Profesi Apoteker)">PSPPA (Profesi Apoteker)</option>
+                          <option value="S2 Farmasi">S2 Farmasi</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
                 </div>
               )}
 
-              {/* Nama Calon Ketua & Wakil */}
+              {/* 2. Nama Calon Ketua & Wakil */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Nama Calon Ketua</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nama Calon Ketua
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="Nama Ketua"
+                    placeholder="Contoh: Muhammad Fikri"
                     value={formLeader}
                     onChange={(e) => setFormLeader(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:outline-hidden focus:border-sky-400"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Nama Calon Wakil</label>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nama Calon Wakil Ketua
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="Nama Wakil"
+                    placeholder="Contoh: Aulia Rahma"
                     value={formVice}
                     onChange={(e) => setFormVice(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:outline-hidden focus:border-sky-400"
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
                   />
                 </div>
               </div>
 
               {/* Slogan / Tagline */}
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Slogan / Tagline</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Slogan / Tagline Resmi
+                </label>
                 <input
                   type="text"
-                  placeholder="Contoh: Bergerak Bersama untuk Perubahan Nyata"
-                  value={formTagline}
-                  onChange={(e) => setFormTagline(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:outline-hidden focus:border-sky-400"
+                  placeholder="Contoh: Bersinergi Membangun UBTH yang Inovatif dan Berintegritas"
+                  value={formSlogan}
+                  onChange={(e) => setFormSlogan(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
                 />
               </div>
 
-              {/* Visi */}
+              {/* 3. Foto Paslon + Preview Rasio 3:4 */}
+              <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <label className="font-bold text-slate-800 block">
+                  Foto Paslon Resmi (Rasio 3:4)
+                </label>
+
+                <div className="flex items-center gap-4">
+                  {/* Kotak Preview Rasio 3:4 */}
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
+                    {formPhotoUrl ? (
+                      <img
+                        src={formPhotoUrl}
+                        alt="Preview Foto"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2">
+                        <ImageIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase">
+                          3:4 Preview
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input URL Foto & Upload File */}
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        URL Gambar (Web / Supabase Storage):
+                      </span>
+                      <div className="relative">
+                        <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="https://.../foto-paslon.jpg atau /candidates/01.png"
+                          value={formPhotoUrl}
+                          onChange={(e) => setFormPhotoUrl(e.target.value)}
+                          className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer shadow-2xs">
+                        <Upload className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Unggah Foto dari Perangkat</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {formPhotoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setFormPhotoUrl('')}
+                          className="text-xs text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Visi */}
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Visi Paslon</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Visi Paslon (2-3 Baris)
+                </label>
                 <textarea
                   rows={2}
-                  placeholder="Deskripsi visi utama paslon..."
-                  value={formVisi}
-                  onChange={(e) => setFormVisi(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:outline-hidden focus:border-sky-400"
+                  placeholder="Tuliskan visi utama yang diusung pasangan calon..."
+                  value={formVision}
+                  onChange={(e) => setFormVision(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
                 />
               </div>
 
-              {/* Misi */}
+              {/* 5. Misi */}
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Misi Paslon (Pisahkan tiap baris)</label>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Misi Paslon (Pisahkan Tiap Baris per Poin)
+                </label>
                 <textarea
-                  rows={2}
-                  placeholder="1. Meningkatkan advokasi mahasiswa&#10;2. Menyelenggarakan kegiatan inovatif..."
-                  value={formMisi}
-                  onChange={(e) => setFormMisi(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50 focus:outline-hidden focus:border-sky-400"
+                  rows={3}
+                  placeholder="1. Mewujudkan advokasi aspirasi yang responsif&#10;2. Menumbuhkan iklim riset dan kompetisi mahasiswa&#10;3. Mempererat relasi kolaboratif lintas ormawa"
+                  value={formMission}
+                  onChange={(e) => setFormMission(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
                 />
               </div>
 
@@ -384,7 +547,7 @@ export default function AdminPaslonPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-[#0284c7] hover:bg-sky-600 text-white font-bold shadow-md shadow-sky-500/20 cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold shadow-md shadow-slate-900/15 cursor-pointer"
                 >
                   Simpan Paslon
                 </button>
@@ -393,6 +556,13 @@ export default function AdminPaslonPage() {
           </div>
         </div>
       )}
+
+      {/* POP-UP DETAIL VISI MISI PREVIEW */}
+      <VisiMisiModal
+        candidate={detailModalCandidate}
+        isOpen={Boolean(detailModalCandidate)}
+        onClose={() => setDetailModalCandidate(null)}
+      />
     </div>
   );
 }

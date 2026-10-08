@@ -81,7 +81,7 @@ interface AdminContextType {
   himaCandidates: Candidate[];
   addCandidate: (candidate: Candidate) => void;
   updateCandidate: (candidate: Candidate) => void;
-  deleteCandidate: (id: string) => void;
+  deleteCandidate: (id: string | number) => void;
 
   // Booths
   booths: BoothStatus[];
@@ -252,9 +252,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     showToast(`Data paslon ${cand.number} diperbarui.`, 'success');
   };
 
-  const deleteCandidate = (id: string) => {
-    setBemCandidates((prev) => prev.filter((c) => c.id !== id));
-    setHimaCandidates((prev) => prev.filter((c) => c.id !== id));
+  const deleteCandidate = (id: string | number) => {
+    setBemCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
+    setHimaCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
     showToast('Paslon berhasil dihapus.', 'info');
   };
 
