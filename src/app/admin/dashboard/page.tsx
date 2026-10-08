@@ -6,13 +6,12 @@ import { useAdmin, BoothStatus } from '@/context/AdminContext';
 import { createClient } from '@/lib/supabase/client';
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from 'recharts';
 import {
   RotateCcw,
@@ -26,20 +25,18 @@ import {
   TrendingUp,
   Clock,
   Radio,
-  Shield,
   EyeOff,
-  Lock,
-  ShieldCheck,
 } from 'lucide-react';
 
 interface SupabaseBoothRecord {
   id?: string;
   booth_number: number;
   name?: string;
-  status: 'Tersedia' | 'Sedang Memilih' | 'Selesai' | 'Offline';
+  status: string;
   current_voter_nim?: string | null;
   current_voter_name?: string | null;
   current_voter_prodi?: string | null;
+  ip_address?: string;
   updated_at?: string;
 }
 
@@ -50,23 +47,21 @@ interface ActivityLogItem {
   type: 'alloc' | 'done' | 'token' | 'status' | 'info';
 }
 
-const DEFAULT_10_BOOTHS: BoothStatus[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `b-${i + 1}`,
-  name: `Bilik 0${i + 1}`.slice(-8),
-  status: 'Tersedia',
-  ipAddress: `192.168.1.${100 + i + 1}`,
-}));
-
 export default function AdminDashboardPage() {
-  const { globalSummary, electionStatus, setElectionStatus, isSensorActive, showToast } = useAdmin();
+  const { electionStatus, setElectionStatus, isSensorActive, showToast } = useAdmin();
   const isSensorMode = isSensorActive;
 
-  const [booths, setBooths] = useState<BoothStatus[]>(DEFAULT_10_BOOTHS);
+  // Realtime DPT & Suara Stats
+  const [totalDpt, setTotalDpt] = useState(0);
+  const [suaraMasuk, setSuaraMasuk] = useState(0);
+  const [isStatsLoaded, setIsStatsLoaded] = useState(false);
+
+  // Dynamic Booths State
+  const [booths, setBooths] = useState<BoothStatus[]>([]);
   const [resettingBoothId, setResettingBoothId] = useState<number | null>(null);
 
-  // Timeline Line Chart State
-  const [chartType, setChartType] = useState<'BEM' | 'HIMA'>('BEM');
-  const [timelineData, setTimelineData] = useState<any[]>([]);
+  // Traffic Area Chart State
+  const [trafficData, setTrafficData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
   // Activity Log Stream
@@ -74,160 +69,152 @@ export default function AdminDashboardPage() {
     {
       id: 'log-1',
       time: '09:12:04',
-      text: 'Bilik 03 dialokasikan untuk pemilih (Token Valid).',
+      text: 'Bilik 03 dialokasikan untuk pemilih.',
       type: 'alloc',
     },
     {
       id: 'log-2',
       time: '09:10:45',
-      text: 'Bilik 01 berhasil menyelesaikan pemungutan suara.',
+      text: 'Bilik 01 menyelesaikan pemungutan suara.',
       type: 'done',
     },
     {
       id: 'log-3',
-      time: '09:05:00',
-      text: 'Token QR Proyektor diperbarui otomatis.',
-      type: 'token',
-    },
-    {
-      id: 'log-4',
       time: '08:58:20',
       text: 'Admin mengubah status pemilihan menjadi AKTIF.',
       type: 'status',
     },
   ]);
 
-  // Fetch Timeline Data (Interval 10 Menit)
-  const fetchTimeline = async (type = chartType) => {
+  // Fetch real-time voters count & stats from Supabase
+  const fetchVotersAndStats = async () => {
     try {
-      const res = await fetch(`/api/admin/stats/timeline?type=${type}`);
-      const json = await res.json();
-      if (json?.success && Array.isArray(json?.data)) {
-        setTimelineData(json.data);
+      const supabase = createClient();
+      const { data: votersData } = await supabase.from('voters').select('*');
+      if (votersData) {
+        const tDpt = votersData.length;
+        const sMasuk = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
+        setTotalDpt(tDpt);
+        setSuaraMasuk(sMasuk);
+        setIsStatsLoaded(true);
       }
     } catch (err) {
-      console.warn('Gagal memuat timeline suara:', err);
+      console.warn('Fetch voters stats note:', err);
     }
+  };
+
+  // Fetch Trafik Pengunjung Bilik (Interval 10 Menit)
+  const fetchTraffic = async () => {
+    try {
+      const res = await fetch('/api/admin/stats/traffic');
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.data)) {
+        setTrafficData(json.data);
+      }
+    } catch (err) {
+      console.warn('Gagal memuat trafik bilik:', err);
+    }
+  };
+
+  // Fetch Dynamic Booths from Supabase
+  const fetchBooths = async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('booths')
+        .select('*')
+        .neq('status', 'NONAKTIF')
+        .order('booth_number');
+
+      if (!error && data && data.length > 0) {
+        setBooths(
+          data.map((d: any) => ({
+            id: `b-${d.booth_number}`,
+            name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+            status: (d.status === 'Sedang Memilih' || d.status === 'DIGUNAKAN') ? 'Sedang Memilih' : 'Tersedia',
+            voterNim: d.current_voter_nim || undefined,
+            voterName: d.current_voter_name || undefined,
+            prodiName: d.current_voter_prodi || undefined,
+            ipAddress: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+          }))
+        );
+      } else {
+        // Fallback default 10 bilik jika tabel belum terisi
+        setBooths(
+          Array.from({ length: 10 }, (_, i) => ({
+            id: `b-${i + 1}`,
+            name: `Bilik ${String(i + 1).padStart(2, '0')}`,
+            status: 'Tersedia',
+            ipAddress: `192.168.1.${100 + i + 1}`,
+          }))
+        );
+      }
+    } catch {}
   };
 
   useEffect(() => {
     setIsMounted(true);
-    fetchTimeline(chartType);
+    fetchVotersAndStats();
+    fetchBooths();
+    fetchTraffic();
 
-    // Polling berkala tiap 30 detik untuk sinkronisasi otomatis
+    // Polling interval tiap 20 detik
     const interval = setInterval(() => {
-      fetchTimeline(chartType);
-    }, 30000);
+      fetchVotersAndStats();
+      fetchBooths();
+      fetchTraffic();
+    }, 20000);
 
     return () => clearInterval(interval);
-  }, [chartType]);
+  }, []);
 
-  // Realtime Supabase Channel
+  // Supabase Realtime Channels
   useEffect(() => {
-    let channel: any = null;
-    let votesChannel: any = null;
+    const supabase = createClient();
 
-    try {
-      const supabase = createClient();
+    // 1. Realtime sync voters
+    const votersChannel = supabase
+      .channel('realtime_voters_sync_dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        fetchVotersAndStats();
+        fetchTraffic();
+      })
+      .subscribe();
 
-      const fetchBooths = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('booths')
-            .select('*')
-            .order('booth_number');
+    // 2. Realtime sync booths & activity feed
+    const boothsChannel = supabase
+      .channel('realtime_booths_sync_dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, (payload: any) => {
+        fetchBooths();
 
-          if (!error && data && data.length > 0) {
-            setBooths((prev) =>
-              prev.map((b, idx) => {
-                const match = data.find((d: SupabaseBoothRecord) => d.booth_number === idx + 1);
-                if (match) {
-                  return {
-                    ...b,
-                    status: match.status === 'Sedang Memilih' ? 'Sedang Memilih' : 'Tersedia',
-                    voterNim: match.current_voter_nim || undefined,
-                    voterName: match.current_voter_name || undefined,
-                    prodiName: match.current_voter_prodi || undefined,
-                  };
-                }
-                return b;
-              })
-            );
-          }
-        } catch {}
-      };
+        const newRecord = payload?.new as SupabaseBoothRecord | undefined;
+        if (newRecord?.booth_number) {
+          const num = String(newRecord.booth_number).padStart(2, '0');
+          const isOccupied = newRecord.status === 'Sedang Memilih' || newRecord.status === 'DIGUNAKAN';
+          const timeStr = new Date().toLocaleTimeString('id-ID');
 
-      fetchBooths();
-
-      // Listen to table booths via postgres_changes
-      channel = (supabase as any)
-        .channel('booth-realtime-dashboard')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'booths' },
-          (payload: any) => {
-            const newRecord = payload?.new as SupabaseBoothRecord | undefined;
-            if (newRecord?.booth_number) {
-              const num = newRecord.booth_number;
-              const isOccupied = newRecord.status === 'Sedang Memilih';
-
-              setBooths((prev) =>
-                prev.map((b, idx) =>
-                  idx + 1 === num
-                    ? {
-                        ...b,
-                        status: isOccupied ? 'Sedang Memilih' : 'Tersedia',
-                        voterNim: newRecord.current_voter_nim || undefined,
-                        voterName: newRecord.current_voter_name || undefined,
-                        prodiName: newRecord.current_voter_prodi || undefined,
-                      }
-                    : b
-                )
-              );
-
-              // Push new activity event
-              const timeStr = new Date().toLocaleTimeString('id-ID');
-              const newLog: ActivityLogItem = {
-                id: `log-${Date.now()}`,
-                time: timeStr,
-                text: isOccupied
-                  ? `Bilik 0${num} mulai digunakan oleh ${newRecord.current_voter_name || 'Pemilih'}.`
-                  : `Bilik 0${num} selesai digunakan dan kembali Tersedia.`,
-                type: isOccupied ? 'alloc' : 'done',
-              };
-              setActivityLogs((prev) => [newLog, ...prev.slice(0, 19)]);
-            }
-          }
-        )
-        .subscribe();
-
-      // Listen to votes table for realtime timeline updates
-      votesChannel = (supabase as any)
-        .channel('votes-realtime-dashboard')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'votes' },
-          () => {
-            fetchTimeline(chartType);
-          }
-        )
-        .subscribe();
-    } catch (err) {
-      console.warn('Realtime subscription error:', err);
-    }
+          const newLog: ActivityLogItem = {
+            id: `log-${Date.now()}`,
+            time: timeStr,
+            text: isOccupied
+              ? `Bilik ${num} dialokasikan untuk pemilih.`
+              : `Bilik ${num} menyelesaikan pemungutan suara.`,
+            type: isOccupied ? 'alloc' : 'done',
+          };
+          setActivityLogs((prev) => [newLog, ...prev.slice(0, 19)]);
+        }
+      })
+      .subscribe();
 
     return () => {
-      try {
-        const supabase = createClient();
-        if (channel) supabase.removeChannel(channel);
-        if (votesChannel) supabase.removeChannel(votesChannel);
-      } catch {}
+      supabase.removeChannel(votersChannel);
+      supabase.removeChannel(boothsChannel);
     };
-  }, [chartType]);
+  }, []);
 
+  // Force Reset Booth Manual
   const handleResetBooth = async (boothNum: number) => {
     setResettingBoothId(boothNum);
-
     try {
       const res = await fetch('/api/admin/booths/reset', {
         method: 'POST',
@@ -238,37 +225,9 @@ export default function AdminDashboardPage() {
 
       if (data?.success) {
         showToast(`Bilik 0${boothNum} berhasil direset ke status Tersedia.`, 'success');
-        setBooths((prev) =>
-          prev.map((b, idx) =>
-            idx + 1 === boothNum
-              ? {
-                  ...b,
-                  status: 'Tersedia',
-                  voterNim: undefined,
-                  voterName: undefined,
-                  prodiName: undefined,
-                }
-              : b
-          )
-        );
-      } else {
-        throw new Error(data?.message || 'Gagal mereset');
+        fetchBooths();
       }
     } catch {
-      // Local fallback reset
-      setBooths((prev) =>
-        prev.map((b, idx) =>
-          idx + 1 === boothNum
-            ? {
-                ...b,
-                status: 'Tersedia',
-                voterNim: undefined,
-                voterName: undefined,
-                prodiName: undefined,
-              }
-            : b
-        )
-      );
       showToast(`Bilik ${boothNum} direset secara lokal.`, 'info');
     } finally {
       const timeStr = new Date().toLocaleTimeString('id-ID');
@@ -288,32 +247,23 @@ export default function AdminDashboardPage() {
   const countTersedia = booths.filter((b) => b.status === 'Tersedia').length;
   const countDigunakan = booths.filter((b) => b.status === 'Sedang Memilih').length;
 
-  // Deteksi kunci paslon yang ada pada data timeline
-  const candidateKeys = Array.from(
-    new Set(timelineData.flatMap((d) => Object.keys(d).filter((k) => k !== 'time')))
-  );
-
-  // Custom Tooltip Recharts dengan dukungan Mode Sensor
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  // Custom Tooltip Recharts untuk Trafik Bilik
+  const TrafficTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl border border-slate-700 text-xs font-sans min-w-[160px]">
+        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl border border-slate-700 text-xs font-sans min-w-[150px]">
           <p className="font-bold text-slate-300 border-b border-slate-700/80 pb-1 mb-2 flex items-center gap-1.5 font-mono text-[11px]">
-            <Clock className="w-3.5 h-3.5 text-sky-400" />
-            <span>Waktu: {label} WIB</span>
+            <Clock className="w-3.5 h-3.5 text-blue-400" />
+            <span>Pukul {label} WIB</span>
           </p>
-          <div className="space-y-1.5">
-            {payload.map((entry: any, index: number) => (
-              <div key={`item-${index}`} className="flex items-center justify-between gap-4">
-                <span className="flex items-center gap-1.5 font-bold" style={{ color: entry.color }}>
-                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                  {entry.name}:
-                </span>
-                <span className="font-mono font-bold text-slate-100">
-                  {isSensorMode ? '*** Suara' : `${Number(entry.value).toLocaleString('id-ID')} Suara`}
-                </span>
-              </div>
-            ))}
+          <div className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 font-bold text-blue-400">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+              Kehadiran:
+            </span>
+            <span className="font-mono font-bold text-slate-100">
+              {Number(payload[0]?.value || 0).toLocaleString('id-ID')} Pemilih
+            </span>
           </div>
         </div>
       );
@@ -333,7 +283,7 @@ export default function AdminDashboardPage() {
               Dashboard Bilik &amp; Hasil Suara
             </h1>
             <p className="text-xs text-slate-500 font-medium">
-              Pemantauan real-time 10 bilik fisik &amp; rekapitulasi suara PEMIRA UBTH 2026
+              Pemantauan real-time bilik fisik &amp; aktivitas pemungutan suara PEMIRA UBTH 2026
             </p>
           </div>
 
@@ -377,7 +327,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* 4 STAT CARDS RINGKAS (DENGAN DUKUNGAN MODE SENSOR) */}
+        {/* 4 STAT CARDS REAL-TIME */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
@@ -385,7 +335,7 @@ export default function AdminDashboardPage() {
                 TOTAL DPT
               </span>
               <span className="text-2xl font-black text-slate-900 font-mono">
-                {globalSummary.totalDpt.toLocaleString('id-ID')}
+                {totalDpt.toLocaleString('id-ID')}
               </span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
@@ -409,11 +359,11 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
                 <span className="text-2xl font-black text-slate-900 font-mono">
-                  {globalSummary.suaraMasuk.toLocaleString('id-ID')}
+                  {suaraMasuk.toLocaleString('id-ID')}
                 </span>
               )}
             </div>
-            <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
@@ -447,84 +397,44 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* SECTION: MULTI-LINE CHART DINAMIKA PEROLEHAN SUARA PASLON (INTERVAL 10 MENIT) */}
+        {/* SECTION: TRAFIK PENGUNJUNG BILIK (INTERVAL 10 MENIT) */}
         <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs relative overflow-hidden">
-          {/* Header Card */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
                 <TrendingUp className="w-5 h-5" />
               </div>
               <div>
                 <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                  <span>Dinamika Perolehan Suara Paslon (Interval 10 Menit)</span>
-                  {isSensorMode && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
-                      <span>Mode Sensor Aktif</span>
-                    </span>
-                  )}
+                  <span>Trafik Pengunjung Bilik (Interval 10 Menit)</span>
                 </h2>
                 <p className="text-xs text-slate-500 font-medium">
-                  Tren akumulasi suara masuk per pasangan calon diperbarui otomatis per interval 10 menit
+                  Tren kehadiran pemilih per interval 10 menit
                 </p>
               </div>
             </div>
 
-            {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setChartType('BEM')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  chartType === 'BEM'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                }`}
-              >
-                BEM Universitas
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartType('HIMA')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  chartType === 'HIMA'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                }`}
-              >
-                HIMA
-              </button>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 self-start sm:self-auto">
+              <Activity className="w-3.5 h-3.5 text-blue-600" />
+              <span>Realtime Sensor Kehadiran</span>
             </div>
           </div>
 
-          {/* Chart Wrapper Container with Sensor Blur Effect & Overlay */}
-          <div className="relative min-h-[320px] w-full">
-            {/* SENSOR BADGE OVERLAY */}
-            {isSensorMode && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px] pointer-events-none rounded-2xl">
-                <div className="px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wider shadow-lg flex items-center gap-2 border border-amber-400">
-                  <ShieldCheck className="h-5 w-5" />
-                  <span>MODE SENSOR KPUM AKTIF</span>
-                </div>
-                <p className="text-[11px] text-slate-600 font-bold mt-2 bg-white/80 px-3 py-1 rounded-full shadow-2xs">
-                  Aktivasi mode saksi / rekap publik untuk membuka sensor grafik suara
-                </p>
-              </div>
-            )}
-
-            {/* Recharts Container */}
-            <div
-              className={`w-full h-80 transition-all duration-300 ${
-                isSensorMode ? 'filter blur-[8px] pointer-events-none select-none' : ''
-              }`}
-            >
+          {/* Area Chart Container */}
+          <div className="relative min-h-[300px] w-full">
+            <div className="w-full h-72">
               {isMounted ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={timelineData}
+                  <AreaChart
+                    data={trafficData}
                     margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
                   >
+                    <defs>
+                      <linearGradient id="visitorGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
+                        <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                     <XAxis
                       dataKey="time"
@@ -537,82 +447,52 @@ export default function AdminDashboardPage() {
                       tickLine={false}
                       axisLine={{ stroke: '#e2e8f0' }}
                       allowDecimals={false}
-                      tickFormatter={(val) => (isSensorMode ? '***' : val)}
                     />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend
-                      wrapperStyle={{ paddingTop: 16, fontSize: 12, fontWeight: 700 }}
-                      iconType="circle"
-                    />
-
-                    {/* Paslon 01: Navy / Sky Blue (#0284c7), garis halus dengan titik penanda (dot) */}
-                    <Line
+                    <Tooltip content={<TrafficTooltip />} />
+                    <Area
                       type="monotone"
-                      dataKey="Paslon 01"
-                      name="Paslon 01"
-                      stroke="#0284c7"
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: '#0284c7', strokeWidth: 2, stroke: '#ffffff' }}
-                      activeDot={{ r: 6, stroke: '#0284c7', strokeWidth: 2 }}
+                      dataKey="visitors"
+                      name="Pengunjung Bilik"
+                      stroke="#2563eb"
+                      strokeWidth={2.5}
+                      fillOpacity={1}
+                      fill="url(#visitorGradient)"
+                      dot={{ r: 3.5, fill: '#2563eb', strokeWidth: 2, stroke: '#ffffff' }}
+                      activeDot={{ r: 5.5, stroke: '#2563eb', strokeWidth: 2 }}
                     />
-
-                    {/* Paslon 02: Emerald / Green (#10b981) */}
-                    <Line
-                      type="monotone"
-                      dataKey="Paslon 02"
-                      name="Paslon 02"
-                      stroke="#10b981"
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
-                      activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
-                    />
-
-                    {/* Paslon 03: Amber / Oranye (#f59e0b) jika ada di data */}
-                    {candidateKeys.includes('Paslon 03') && (
-                      <Line
-                        type="monotone"
-                        dataKey="Paslon 03"
-                        name="Paslon 03"
-                        stroke="#f59e0b"
-                        strokeWidth={3}
-                        dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#ffffff' }}
-                        activeDot={{ r: 6, stroke: '#f59e0b', strokeWidth: 2 }}
-                      />
-                    )}
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-slate-50/50 rounded-2xl">
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                    <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-                    <span>Memuat grafik tren perolehan suara...</span>
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Memuat grafik trafik pengunjung...</span>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Footer Card */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium mt-2">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Sinkronisasi otomatis per 30 detik &amp; PostgreSQL Realtime</span>
+              <span>Sinkronisasi otomatis per 20 detik &amp; PostgreSQL Realtime</span>
             </span>
             <span className="font-mono text-slate-400">
-              Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : 'Himpunan Mahasiswa (HIMA)'}
+              Interval: 10 Menit
             </span>
           </div>
         </section>
 
-        {/* SECTION: TAMPILAN 10 BILIK SUARA (FORMAT GRID 5x2 RINGKAS) */}
+        {/* SECTION: STATUS REAL-TIME BILIK SUARA (DYNAMIC GRID) */}
         <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
             <div>
               <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                Status 10 Bilik Suara Fisik
+                Status Real-time Bilik Suara
               </h2>
               <p className="text-xs text-slate-500">
-                Format Grid 5x2 terhubung sinkronisasi real-time PostgreSQL Supabase (Concurrency SKIP LOCKED)
+                Pemantauan {booths.length} bilik fisik terhubung sinkronisasi real-time PostgreSQL Supabase
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs font-semibold">
@@ -627,10 +507,11 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* GRID 5 x 2 */}
+          {/* DYNAMIC GRID BOOTHS */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            {booths.map((b, idx) => {
-              const boothNum = idx + 1;
+            {booths.map((b) => {
+              const numMatch = b.name.match(/\d+/) || b.id.match(/\d+/);
+              const boothNum = numMatch ? parseInt(numMatch[0], 10) : 1;
               const isUsed = b.status === 'Sedang Memilih';
               const isResetting = resettingBoothId === boothNum;
 
@@ -647,7 +528,7 @@ export default function AdminDashboardPage() {
                     {/* Top: Nomor Bilik & Status Badge */}
                     <div className="flex items-center justify-between gap-1 mb-2">
                       <span className="text-xs font-black text-slate-900">
-                        Bilik 0{boothNum}
+                        {b.name}
                       </span>
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
@@ -683,7 +564,7 @@ export default function AdminDashboardPage() {
                   <button
                     onClick={() => handleResetBooth(boothNum)}
                     disabled={isResetting}
-                    title={`Reset Bilik ${boothNum}`}
+                    title={`Reset ${b.name}`}
                     className="w-full py-1.5 px-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <RotateCcw className={`w-3 h-3 ${isResetting ? 'animate-spin' : ''}`} />
@@ -714,27 +595,19 @@ export default function AdminDashboardPage() {
 
               {/* Feed Stream List */}
               <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                {activityLogs.map((log) => {
-                  let badgeBg = 'bg-slate-100 text-slate-700';
-                  if (log.type === 'alloc') badgeBg = 'bg-amber-100 text-amber-800 border-amber-200';
-                  if (log.type === 'done') badgeBg = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-                  if (log.type === 'token') badgeBg = 'bg-sky-100 text-sky-800 border-sky-200';
-                  if (log.type === 'status') badgeBg = 'bg-purple-100 text-purple-800 border-purple-200';
-
-                  return (
-                    <div
-                      key={log.id}
-                      className="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors flex items-start gap-2.5 text-xs"
-                    >
-                      <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 pt-0.5">
-                        [{log.time}]
-                      </span>
-                      <p className="text-slate-700 font-medium leading-relaxed flex-1">
-                        {log.text}
-                      </p>
-                    </div>
-                  );
-                })}
+                {activityLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors flex items-start gap-2.5 text-xs"
+                  >
+                    <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 pt-0.5">
+                      [{log.time}]
+                    </span>
+                    <p className="text-slate-700 font-medium leading-relaxed flex-1">
+                      {log.text}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
 

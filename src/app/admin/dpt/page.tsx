@@ -58,18 +58,26 @@ export default function AdminDptPage() {
         .order('created_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        const mapped: Voter[] = data.map((d: any) => ({
-          id: String(d.id || d.nim),
-          nim: d.nim,
-          name: d.name,
-          facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
-          prodiId: d.prodi_id || d.prodiId || 'general',
-          prodiName: d.prodi_name || d.prodiName || 'Program Studi',
-          angkatan: d.angkatan || '2023',
-          status: d.has_voted || d.status === 'selesai' ? 'selesai' : 'belum',
-          votedAt: d.voted_at || d.votedAt || undefined,
-          boothId: d.booth_id || d.boothId || undefined,
-        }));
+        const mapped: Voter[] = data.map((d: any) => {
+          const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
+          const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
+          return {
+            id: String(d.id || d.nim),
+            nim: d.nim,
+            name: d.name,
+            facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
+            prodiId: d.prodi_id || d.prodiId || 'general',
+            prodiName: d.prodi_name || d.prodiName || 'Program Studi',
+            angkatan: d.angkatan || '2023',
+            status,
+            voting_status: rawStatus as any,
+            start_vote_at: d.start_vote_at,
+            completed_at: d.completed_at,
+            duration_seconds: d.duration_seconds,
+            votedAt: d.voted_at || d.votedAt || undefined,
+            boothId: d.booth_id || d.boothId || undefined,
+          };
+        });
         setVoters(mapped);
       } else {
         // Fallback ke default voters context
@@ -84,6 +92,18 @@ export default function AdminDptPage() {
 
   useEffect(() => {
     fetchSupabaseVoters();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('dpt_realtime_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        fetchSupabaseVoters();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Filter DPT
@@ -361,7 +381,7 @@ export default function AdminDptPage() {
 
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-slate-900/15 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-2 transition-all shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ Tambah DPT</span>
@@ -492,8 +512,29 @@ export default function AdminDptPage() {
                   </tr>
                 ) : (
                   filteredVoters.map((v) => {
-                    const isVoted = v.status === 'selesai';
+                    const rawStatus = v.voting_status || (v.status === 'selesai' ? 'SELESAI' : v.status === 'memilih' ? 'MENGERJAKAN' : 'BELUM');
+                    const isMengerjakan = rawStatus === 'MENGERJAKAN';
+                    const isSelesai = rawStatus === 'SELESAI';
                     const isDeletingThis = deletingId === (v.id || v.nim);
+
+                    let waktuMemilihDisplay = '-';
+                    if (isMengerjakan) {
+                      waktuMemilihDisplay = 'Sedang di Bilik...';
+                    } else if (isSelesai) {
+                      if (typeof v.duration_seconds === 'number' && v.duration_seconds > 0) {
+                        const m = Math.floor(v.duration_seconds / 60);
+                        const s = v.duration_seconds % 60;
+                        const mm = m.toString().padStart(2, '0');
+                        const ss = s.toString().padStart(2, '0');
+                        waktuMemilihDisplay = `${mm}:${ss} (${(v.duration_seconds / 60).toFixed(1)} mnt)`;
+                      } else if (v.votedAt) {
+                        waktuMemilihDisplay = v.votedAt;
+                      } else if (v.completed_at) {
+                        waktuMemilihDisplay = new Date(v.completed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                      } else {
+                        waktuMemilihDisplay = 'Selesai';
+                      }
+                    }
 
                     return (
                       <tr key={v.id} className="hover:bg-slate-50/70 transition-colors">
@@ -509,21 +550,33 @@ export default function AdminDptPage() {
                         <td className="py-3 px-4 text-center">
                           <span
                             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                              isVoted
+                              isSelesai
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isMengerjakan
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
                                 : 'bg-slate-100 text-slate-600 border-slate-200'
                             }`}
                           >
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${
-                                isVoted ? 'bg-emerald-500' : 'bg-slate-400'
+                                isSelesai
+                                  ? 'bg-emerald-500'
+                                  : isMengerjakan
+                                  ? 'bg-amber-500 animate-pulse'
+                                  : 'bg-slate-400'
                               }`}
                             />
-                            {isVoted ? 'Selesai' : 'Belum'}
+                            {isSelesai ? 'Selesai' : isMengerjakan ? 'Mengerjakan' : 'Belum'}
                           </span>
                         </td>
-                        <td className="py-3 px-5 text-right font-mono text-slate-500 text-[11px]">
-                          {v.votedAt || '-'}
+                        <td className="py-3 px-5 text-right font-mono text-[11px]">
+                          {isMengerjakan ? (
+                            <span className="text-amber-600 font-bold animate-pulse">{waktuMemilihDisplay}</span>
+                          ) : isSelesai ? (
+                            <span className="text-emerald-700 font-semibold">{waktuMemilihDisplay}</span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </td>
                         {/* Kolom Aksi Hapus Per Baris */}
                         <td className="px-6 py-4 text-center">
@@ -680,7 +733,7 @@ export default function AdminDptPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all shadow-sm cursor-pointer disabled:opacity-50"
                 >
                   {isSubmitting ? 'Menyimpan...' : 'Simpan ke DPT'}
                 </button>
@@ -744,7 +797,7 @@ export default function AdminDptPage() {
                   type="button"
                   onClick={handleProcessImport}
                   disabled={isImporting}
-                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all shadow-sm cursor-pointer disabled:opacity-50"
                 >
                   {isImporting ? 'Mengimpor...' : 'Proses & Simpan ke DB'}
                 </button>

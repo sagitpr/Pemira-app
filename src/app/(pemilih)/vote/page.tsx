@@ -57,12 +57,13 @@ function VoteContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Current Step: 0 = Penugasan Bilik, 1 = Validasi Pemilih, 2 = BEM, 3 = HIMA, 4 = Konfirmasi, 5 = Selesai
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 03');
   const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(3);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [isTokenExpired, setIsTokenExpired] = useState<boolean>(false);
+  const [isWaitingQueue, setIsWaitingQueue] = useState<boolean>(false);
+  const [startVoteAt, setStartVoteAt] = useState<string>('');
   const [dbCandidatesLoaded, setDbCandidatesLoaded] = useState<boolean>(false);
   const [dbBemCandidates, setDbBemCandidates] = useState<Candidate[]>([]);
   const [dbHimaCandidates, setDbHimaCandidates] = useState<Candidate[]>([]);
@@ -141,9 +142,10 @@ function VoteContent() {
             return;
           }
           if (data?.waiting) {
-            setSessionError('Seluruh bilik suara sedang penuh. Mohon menunggu antrean atau scan ulang proyektor.');
+            setIsWaitingQueue(true);
             return;
           } else if (data?.success) {
+            setIsWaitingQueue(false);
             setAssignedBoothName(data.boothName || rawBooth);
             setAssignedBoothNumber(data.boothNumber || 3);
           }
@@ -183,24 +185,85 @@ function VoteContent() {
     initSession();
   }, [searchParams]);
 
-  // 2. Real-time NIM detection
+  // Listener antrean bilik ketika isWaitingQueue === true
+  useEffect(() => {
+    if (!isWaitingQueue) return;
+
+    const retryAssign = async () => {
+      try {
+        const res = await fetch('/api/vote/assign-booth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        const data = await res.json();
+        if (data?.success && data?.boothNumber) {
+          setAssignedBoothName(data.boothName || `Bilik 0${data.boothNumber}`);
+          setAssignedBoothNumber(data.boothNumber);
+          setIsWaitingQueue(false);
+          setSessionError(null);
+          showToast?.(`Bilik 0${data.boothNumber} telah tersedia untuk Anda!`, 'success');
+        }
+      } catch {}
+    };
+
+    const interval = setInterval(retryAssign, 3000);
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('booth-queue-listener')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, (payload: any) => {
+        const st = (payload?.new?.status || '').toUpperCase();
+        if (st === 'TERSEDIA' || st === 'KOSONG') {
+          retryAssign();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [isWaitingQueue, showToast]);
+
+  // 2. Real-time NIM detection with Supabase lookup
   useEffect(() => {
     if (!inputNim) {
       setDetectedVoter(null);
       return;
     }
+    const cleanNim = inputNim.trim();
     const safeVoters = voters || [];
-    const found = safeVoters.find((v) => v?.nim?.trim() === inputNim?.trim());
+    const found = safeVoters.find((v) => v?.nim?.trim() === cleanNim);
     if (found) {
       setDetectedVoter(found);
     } else {
       setDetectedVoter({
-        nim: inputNim,
+        nim: cleanNim,
         name: 'Mahasiswa UBTH',
         facultyId: 'FTB',
         prodiName: 'Bisnis Digital',
         status: 'belum',
       });
+      (async () => {
+        try {
+          const supabase = createClient();
+          const { data } = await supabase
+            .from('voters')
+            .select('*')
+            .eq('nim', cleanNim)
+            .single();
+          if (data) {
+            setDetectedVoter({
+              nim: data.nim,
+              name: data.name,
+              facultyId: data.faculty_id || data.facultyId || 'FTB',
+              prodiName: data.prodi_name || data.prodiName || 'Bisnis Digital',
+              status: data.voting_status || (data.has_voted ? 'selesai' : 'belum'),
+            });
+          }
+        } catch {}
+      })();
     }
   }, [inputNim, voters]);
 
@@ -279,11 +342,27 @@ function VoteContent() {
     }
   }, [currentStep, isAudioMuted, router, showToast]);
 
-  // Step 1 -> 2
+  // Step 1 -> 2: Lanjut Memilih & Update status MENGERJAKAN
   const handleProceedToStep2 = async () => {
     if (!detectedVoter) {
       showToast?.('Masukkan NIM mahasiswa yang valid.', 'error');
       return;
+    }
+
+    const nowIso = new Date().toISOString();
+    setStartVoteAt(nowIso);
+
+    try {
+      const supabase = createClient();
+      await supabase
+        .from('voters')
+        .update({
+          voting_status: 'MENGERJAKAN',
+          start_vote_at: nowIso,
+        })
+        .eq('nim', detectedVoter?.nim);
+    } catch (e) {
+      console.warn('Update voting_status MENGERJAKAN note:', e);
     }
 
     try {
@@ -307,11 +386,11 @@ function VoteContent() {
       );
     } catch {}
 
-    if (!selectedBemId && (bemCandidates || []).length > 0) {
-      setSelectedBemId(String(bemCandidates[0]?.id));
+    if (!selectedBemId && (safeBemList || []).length > 0) {
+      setSelectedBemId(String(safeBemList[0]?.id));
     }
-    if (!selectedHimaId && (himaCandidates || []).length > 0) {
-      setSelectedHimaId(String(himaCandidates[0]?.id));
+    if (!selectedHimaId && (filteredHimaList || []).length > 0) {
+      setSelectedHimaId(String(filteredHimaList[0]?.id));
     }
 
     setCurrentStep(2);
@@ -319,13 +398,21 @@ function VoteContent() {
 
   // Step 4 -> 5: Final atomic vote
   const handleFinalSubmit = async () => {
-    if (!selectedBemId || !selectedHimaId) {
-      showToast?.('Wajib memilih Paslon BEM dan Paslon HIMA.', 'error');
+    if (!selectedBemId) {
+      showToast?.('Wajib memilih Paslon BEM.', 'error');
+      return;
+    }
+    if (filteredHimaList.length > 0 && !selectedHimaId) {
+      showToast?.('Wajib memilih Paslon HIMA untuk program studi Anda.', 'error');
       return;
     }
 
     setIsSubmitting(true);
     const voterNim = detectedVoter?.nim || inputNim || '';
+    let durationSeconds = 0;
+    if (startVoteAt) {
+      durationSeconds = Math.max(1, Math.round((Date.now() - new Date(startVoteAt).getTime()) / 1000));
+    }
 
     try {
       await fetch('/api/vote/submit', {
@@ -335,16 +422,17 @@ function VoteContent() {
           nim: voterNim,
           boothNumber: assignedBoothNumber,
           bemCandidateId: selectedBemId,
-          himaCandidateId: selectedHimaId,
+          himaCandidateId: selectedHimaId || 'none',
+          durationSeconds,
         }),
       });
 
-      castVote?.(voterNim, selectedBemId, selectedHimaId);
+      castVote?.(voterNim, selectedBemId, selectedHimaId || '');
       updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
       setIsSubmitting(false);
       setCurrentStep(5);
     } catch {
-      castVote?.(voterNim, selectedBemId, selectedHimaId);
+      castVote?.(voterNim, selectedBemId, selectedHimaId || '');
       updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
       setIsSubmitting(false);
       setCurrentStep(5);
@@ -363,8 +451,53 @@ function VoteContent() {
   const safeHimaList = dbCandidatesLoaded
     ? dbHimaCandidates
     : (himaCandidates && himaCandidates.length > 0 ? himaCandidates : []);
+
+  const voterProdi = (detectedVoter?.prodiName || detectedVoter?.prodi || '').trim().toLowerCase();
+
+  const filteredHimaList = (safeHimaList || []).filter((cand) => {
+    if (cand.type && cand.type !== 'HIMA') return false;
+    const candProdi = (cand.prodi_id || cand.prodiId || (cand as any).prodi || (cand as any).prodi_name || '').trim().toLowerCase();
+    if (!voterProdi) return true;
+    return (
+      candProdi === voterProdi ||
+      candProdi.includes(voterProdi) ||
+      voterProdi.includes(candProdi)
+    );
+  });
+
   const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
-  const selectedHimaCandidate = safeHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || safeHimaList[0] || null;
+  const selectedHimaCandidate = filteredHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || filteredHimaList[0] || null;
+
+  // 1. TAMPILAN ANTREAN BILIK PENUH
+  if (isWaitingQueue) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 select-none font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-blue-200 shadow-xl text-center space-y-5 animate-in fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center border border-blue-200 shadow-xs relative">
+            <Monitor className="w-8 h-8" />
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 animate-ping" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">
+              Semua Bilik Suara Sedang Penuh
+            </h2>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
+              Anda sedang berada dalam antrean digital. Mohon tunggu, Anda akan otomatis diarahkan begitu bilik tersedia.
+            </p>
+          </div>
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce" />
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
+            <span className="text-xs font-bold text-slate-700 ml-1">Menunggu bilik kosong...</span>
+          </div>
+          <p className="text-[11px] text-slate-400">
+            Sistem secara otomatis mengecek ketersediaan bilik setiap 3 detik
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // 1. TAMPILAN PERINGATAN SPESIFIK TOKEN QR KEDALUWARSA
   if (isTokenExpired) {
@@ -860,101 +993,117 @@ function VoteContent() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {(safeHimaList || []).map((cand) => {
-                      const isSelected = String(selectedHimaId) === String(cand?.id);
-                      const displayPhoto = cand?.photoUrl || cand?.photo_url;
-                      const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
-                      const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                      const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
+                  {filteredHimaList.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-blue-50/60 border border-blue-200 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 mx-auto flex items-center justify-center">
+                        <Info className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">
+                          Tidak ada pemilihan HIMA untuk Program Studi {detectedVoter?.prodiName || 'Anda'}
+                        </h4>
+                        <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
+                          Anda hanya memberikan suara untuk Pemilihan BEM Universitas. Silakan lanjutkan ke tahap konfirmasi.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {filteredHimaList.map((cand) => {
+                        const isSelected = String(selectedHimaId) === String(cand?.id);
+                        const displayPhoto = cand?.photoUrl || cand?.photo_url;
+                        const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
+                        const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
+                        const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
 
-                      return (
-                        <div
-                          key={String(cand?.id || displayNumber)}
-                          onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
-                          className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'border-slate-900 bg-slate-50/50 ring-4 ring-slate-900/10 shadow-lg'
-                              : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
-                          }`}
-                        >
-                          <div>
-                            {/* Header Kartu & Badge Nomor Urut Tegas */}
-                            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
-                              <div>
-                                <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
-                                  Nomor Urut {displayNumber}: Pasangan Calon HIMA
-                                </span>
-                                <h4 className="text-base font-black text-slate-900 mt-0.5">
-                                  {displayName} {displayVice ? `& ${displayVice}` : ''}
-                                </h4>
-                                <p className="text-xs text-slate-500 italic mt-0.5">
-                                  &ldquo;{cand?.tagline || 'Sinergi Bersama Memajukan Potensi Mahasiswa Jurusan'}&rdquo;
-                                </p>
-                              </div>
-                              <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                                {displayNumber}
-                              </div>
-                            </div>
-
-                            {/* Foto Paslon (Wadah Melengkung Berbingkai Rapi 3:4) */}
-                            <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                              {displayPhoto ? (
-                                <img
-                                  src={displayPhoto}
-                                  alt={displayName}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="text-center p-3">
-                                  <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                                    {displayNumber}
-                                  </div>
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                                    Paslon {displayNumber}
+                        return (
+                          <div
+                            key={String(cand?.id || displayNumber)}
+                            onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
+                            className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                              isSelected
+                                ? 'border-slate-900 bg-slate-50/50 ring-4 ring-slate-900/10 shadow-lg'
+                                : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
+                            }`}
+                          >
+                            <div>
+                              {/* Header Kartu & Badge Nomor Urut Tegas */}
+                              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
+                                <div>
+                                  <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
+                                    Nomor Urut {displayNumber}: Pasangan Calon HIMA
                                   </span>
+                                  <h4 className="text-base font-black text-slate-900 mt-0.5">
+                                    {displayName} {displayVice ? `& ${displayVice}` : ''}
+                                  </h4>
+                                  <p className="text-xs text-slate-500 italic mt-0.5">
+                                    &ldquo;{cand?.tagline || 'Sinergi Bersama Memajukan Potensi Mahasiswa Jurusan'}&rdquo;
+                                  </p>
                                 </div>
-                              )}
-                            </div>
-
-                            {/* Tombol Lihat Visi Misi */}
-                            <div className="text-center">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDetailModalCandidate(cand);
-                                  setIsDetailModalOpen(true);
-                                }}
-                                className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Lihat Visi &amp; Misi Resmi</span>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Tombol Pilihan Solid Pill */}
-                          <div className="mt-5">
-                            {isSelected ? (
-                              <div className="w-full bg-slate-900 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
-                                <Check className="w-4 h-4 stroke-[3]" />
-                                <span>Terpilih sebagai Pilihan Anda</span>
+                                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                                  {displayNumber}
+                                </div>
                               </div>
-                            ) : (
+
+                              {/* Foto Paslon */}
+                              <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
+                                {displayPhoto ? (
+                                  <img
+                                    src={displayPhoto}
+                                    alt={displayName}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="text-center p-3">
+                                    <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
+                                      {displayNumber}
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                                      Paslon {displayNumber}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Tombol Lihat Visi Misi */}
+                              <div className="text-center">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDetailModalCandidate(cand);
+                                    setIsDetailModalOpen(true);
+                                  }}
+                                  className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Lihat Visi &amp; Misi Resmi</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Tombol Pilihan Solid Pill */}
+                            <div className="mt-5">
+                              {isSelected ? (
+                                <div className="w-full bg-blue-600 text-white font-medium py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
+                                  <Check className="w-4 h-4 stroke-[3]" />
+                                  <span>Terpilih sebagai Pilihan Anda</span>
+                                </div>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
-                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
+                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-blue-600 hover:bg-slate-50 font-medium py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
                                 >
                                   Pilih Nomor Urut {displayNumber}
                                 </button>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                     <button
@@ -967,9 +1116,9 @@ function VoteContent() {
 
                     <button
                       type="button"
-                      disabled={!selectedHimaId}
+                      disabled={filteredHimaList.length > 0 && !selectedHimaId}
                       onClick={() => setCurrentStep(4)}
-                      className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-md shadow-slate-900/15 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       <span>Lanjut ke Konfirmasi</span>
                       <ArrowRight className="w-4 h-4" />
@@ -1006,9 +1155,15 @@ function VoteContent() {
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">Pilihan HIMA :</span>
-                      <span className="font-bold text-slate-900 font-mono">
-                        Paslon {selectedHimaCandidate?.candidate_number ?? selectedHimaCandidate?.candidateNumber ?? selectedHimaCandidate?.number ?? '01'} ({selectedHimaCandidate?.leader_name || selectedHimaCandidate?.leaderName || '-'})
-                      </span>
+                      {filteredHimaList.length === 0 ? (
+                        <span className="font-bold text-slate-500 italic">
+                          Tidak Ada Pemilihan (Dilewati)
+                        </span>
+                      ) : (
+                        <span className="font-bold text-slate-900 font-mono">
+                          Paslon {selectedHimaCandidate?.candidate_number ?? selectedHimaCandidate?.candidateNumber ?? selectedHimaCandidate?.number ?? '01'} ({selectedHimaCandidate?.leader_name || selectedHimaCandidate?.leaderName || '-'})
+                        </span>
+                      )}
                     </div>
                   </div>
 

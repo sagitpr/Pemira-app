@@ -20,6 +20,10 @@ export interface Voter {
   prodiName: string;
   angkatan: string;
   status: 'belum' | 'memilih' | 'selesai';
+  voting_status?: 'BELUM' | 'MENGERJAKAN' | 'SELESAI';
+  start_vote_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
   votedAt?: string;
   boothId?: string;
 }

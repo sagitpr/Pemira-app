@@ -1,11 +1,22 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAdmin } from '@/context/AdminContext';
-import { FACULTIES_DATA } from '@/data/voteMockData';
+import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
 import AdminHeader from '@/components/admin/AdminHeader';
 import BeritaAcaraModal from '@/components/admin/BeritaAcaraModal';
+import { createClient } from '@/lib/supabase/client';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import {
   Clock,
   Users,
@@ -15,28 +26,215 @@ import {
   Search,
   BookOpen,
   EyeOff,
+  ShieldCheck,
+  Lock,
 } from 'lucide-react';
 
 export default function AdminRekapPage() {
   const {
-    globalSummary,
-    bemResults,
-    himaCandidates,
-    prodiRekapList,
     isSensorActive,
+    bemCandidates: contextBem,
+    himaCandidates: contextHima,
   } = useAdmin();
 
   const [activeFacultyFilter, setActiveFacultyFilter] = useState<'ALL' | 'FTB' | 'FIKES' | 'FARMASI'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [isBeritaAcaraOpen, setIsBeritaAcaraOpen] = useState(false);
 
-  const filteredProdis = prodiRekapList.filter((p) => {
+  // Real-time Stats dari Supabase
+  const [totalDpt, setTotalDpt] = useState(0);
+  const [suaraMasuk, setSuaraMasuk] = useState(0);
+  const [belumMemilih, setBelumMemilih] = useState(0);
+  const [tingkatPartisipasi, setTingkatPartisipasi] = useState(0);
+  const [rawVoters, setRawVoters] = useState<any[]>([]);
+
+  // Candidates & Votes Realtime State
+  const [bemList, setBemList] = useState<Candidate[]>(contextBem || []);
+  const [himaList, setHimaList] = useState<Candidate[]>(contextHima || []);
+  const [candidateVoteCounts, setCandidateVoteCounts] = useState<Record<string, number>>({});
+
+  // Timeline Multi-Line Chart State
+  const [chartType, setChartType] = useState<'BEM' | 'HIMA'>('BEM');
+  const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
+
+  // 1. Fetch DPT & Realtime Stats
+  const fetchVotersAndStats = async () => {
+    try {
+      const supabase = createClient();
+      const { data: votersData } = await supabase.from('voters').select('*');
+      if (votersData) {
+        setRawVoters(votersData);
+        const tDpt = votersData.length;
+        const sMasuk = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
+        const bMemilih = Math.max(0, tDpt - sMasuk);
+        const part = tDpt > 0 ? Number(((sMasuk / tDpt) * 100).toFixed(1)) : 0;
+        setTotalDpt(tDpt);
+        setSuaraMasuk(sMasuk);
+        setBelumMemilih(bMemilih);
+        setTingkatPartisipasi(part);
+      }
+    } catch (err) {
+      console.warn('Fetch voters in rekap error:', err);
+    }
+  };
+
+  // 2. Fetch Candidates & Realtime Votes
+  const fetchCandidatesAndVotes = async () => {
+    try {
+      const supabase = createClient();
+      const { data: candsData } = await supabase.from('candidates').select('*');
+      if (candsData && candsData.length > 0) {
+        setBemList(candsData.filter((c: any) => c.type === 'BEM'));
+        setHimaList(candsData.filter((c: any) => c.type === 'HIMA'));
+      }
+
+      const { data: votesData } = await supabase.from('votes').select('candidate_id');
+      if (votesData) {
+        const counts: Record<string, number> = {};
+        for (const v of votesData) {
+          const cid = String(v.candidate_id);
+          counts[cid] = (counts[cid] || 0) + 1;
+        }
+        setCandidateVoteCounts(counts);
+      }
+    } catch (err) {
+      console.warn('Fetch candidates & votes error:', err);
+    }
+  };
+
+  // 3. Fetch Timeline Suara (Interval 10 Menit)
+  const fetchTimeline = async (type = chartType) => {
+    try {
+      const res = await fetch(`/api/admin/stats/timeline?type=${type}`);
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.data)) {
+        setTimelineData(json.data);
+      }
+    } catch (err) {
+      console.warn('Gagal memuat timeline suara di rekap:', err);
+    }
+  };
+
+  useEffect(() => {
+    setIsMounted(true);
+    fetchVotersAndStats();
+    fetchCandidatesAndVotes();
+    fetchTimeline(chartType);
+
+    const interval = setInterval(() => {
+      fetchVotersAndStats();
+      fetchCandidatesAndVotes();
+      fetchTimeline(chartType);
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [chartType]);
+
+  // Realtime Supabase Listeners
+  useEffect(() => {
+    const supabase = createClient();
+
+    const votersChannel = supabase
+      .channel('realtime_voters_sync_rekap')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        fetchVotersAndStats();
+      })
+      .subscribe();
+
+    const votesChannel = supabase
+      .channel('realtime_votes_sync_rekap')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => {
+        fetchCandidatesAndVotes();
+        fetchTimeline(chartType);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(votersChannel);
+      supabase.removeChannel(votesChannel);
+    };
+  }, [chartType]);
+
+  // Bangun daftar 14 Program Studi secara dinamis dari FACULTIES_DATA & rawVoters
+  const allProdisDetailed = FACULTIES_DATA.flatMap((fac) =>
+    fac.prodis.map((p) => {
+      const pNameLower = p.name.toLowerCase();
+      const pIdLower = p.id.toLowerCase();
+
+      // Cari pemilih dari database yang jurusannya cocok
+      const matchedVoters = rawVoters.filter((v: any) => {
+        const vProdi = (v.prodi_name || v.prodiName || v.prodi || '').trim().toLowerCase();
+        return (
+          vProdi === pNameLower ||
+          vProdi.includes(pNameLower) ||
+          pNameLower.includes(vProdi) ||
+          vProdi === pIdLower
+        );
+      });
+
+      const pTotalDpt = matchedVoters.length;
+      const pSuaraMasuk = matchedVoters.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
+      const pBelum = Math.max(0, pTotalDpt - pSuaraMasuk);
+      const pPartisipasi = pTotalDpt > 0 ? Number(((pSuaraMasuk / pTotalDpt) * 100).toFixed(1)) : 0;
+
+      return {
+        id: p.id,
+        name: p.name,
+        facultyId: p.facultyId,
+        facultyName: p.facultyName,
+        totalDpt: pTotalDpt,
+        suaraMasuk: pSuaraMasuk,
+        belumMemilih: pBelum,
+        partisipasi: pPartisipasi,
+      };
+    })
+  );
+
+  const filteredProdis = allProdisDetailed.filter((p) => {
     const matchFaculty = activeFacultyFilter === 'ALL' || p.facultyId === activeFacultyFilter;
     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchFaculty && matchSearch;
   });
 
-  const totalSuaraBem = bemResults.reduce((sum, r) => sum + (r.votes || 0), 0);
+  // Hitung total suara BEM
+  const totalSuaraBem = bemList.reduce((sum, c) => {
+    const votes = candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0;
+    return sum + votes;
+  }, 0);
+
+  // Kunci kandidat pada timeline
+  const candidateKeys = Array.from(
+    new Set(timelineData.flatMap((d) => Object.keys(d).filter((k) => k !== 'time')))
+  );
+
+  // Custom Tooltip Recharts dengan Sensor Mode
+  const TimelineTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl border border-slate-700 text-xs font-sans min-w-[160px]">
+          <p className="font-bold text-slate-300 border-b border-slate-700/80 pb-1 mb-2 flex items-center gap-1.5 font-mono text-[11px]">
+            <Clock className="w-3.5 h-3.5 text-blue-400" />
+            <span>Pukul {label} WIB</span>
+          </p>
+          <div className="space-y-1.5">
+            {payload.map((entry: any, index: number) => (
+              <div key={`item-${index}`} className="flex items-center justify-between gap-4">
+                <span className="flex items-center gap-1.5 font-bold" style={{ color: entry.color }}>
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                  {entry.name}:
+                </span>
+                <span className="font-mono font-bold text-slate-100">
+                  {isSensorActive ? '*** Suara' : `${Number(entry.value).toLocaleString('id-ID')} Suara`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
@@ -47,7 +245,7 @@ export default function AdminRekapPage() {
         {/* SECTION HEADER: REKAPITULASI SUARA REAL-TIME */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-2xs">
+            <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs">
               <Clock className="w-5 h-5" />
             </div>
             <div>
@@ -65,28 +263,28 @@ export default function AdminRekapPage() {
               onClick={() => setIsBeritaAcaraOpen(true)}
               className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer"
             >
-              <FileText className="w-4 h-4 text-[#0284c7]" />
+              <FileText className="w-4 h-4 text-blue-600" />
               <span>Berita Acara</span>
             </button>
           </div>
         </div>
 
-        {/* 4 STAT CARDS (DENGAN SENSOR MODE) */}
+        {/* 4 STAT CARDS REAL-TIME */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Total DPT */}
           <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">TOTAL DPT</span>
-              <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
                 <Users className="w-4 h-4" />
               </div>
             </div>
             <div>
               <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-                {globalSummary.totalDpt.toLocaleString('id-ID')}
+                {totalDpt.toLocaleString('id-ID')}
               </div>
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                {globalSummary.totalDpt > 0 ? 'Pemilih Tetap Terdaftar' : 'Belum ada data DPT diinput'}
+                {totalDpt > 0 ? 'Pemilih Tetap Terdaftar' : 'Belum ada data DPT diinput'}
               </p>
             </div>
           </div>
@@ -111,11 +309,11 @@ export default function AdminRekapPage() {
                 </div>
               ) : (
                 <div className="text-3xl font-black text-emerald-600 tracking-tight font-mono">
-                  {globalSummary.suaraMasuk.toLocaleString('id-ID')}
+                  {suaraMasuk.toLocaleString('id-ID')}
                 </div>
               )}
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                {globalSummary.suaraMasuk > 0 ? 'Suara Sah Terverifikasi' : 'Menunggu suara pertama'}
+                {suaraMasuk > 0 ? 'Suara Sah Terverifikasi' : 'Menunggu suara pertama'}
               </p>
             </div>
           </div>
@@ -130,10 +328,10 @@ export default function AdminRekapPage() {
             </div>
             <div>
               <div className="text-3xl font-black text-amber-600 tracking-tight font-mono">
-                {globalSummary.belumMemilih.toLocaleString('id-ID')}
+                {belumMemilih.toLocaleString('id-ID')}
               </div>
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                {globalSummary.totalDpt > 0 ? 'Sisa DPT Belum Hadir' : 'Menunggu input DPT'}
+                {totalDpt > 0 ? 'Sisa DPT Belum Hadir' : 'Menunggu input DPT'}
               </p>
             </div>
           </div>
@@ -142,7 +340,7 @@ export default function AdminRekapPage() {
           <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">PARTISIPASI</span>
-              <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
                 <TrendingUp className="w-4 h-4" />
               </div>
             </div>
@@ -158,125 +356,257 @@ export default function AdminRekapPage() {
                 </div>
               ) : (
                 <>
-                  <div className="text-3xl font-black text-[#0284c7] tracking-tight font-mono">
-                    {globalSummary.tingkatPartisipasi}%
+                  <div className="text-3xl font-black text-blue-600 tracking-tight font-mono">
+                    {tingkatPartisipasi}%
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
                     <div
-                      className="bg-[#0284c7] h-full rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(globalSummary.tingkatPartisipasi, 100)}%` }}
+                      className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, tingkatPartisipasi)}%` }}
                     />
                   </div>
                 </>
               )}
-              <p className="text-[11px] text-slate-400 font-medium mt-1">Persentase kehadiran bilik</p>
+              <p className="text-[11px] text-slate-400 font-medium mt-1">
+                Persentase Partisipasi Keseluruhan
+              </p>
             </div>
           </div>
         </div>
 
-        {/* SECTION 1: HASIL SUARA BEM UNIVERSITAS 2026 */}
-        <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
-            <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-[#0284c7]" />
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Hasil Suara BEM Universitas 2026
-              </h3>
-            </div>
+        {/* SECTION: MULTI-LINE CHART DINAMIKA PEROLEHAN SUARA PASLON (INTERVAL 10 MENIT) */}
+        <section className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-slate-400">
-                {bemResults.length} Paslon Terdaftar
-              </span>
-              <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                Total Suara: {isSensorActive ? '***' : totalSuaraBem.toLocaleString('id-ID')}
-              </span>
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Dinamika Perolehan Suara Paslon (Interval 10 Menit)</span>
+                  {isSensorActive && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      <span>Mode Sensor Aktif</span>
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs text-slate-500 font-medium">
+                  Tren akumulasi suara masuk per pasangan calon diperbarui otomatis per interval 10 menit
+                </p>
+              </div>
+            </div>
+
+            {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setChartType('BEM')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartType === 'BEM'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                BEM Universitas
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('HIMA')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartType === 'HIMA'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                HIMA
+              </button>
             </div>
           </div>
 
-          {bemResults.length === 0 ? (
-            <div className="p-10 rounded-2xl border-2 border-dashed border-slate-200 text-center flex flex-col items-center">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
-                <Users className="w-6 h-6" />
+          {/* Chart Wrapper Container with Sensor Blur Effect & Overlay */}
+          <div className="relative min-h-[320px] w-full">
+            {isSensorActive && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px] pointer-events-none rounded-2xl">
+                <div className="px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wider shadow-lg flex items-center gap-2 border border-amber-400">
+                  <ShieldCheck className="h-5 w-5" />
+                  <span>MODE SENSOR KPUM AKTIF</span>
+                </div>
+                <p className="text-[11px] text-slate-600 font-bold mt-2 bg-white/80 px-3 py-1 rounded-full shadow-2xs">
+                  Aktivasi mode saksi / rekap publik untuk membuka sensor grafik suara
+                </p>
               </div>
-              <h4 className="text-sm font-bold text-slate-800">Belum ada data paslon.</h4>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                Silakan tambahkan kandidat melalui menu Kelola Paslon untuk memulai tabulasi suara BEM.
-              </p>
-              <Link
-                href="/admin/paslon"
-                className="mt-4 px-4 py-2 rounded-xl bg-[#0284c7] text-white text-xs font-bold shadow-md shadow-sky-500/20"
-              >
-                + Kelola Paslon
-              </Link>
+            )}
+
+            <div
+              className={`w-full h-80 transition-all duration-300 ${
+                isSensorActive ? 'filter blur-[8px] pointer-events-none select-none' : ''
+              }`}
+            >
+              {isMounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={timelineData}
+                    margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                    />
+                    <YAxis
+                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                      allowDecimals={false}
+                      tickFormatter={(val) => (isSensorActive ? '***' : val)}
+                    />
+                    <Tooltip content={<TimelineTooltip />} />
+                    <Legend
+                      wrapperStyle={{ paddingTop: 16, fontSize: 12, fontWeight: 700 }}
+                      iconType="circle"
+                    />
+
+                    {/* Render garis setiap paslon */}
+                    <Line
+                      type="monotone"
+                      dataKey="Paslon 01"
+                      name="Paslon 01"
+                      stroke="#2563eb"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#2563eb', strokeWidth: 2, stroke: '#ffffff' }}
+                      activeDot={{ r: 6, stroke: '#2563eb', strokeWidth: 2 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Paslon 02"
+                      name="Paslon 02"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
+                      activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
+                    />
+                    {candidateKeys.includes('Paslon 03') && (
+                      <Line
+                        type="monotone"
+                        dataKey="Paslon 03"
+                        name="Paslon 03"
+                        stroke="#f59e0b"
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#ffffff' }}
+                        activeDot={{ r: 6, stroke: '#f59e0b', strokeWidth: 2 }}
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-slate-50/50 rounded-2xl">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Memuat grafik tren perolehan suara...</span>
+                  </div>
+                </div>
+              )}
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {bemResults.map((cand) => {
-                const votes = cand.votes || 0;
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium mt-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Sinkronisasi otomatis per 20 detik &amp; PostgreSQL Realtime</span>
+            </span>
+            <span className="font-mono text-slate-400">
+              Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : 'Himpunan Mahasiswa (HIMA)'}
+            </span>
+          </div>
+        </section>
+
+        {/* SECTION 1: HASIL SUARA BEM UNIVERSITAS */}
+        <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+            <div className="flex items-center gap-2.5">
+              <span className="w-3 h-3 rounded-full bg-blue-600" />
+              <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                Hasil Suara Pemilihan Presiden BEM Universitas
+              </h3>
+            </div>
+            <span className="text-xs font-semibold text-slate-400 font-mono">
+              Total Suara Sah BEM: {isSensorActive ? '***' : totalSuaraBem.toLocaleString('id-ID')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {bemList.length === 0 ? (
+              <div className="col-span-2 p-8 rounded-2xl border-2 border-dashed border-slate-200 text-center">
+                <p className="text-xs font-bold text-slate-500">Belum ada Paslon BEM terdaftar.</p>
+              </div>
+            ) : (
+              bemList.map((cand) => {
+                const votes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
                 const pctString = totalSuaraBem > 0 ? `${((votes / totalSuaraBem) * 100).toFixed(1)}%` : '0.0%';
                 const pctNum = totalSuaraBem > 0 ? Number(((votes / totalSuaraBem) * 100).toFixed(1)) : 0;
+                const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
 
                 return (
                   <div
                     key={cand.id}
-                    className={`p-6 rounded-2xl border transition-all ${
-                      cand.isLeading
-                        ? 'bg-sky-50/40 border-sky-200 ring-2 ring-sky-100 shadow-xs'
-                        : 'bg-white border-slate-100 shadow-2xs'
-                    }`}
+                    className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
                   >
-                    <div className="flex items-start justify-between mb-4">
-                      <span className="w-8 h-8 rounded-lg bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center">
-                        {cand.number}
-                      </span>
-                      {cand.isLeading && (
-                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          Memimpin
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
+                          {displayNumber}
                         </span>
-                      )}
-                    </div>
-
-                    <h4 className="text-base font-bold text-slate-900 leading-snug">{cand.name}</h4>
-                    <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      {cand.leaderName} &amp; {cand.viceLeaderName}
-                    </p>
-
-                    <div className="mt-5 pt-3 border-t border-slate-100">
-                      <div className="flex justify-between items-baseline mb-2">
-                        {isSensorActive ? (
-                          <>
-                            <span className="text-xl font-black text-amber-600 font-mono filter blur-xs select-none">
-                              ***
-                            </span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
-                              Disensor KPUM
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-2xl font-black text-slate-900 font-mono">
-                              {votes.toLocaleString('id-ID')}
-                            </span>
-                            <span className="text-xs font-bold text-slate-600 font-mono">{pctString}</span>
-                          </>
-                        )}
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                          Paslon Nomor {displayNumber}
+                        </span>
                       </div>
+                      <h4 className="text-base font-bold text-slate-900">
+                        {cand.leader_name || cand.leaderName || 'Calon Ketua'} &amp; {cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}
+                      </h4>
+                      <p className="text-xs text-slate-500 italic mt-1 line-clamp-1">
+                        &ldquo;{cand.slogan || cand.tagline || 'Menuju Kampus BTH Berkemajuan'}&rdquo;
+                      </p>
 
-                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                        <div
-                          className="bg-[#0284c7] h-full rounded-full transition-all duration-500"
-                          style={{ width: `${isSensorActive ? 50 : pctNum}%` }}
-                        />
+                      <div className="mt-5 pt-3 border-t border-slate-100">
+                        <div className="flex justify-between items-baseline mb-2">
+                          {isSensorActive ? (
+                            <>
+                              <span className="text-xl font-black text-amber-600 font-mono filter blur-xs select-none">
+                                ***
+                              </span>
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                                Disensor KPUM
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-2xl font-black text-slate-900 font-mono">
+                                {votes.toLocaleString('id-ID')}
+                              </span>
+                              <span className="text-xs font-bold text-slate-600 font-mono">{pctString}</span>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${isSensorActive ? 50 : pctNum}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
         </section>
 
-        {/* SECTION 2: HASIL SUARA HIMPUNAN MAHASISWA (HIMA) */}
+        {/* SECTION 2: HASIL SUARA HIMA */}
         <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
             <div className="flex items-center gap-2.5">
@@ -286,11 +616,11 @@ export default function AdminRekapPage() {
               </h3>
             </div>
             <span className="text-xs font-semibold text-slate-400">
-              {himaCandidates.length} Paslon HIMA Terdaftar
+              {himaList.length} Paslon HIMA Terdaftar
             </span>
           </div>
 
-          {himaCandidates.length === 0 ? (
+          {himaList.length === 0 ? (
             <div className="p-10 rounded-2xl border-2 border-dashed border-slate-200 text-center flex flex-col items-center">
               <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 border border-amber-100">
                 <BookOpen className="w-6 h-6" />
@@ -301,18 +631,18 @@ export default function AdminRekapPage() {
               </p>
               <Link
                 href="/admin/paslon"
-                className="mt-4 px-4 py-2 rounded-xl bg-[#0284c7] text-white text-xs font-bold shadow-md shadow-sky-500/20"
+                className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-sm transition-all"
               >
-                + Tambah Paslon HIMA
+                + Tambah Paslon
               </Link>
             </div>
           ) : (
             <div className="space-y-6">
               {FACULTIES_DATA.map((fac) => {
-                const facCandidates = himaCandidates.filter((c) => {
+                const facCandidates = himaList.filter((c) => {
                   const cFac = (c.facultyId || c.faculty_id || '').toUpperCase();
                   const cProdi = (c.prodiId || c.prodi_id || '').toLowerCase();
-                  return cFac === fac.id || fac.prodis.some((p) => p.id.toLowerCase() === cProdi);
+                  return cFac === fac.id || fac.prodis.some((p) => p.id.toLowerCase() === cProdi || p.name.toLowerCase().includes(cProdi));
                 });
 
                 if (facCandidates.length === 0) return null;
@@ -335,16 +665,9 @@ export default function AdminRekapPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {facCandidates.map((cand) => {
-                        const candProdiId = cand.prodiId || cand.prodi_id || '';
-                        const prodiMatch = prodiRekapList.find(
-                          (p) => p.id === candProdiId || p.name.toLowerCase().includes(candProdiId.toLowerCase())
-                        );
-                        const candVotes = (cand as any)?.votes ?? (cand as any)?.vote_count ?? 0;
-                        const prodiTotalVotes = prodiMatch ? prodiMatch.suaraMasuk : candVotes;
-                        const pctString = prodiTotalVotes > 0 ? `${((candVotes / prodiTotalVotes) * 100).toFixed(1)}%` : '0.0%';
-                        const pctNum = prodiTotalVotes > 0 ? Number(((candVotes / prodiTotalVotes) * 100).toFixed(1)) : 0;
+                        const candVotes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
                         const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
-                        const prodiName = prodiMatch?.name || candProdiId || fac.shortName;
+                        const candProdi = cand.prodiId || cand.prodi_id || fac.shortName;
 
                         return (
                           <div
@@ -353,11 +676,11 @@ export default function AdminRekapPage() {
                           >
                             <div>
                               <div className="flex items-center justify-between mb-3">
-                                <span className="w-7 h-7 rounded-lg bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center">
+                                <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
                                   {displayNumber}
                                 </span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200 truncate max-w-[140px]">
-                                  {prodiName}
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[140px]">
+                                  {candProdi}
                                 </span>
                               </div>
                               <h5 className="text-sm font-bold text-slate-900 leading-snug">
@@ -380,90 +703,6 @@ export default function AdminRekapPage() {
                                     </span>
                                   </>
                                 ) : (
-                                  <>
-                                    <span className="text-lg font-black text-slate-900 font-mono">
-                                      {candVotes.toLocaleString('id-ID')} Suara
-                                    </span>
-                                    <span className="text-xs font-bold text-slate-600 font-mono">
-                                      {pctString}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-
-                              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                <div
-                                  className="bg-[#0284c7] h-full rounded-full transition-all duration-500"
-                                  style={{ width: `${isSensorActive ? 50 : pctNum}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Kandidat HIMA yang tidak spesifik fakultas (fallback) */}
-              {himaCandidates.filter((c) => {
-                const cFac = (c.facultyId || c.faculty_id || '').toUpperCase();
-                const cProdi = (c.prodiId || c.prodi_id || '').toLowerCase();
-                return !FACULTIES_DATA.some(
-                  (fac) => cFac === fac.id || fac.prodis.some((p) => p.id.toLowerCase() === cProdi)
-                );
-              }).length > 0 && (
-                <div className="p-5 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-4">
-                  <h4 className="text-sm font-black text-slate-900 tracking-tight pb-2 border-b border-slate-200">
-                    Kandidat HIMA Lainnya
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {himaCandidates
-                      .filter((c) => {
-                        const cFac = (c.facultyId || c.faculty_id || '').toUpperCase();
-                        const cProdi = (c.prodiId || c.prodi_id || '').toLowerCase();
-                        return !FACULTIES_DATA.some(
-                          (fac) => cFac === fac.id || fac.prodis.some((p) => p.id.toLowerCase() === cProdi)
-                        );
-                      })
-                      .map((cand) => {
-                        const candVotes = (cand as any)?.votes ?? (cand as any)?.vote_count ?? 0;
-                        const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
-                        return (
-                          <div
-                            key={cand.id}
-                            className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
-                          >
-                            <div>
-                              <div className="flex items-center justify-between mb-3">
-                                <span className="w-7 h-7 rounded-lg bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center">
-                                  {displayNumber}
-                                </span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">
-                                  {cand.facultyId || cand.faculty_id || 'UBTH'}
-                                </span>
-                              </div>
-                              <h5 className="text-sm font-bold text-slate-900 leading-snug">
-                                {cand.leaderName || cand.leader_name || 'Kandidat'} {cand.viceLeaderName || cand.vice_leader_name ? `& ${cand.viceLeaderName || cand.vice_leader_name}` : ''}
-                              </h5>
-                              <p className="text-[11px] text-slate-400 mt-1 line-clamp-1 italic">
-                                &ldquo;{cand.tagline || cand.slogan || 'Menuju HIMA Berprestasi'}&rdquo;
-                              </p>
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t border-slate-100">
-                              <div className="flex justify-between items-baseline mb-1.5">
-                                {isSensorActive ? (
-                                  <>
-                                    <span className="text-lg font-black text-amber-600 font-mono filter blur-xs select-none">
-                                      ***
-                                    </span>
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800">
-                                      Disensor KPUM
-                                    </span>
-                                  </>
-                                ) : (
                                   <span className="text-lg font-black text-slate-900 font-mono">
                                     {candVotes.toLocaleString('id-ID')} Suara
                                   </span>
@@ -473,14 +712,15 @@ export default function AdminRekapPage() {
                           </div>
                         );
                       })}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           )}
         </section>
 
-        {/* SECTION 3: MATRIKS 14 PROGRAM STUDI */}
+        {/* SECTION 3: MATRIKS 14 PROGRAM STUDI (DINAMIS DARI DATABASE VOTERS) */}
         <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-6">
             <div>
@@ -488,7 +728,7 @@ export default function AdminRekapPage() {
                 Matriks 14 Program Studi
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Rincian partisipasi pemilih per jurusan pada Universitas Bakti Tunas Husada.
+                Rincian partisipasi pemilih per jurusan pada Universitas Bakti Tunas Husada terhitung langsung dari DPT.
               </p>
             </div>
 
@@ -501,7 +741,7 @@ export default function AdminRekapPage() {
                   placeholder="Cari program studi..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:outline-hidden focus:border-sky-400"
+                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:outline-hidden focus:border-blue-400"
                 />
               </div>
 
@@ -512,7 +752,7 @@ export default function AdminRekapPage() {
                     onClick={() => setActiveFacultyFilter(fac)}
                     className={`px-3 py-1 rounded-lg transition-all ${
                       activeFacultyFilter === fac
-                        ? 'bg-[#0284c7] text-white shadow-2xs'
+                        ? 'bg-blue-600 text-white shadow-2xs'
                         : 'hover:text-slate-900'
                     }`}
                   >
@@ -553,21 +793,21 @@ export default function AdminRekapPage() {
                       {pr.name}
                     </td>
                     <td className="py-3.5 px-3 text-center">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                         {pr.facultyId}
                       </span>
                     </td>
-                    <td className="py-3.5 px-3 text-right font-mono font-medium text-slate-700">
+                    <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-800">
                       {pr.totalDpt}
                     </td>
                     <td className="py-3.5 px-3 text-right font-mono font-bold text-emerald-700">
                       {isSensorActive ? '***' : pr.suaraMasuk}
                     </td>
                     <td className="py-3.5 px-3 text-right font-mono text-slate-500">
-                      {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.totalDpt - pr.suaraMasuk) : '-'}
+                      {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.belumMemilih) : '-'}
                     </td>
                     <td className="py-3.5 px-3 text-center">
-                      <span className="font-mono font-bold text-[#0284c7]">
+                      <span className="font-mono font-bold text-blue-600">
                         {pr.totalDpt > 0 ? (isSensorActive ? '***%' : `${pr.partisipasi}%`) : '-'}
                       </span>
                     </td>

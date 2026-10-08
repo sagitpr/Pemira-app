@@ -144,7 +144,7 @@ export default function AdminPaslonPage() {
                 setFormNumber(currentCandidates.length + 1);
                 setIsAddModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-slate-900/15 cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-2 transition-all shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ Tambah Paslon</span>
@@ -156,24 +156,24 @@ export default function AdminPaslonPage() {
         <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
           <button
             onClick={() => setActiveTab('BEM')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'BEM'
-                ? 'bg-slate-900 text-white shadow-2xs'
+                ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            Paslon BEM Universitas ({bemCandidates.length})
+            BEM Univ ({bemCandidates.length})
           </button>
 
           <button
             onClick={() => setActiveTab('HIMA')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
               activeTab === 'HIMA'
-                ? 'bg-slate-900 text-white shadow-2xs'
+                ? 'bg-blue-600 text-white shadow-2xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            Paslon HIMA Program Studi ({himaCandidates.length})
+            HIMA Prodi ({himaCandidates.length})
           </button>
         </div>
 
@@ -184,7 +184,7 @@ export default function AdminPaslonPage() {
               <User className="w-7 h-7" />
             </div>
             <h3 className="text-base font-bold text-slate-800">
-              Belum Ada Paslon {activeTab} Terdaftar
+              Belum Ada Paslon {activeTab === 'BEM' ? 'BEM' : 'HIMA'}
             </h3>
             <p className="text-xs text-slate-500 mt-1 max-w-md">
               Tambahkan data pasangan calon ketua dan wakil untuk ditampilkan pada layar bilik suara dan tabulasi rekapitulasi.
@@ -195,9 +195,9 @@ export default function AdminPaslonPage() {
                 setFormNumber(1);
                 setIsAddModalOpen(true);
               }}
-              className="mt-5 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md shadow-slate-900/15 cursor-pointer"
+              className="mt-5 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-sm transition-all cursor-pointer"
             >
-              + Tambah Paslon Pertama
+              + Tambah Paslon
             </button>
           </div>
         ) : (
@@ -218,7 +218,7 @@ export default function AdminPaslonPage() {
                     {/* Header: Badge Nomor Urut & Aksi Hapus */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <span className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
+                        <span className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
                           {displayNumber}
                         </span>
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -374,12 +374,12 @@ export default function AdminPaslonPage() {
                       )}
                       {formFaculty === 'FIKES' && (
                         <>
-                          <option value="S1 Administrasi Rumah Sakit">S1 Administrasi Rumah Sakit</option>
+                          <option value="S1 Administrasi Rumah Sakit (ARS)">S1 Administrasi Rumah Sakit (ARS)</option>
                           <option value="S1 Keperawatan">S1 Keperawatan</option>
                           <option value="S1 Gizi">S1 Gizi</option>
                           <option value="D3 Keperawatan">D3 Keperawatan</option>
-                          <option value="D3 Refraksi Optisi">D3 Refraksi Optisi</option>
-                          <option value="D3 TLM">D3 TLM</option>
+                          <option value="D3 Refraksi Optisi (RO)">D3 Refraksi Optisi (RO)</option>
+                          <option value="D3 Teknologi Laboratorium Medis (TLM)">D3 Teknologi Laboratorium Medis (TLM)</option>
                         </>
                       )}
                       {formFaculty === 'FARMASI' && (
@@ -547,7 +547,7 @@ export default function AdminPaslonPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold shadow-md shadow-slate-900/15 cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all cursor-pointer"
                 >
                   Simpan Paslon
                 </button>

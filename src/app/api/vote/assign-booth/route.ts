@@ -64,8 +64,8 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: false,
         waiting: true,
-        message: data?.message || 'Semua 10 bilik suara sedang digunakan. Mohon tunggu sejenak.',
-      }, { status: 409 }); // 409 Conflict: Bilik penuh
+        message: 'Semua bilik suara sedang penuh',
+      }, { status: 200 });
     }
 
     return NextResponse.json({

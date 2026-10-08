@@ -44,13 +44,22 @@ export default function AdminPengaturanPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
 
-  const handleSaveConfig = (e: React.FormEvent) => {
+  const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
+    try {
+      await fetch('/api/admin/booths/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totalBooths: Number(totalBooths) }),
+      });
+    } catch (err) {
+      console.warn('Sync booths API error:', err);
+    }
     updateConfig({
       totalBooths: Number(totalBooths),
       sessionTimeoutSeconds: Number(sessionTimeout),
     });
-    showToast('Konfigurasi bilik fisik berhasil disimpan.', 'success');
+    showToast('Konfigurasi bilik berhasil disimpan.', 'success');
   };
 
   const handleAddAdmin = (e: React.FormEvent) => {
@@ -166,10 +175,10 @@ export default function AdminPengaturanPage() {
 
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="px-4 py-2 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs self-start sm:self-auto cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm self-start sm:self-auto cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>+ Tambah Akun Admin</span>
+              <span>+ Tambah Admin</span>
             </button>
           </div>
 
@@ -200,7 +209,7 @@ export default function AdminPengaturanPage() {
                       <td className="py-3 px-4 font-bold text-slate-900">{acc.name}</td>
                       <td className="py-3 px-4 font-mono text-slate-500">{acc.email}</td>
                       <td className="py-3 px-3 text-center">
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-[#0F172A] text-white">
+                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
                           {roleLabel}
                         </span>
                       </td>
@@ -290,9 +299,9 @@ export default function AdminPengaturanPage() {
             <div className="flex justify-end pt-2">
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-all shadow-sm cursor-pointer"
               >
-                Simpan Konfigurasi Bilik
+                Simpan Konfigurasi
               </button>
             </div>
           </form>
@@ -427,7 +436,7 @@ export default function AdminPengaturanPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all shadow-sm cursor-pointer"
                 >
                   Simpan Akun
                 </button>
@@ -494,7 +503,7 @@ export default function AdminPengaturanPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-colors shadow-xs cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition-all shadow-sm cursor-pointer"
                 >
                   Perbarui Akun
                 </button>
