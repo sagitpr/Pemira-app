@@ -232,10 +232,10 @@ function VoteContent() {
     } catch {}
 
     if (!selectedBemId && (bemCandidates || []).length > 0) {
-      setSelectedBemId(bemCandidates[0]?.id || 'bem-01');
+      setSelectedBemId(String(bemCandidates[0]?.id ?? 'bem-01'));
     }
     if (!selectedHimaId && (himaCandidates || []).length > 0) {
-      setSelectedHimaId(himaCandidates[0]?.id || 'hima-ftb-01');
+      setSelectedHimaId(String(himaCandidates[0]?.id ?? 'hima-ftb-01'));
     }
 
     setCurrentStep(2);
@@ -282,8 +282,8 @@ function VoteContent() {
 
   const safeBemList = bemCandidates || [];
   const safeHimaList = himaCandidates || [];
-  const selectedBemCandidate = safeBemList.find((c) => c?.id === selectedBemId) || safeBemList[0] || null;
-  const selectedHimaCandidate = safeHimaList.find((c) => c?.id === selectedHimaId) || safeHimaList[0] || null;
+  const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
+  const selectedHimaCandidate = safeHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || safeHimaList[0] || null;
 
   if (sessionError) {
     return (
@@ -537,7 +537,7 @@ function VoteContent() {
                   {/* 2 Candidate Cards Grid (Soft Squircle & Deep Navy Selected State) */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {(safeBemList || []).slice(0, 2).map((cand) => {
-                      const isSelected = selectedBemId === cand?.id;
+                      const isSelected = String(selectedBemId) === String(cand?.id);
                       const displayPhoto = cand?.photoUrl || cand?.photo_url;
                       const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
                       const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
@@ -619,7 +619,7 @@ function VoteContent() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setSelectedBemId(cand?.id)}
+                                onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
                                 className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
                               >
                                 Pilih Nomor Urut {cand?.number}
@@ -665,7 +665,7 @@ function VoteContent() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {(safeHimaList || []).slice(0, 2).map((cand) => {
-                      const isSelected = selectedHimaId === cand?.id;
+                      const isSelected = String(selectedHimaId) === String(cand?.id);
                       const displayPhoto = cand?.photoUrl || cand?.photo_url;
                       const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
                       const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
@@ -747,7 +747,7 @@ function VoteContent() {
                             ) : (
                               <button
                                 type="button"
-                                onClick={() => setSelectedHimaId(cand?.id)}
+                                onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
                                 className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
                               >
                                 Pilih Nomor Urut {cand?.number}
@@ -906,18 +906,18 @@ function VoteContent() {
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         onSelectCandidate={() => {
-          if (detailModalCandidate) {
+          if (detailModalCandidate?.id) {
             if (detailModalCandidate?.type === 'BEM') {
-              setSelectedBemId(detailModalCandidate?.id);
+              setSelectedBemId(String(detailModalCandidate.id));
             } else {
-              setSelectedHimaId(detailModalCandidate?.id);
+              setSelectedHimaId(String(detailModalCandidate.id));
             }
           }
         }}
         isSelected={
-          detailModalCandidate
-            ? (detailModalCandidate?.type === 'BEM' && selectedBemId === detailModalCandidate?.id) ||
-              (detailModalCandidate?.type === 'HIMA' && selectedHimaId === detailModalCandidate?.id)
+          detailModalCandidate?.id
+            ? (detailModalCandidate?.type === 'BEM' && String(selectedBemId) === String(detailModalCandidate.id)) ||
+              (detailModalCandidate?.type === 'HIMA' && String(selectedHimaId) === String(detailModalCandidate.id))
             : false
         }
       />
