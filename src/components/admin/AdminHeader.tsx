@@ -91,8 +91,8 @@ export default function AdminHeader({
           }`}
           title="Sensor Tampilan Suara"
         >
-          {isSensorActive ? <EyeOff className="w-3.5 h-3.5 text-amber-600" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
-          <span>{isSensorActive ? 'Disensor' : 'Sensor'}</span>
+          {isSensorActive ? <EyeOff className="h-4 w-4 text-amber-600" /> : <Eye className="h-4 w-4 text-slate-500" />}
+          <span>Sensor Suara</span>
         </button>
 
         {/* Fullscreen Button */}

@@ -21,14 +21,6 @@ export async function POST(request: Request) {
       isValid = true;
       userRole = 'superadmin';
       userName = 'Admin KPUM Utama';
-    } else if (cleanEmail === 'saksi01@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
-      isValid = true;
-      userRole = 'admin';
-      userName = 'Saksi Resmi Paslon 01';
-    } else if (cleanEmail === 'saksi02@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
-      isValid = true;
-      userRole = 'admin';
-      userName = 'Saksi Resmi Paslon 02';
     } else {
       // Verifikasi dari Supabase database jika tersedia
       try {
@@ -47,10 +39,7 @@ export async function POST(request: Request) {
           }
         }
       } catch {
-        // Fallback demo
-        if (cleanEmail.includes('admin') || cleanEmail.includes('pemira')) {
-          isValid = true;
-        }
+        // Database query failed
       }
     }
 

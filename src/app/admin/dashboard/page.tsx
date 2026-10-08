@@ -29,6 +29,7 @@ import {
   Shield,
   EyeOff,
   Lock,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SupabaseBoothRecord {
@@ -503,8 +504,8 @@ export default function AdminDashboardPage() {
             {isSensorMode && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px] pointer-events-none rounded-2xl">
                 <div className="px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wider shadow-lg flex items-center gap-2 border border-amber-400">
-                  <span className="text-base">🔒</span>
-                  <span>GRAFIK DISENSOR OLEH KPUM</span>
+                  <ShieldCheck className="h-5 w-5" />
+                  <span>MODE SENSOR KPUM AKTIF</span>
                 </div>
                 <p className="text-[11px] text-slate-600 font-bold mt-2 bg-white/80 px-3 py-1 rounded-full shadow-2xs">
                   Aktivasi mode saksi / rekap publik untuk membuka sensor grafik suara

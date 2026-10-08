@@ -120,29 +120,13 @@ export default function AdminPengaturanPage() {
     showToast('Data akun admin berhasil diperbarui.', 'success');
   };
 
-  // Mock list for default demonstration if empty
+  // Default single official account
   const displayAccounts = adminAccounts.length > 0 ? adminAccounts : [
     {
-      id: 'acc-1',
-      name: 'Ahmad Fauzi, S.Kom.',
-      email: 'admin.pusat@pemira.ubth.ac.id',
+      id: 'adm-01',
+      name: 'Admin KPUM Utama',
+      email: 'admin@pemira2026.ac.id',
       role: 'KPUM Utama' as const,
-      status: 'Aktif' as const,
-      lastActive: 'Aktif sekarang',
-    },
-    {
-      id: 'acc-2',
-      name: 'Rian Pratama',
-      email: 'operator01@pemira.ubth.ac.id',
-      role: 'Operator Bilik' as const,
-      status: 'Aktif' as const,
-      lastActive: '12 menit lalu',
-    },
-    {
-      id: 'acc-3',
-      name: 'Dr. Hendra Wijaya',
-      email: 'saksi.paslon1@pemira.ubth.ac.id',
-      role: 'Saksi Paslon 01' as const,
       status: 'Aktif' as const,
       lastActive: 'Aktif sekarang',
     },

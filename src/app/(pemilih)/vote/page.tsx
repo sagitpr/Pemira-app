@@ -1083,8 +1083,9 @@ function VoteContent() {
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
                       Waktu Meninggalkan Bilik:
                     </span>
-                    <div className="text-3xl font-black text-slate-900 font-mono tracking-tight mt-1">
-                      ⏱️ {formatTimer(postSubmitSeconds)}
+                    <div className="text-3xl font-black text-slate-900 font-mono tracking-tight mt-1 flex items-center justify-center gap-2">
+                      <Clock className="w-6 h-6 text-slate-700" />
+                      <span>{formatTimer(postSubmitSeconds)}</span>
                     </div>
                   </div>
 

@@ -48,12 +48,6 @@ export default function AdminLoginPage() {
     }
   };
 
-  const handleFillDemo = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMessage('');
-  };
-
   return (
     <div className="min-h-screen w-full bg-gradient-to-b from-slate-100 via-white to-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 font-sans">
       <div className="w-full max-w-md">
@@ -164,35 +158,12 @@ export default function AdminLoginPage() {
               )}
             </button>
           </form>
-
-          {/* Akses Cepat Penguji / Demo Quick Login */}
-          <div className="mt-6 pt-5 border-t border-slate-100">
-            <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase block mb-2.5 text-center">
-              Akses Cepat Penguji
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleFillDemo('admin@pemira2026.ac.id', 'kpum2026#secure')}
-                className="bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl py-2.5 px-3 text-xs font-semibold text-center transition-colors cursor-pointer"
-              >
-                ⚡ Super Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleFillDemo('saksi01@pemira2026.ac.id', 'kpum2026#secure')}
-                className="bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl py-2.5 px-3 text-xs font-semibold text-center transition-colors cursor-pointer"
-              >
-                👁️ Saksi Paslon
-              </button>
-            </div>
-          </div>
         </div>
 
-        {/* Footer Info */}
-        <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
+        {/* Footer Info Keamanan Sesi (Tanpa Emoji) */}
+        <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5 font-medium">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Sesi terenkripsi &amp; terlindungi sistem resmi KPR UBTH 2026</span>
+          <span>Sesi terenkripsi dan terlindungi sistem resmi KPR UBTH 2026</span>
         </div>
       </div>
     </div>
