@@ -40,6 +40,19 @@ interface SupabaseBoothRecord {
   updated_at?: string;
 }
 
+interface BoothItem {
+  id?: string;
+  booth_number: number;
+  name?: string;
+  status: string;
+  current_voter?: string | null;
+  current_voter_name?: string | null;
+  current_voter_nim?: string | null;
+  current_voter_prodi?: string | null;
+  ip_address?: string;
+  updated_at?: string;
+}
+
 interface ActivityLogItem {
   id: string;
   time: string;
@@ -57,7 +70,7 @@ export default function AdminDashboardPage() {
   const [isStatsLoaded, setIsStatsLoaded] = useState(false);
 
   // Dynamic Booths State
-  const [booths, setBooths] = useState<BoothStatus[]>([]);
+  const [booths, setBooths] = useState<BoothItem[]>([]);
   const [resettingBoothId, setResettingBoothId] = useState<number | null>(null);
 
   // Traffic Area Chart State
@@ -86,8 +99,22 @@ export default function AdminDashboardPage() {
     },
   ]);
 
-  // Fetch real-time voters count & stats from Supabase
+  // Fetch real-time voters count & stats from Supabase / API
   const fetchVotersAndStats = async () => {
+    try {
+      // 1. Coba panggil /api/admin/stats yang menggunakan service role supabaseAdmin
+      const res = await fetch('/api/admin/stats');
+      const json = await res.json();
+      if (json?.success && json?.stats) {
+        setTotalDpt(json.stats.totalDpt);
+        setSuaraMasuk(json.stats.suaraMasuk);
+        setIsStatsLoaded(true);
+        return;
+      }
+    } catch (e) {
+      // Fallback query langsung Supabase
+    }
+
     try {
       const supabase = createClient();
       const { data: votersData } = await supabase.from('voters').select('*');
@@ -117,25 +144,26 @@ export default function AdminDashboardPage() {
   };
 
   // Fetch Dynamic Booths from Supabase
-  const fetchBooths = async () => {
+  const fetchBoothsFromSupabase = async () => {
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('booths')
         .select('*')
-        .neq('status', 'NONAKTIF')
-        .order('booth_number');
+        .order('booth_number', { ascending: true });
 
       if (!error && data && data.length > 0) {
         setBooths(
           data.map((d: any) => ({
-            id: `b-${d.booth_number}`,
+            id: d.id,
+            booth_number: d.booth_number,
             name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
-            status: (d.status === 'Sedang Memilih' || d.status === 'DIGUNAKAN') ? 'Sedang Memilih' : 'Tersedia',
-            voterNim: d.current_voter_nim || undefined,
-            voterName: d.current_voter_name || undefined,
-            prodiName: d.current_voter_prodi || undefined,
-            ipAddress: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+            status: d.status || 'TERSEDIA',
+            current_voter: d.current_voter_name || d.current_voter || (d.status === 'DIGUNAKAN' || d.status === 'Sedang Memilih' || d.status === 'TERISI' ? 'Sedang Memilih' : ''),
+            current_voter_name: d.current_voter_name || null,
+            current_voter_nim: d.current_voter_nim || null,
+            current_voter_prodi: d.current_voter_prodi || null,
+            ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
           }))
         );
       } else {
@@ -143,25 +171,32 @@ export default function AdminDashboardPage() {
         setBooths(
           Array.from({ length: 10 }, (_, i) => ({
             id: `b-${i + 1}`,
+            booth_number: i + 1,
             name: `Bilik ${String(i + 1).padStart(2, '0')}`,
-            status: 'Tersedia',
-            ipAddress: `192.168.1.${100 + i + 1}`,
+            status: 'TERSEDIA',
+            current_voter: '',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            ip_address: `192.168.1.${100 + i + 1}`,
           }))
         );
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Gagal memuat bilik dari Supabase:', err);
+    }
   };
 
   useEffect(() => {
     setIsMounted(true);
     fetchVotersAndStats();
-    fetchBooths();
+    fetchBoothsFromSupabase();
     fetchTraffic();
 
     // Polling interval tiap 20 detik
     const interval = setInterval(() => {
       fetchVotersAndStats();
-      fetchBooths();
+      fetchBoothsFromSupabase();
       fetchTraffic();
     }, 20000);
 
@@ -183,14 +218,14 @@ export default function AdminDashboardPage() {
 
     // 2. Realtime sync booths & activity feed
     const boothsChannel = supabase
-      .channel('realtime_booths_sync_dashboard')
+      .channel('realtime_dashboard_booths')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, (payload: any) => {
-        fetchBooths();
+        fetchBoothsFromSupabase();
 
-        const newRecord = payload?.new as SupabaseBoothRecord | undefined;
+        const newRecord = payload?.new as any;
         if (newRecord?.booth_number) {
           const num = String(newRecord.booth_number).padStart(2, '0');
-          const isOccupied = newRecord.status === 'Sedang Memilih' || newRecord.status === 'DIGUNAKAN';
+          const isOccupied = newRecord.status === 'Sedang Memilih' || newRecord.status === 'DIGUNAKAN' || newRecord.status === 'TERISI';
           const timeStr = new Date().toLocaleTimeString('id-ID');
 
           const newLog: ActivityLogItem = {
@@ -198,7 +233,7 @@ export default function AdminDashboardPage() {
             time: timeStr,
             text: isOccupied
               ? `Bilik ${num} dialokasikan untuk pemilih.`
-              : `Bilik ${num} menyelesaikan pemungutan suara.`,
+              : `Bilik ${num} menyelesaikan pemungutan suara / tersedia.`,
             type: isOccupied ? 'alloc' : 'done',
           };
           setActivityLogs((prev) => [newLog, ...prev.slice(0, 19)]);
@@ -213,29 +248,30 @@ export default function AdminDashboardPage() {
   }, []);
 
   // Force Reset Booth Manual
-  const handleResetBooth = async (boothNum: number) => {
-    setResettingBoothId(boothNum);
+  const handleResetSingleBooth = async (boothId: string | undefined, boothNumber: number) => {
+    setResettingBoothId(boothNumber);
     try {
       const res = await fetch('/api/admin/booths/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ boothNumber: boothNum }),
+        body: JSON.stringify({ boothNumber }),
       });
       const data = await res.json();
 
       if (data?.success) {
-        showToast(`Bilik 0${boothNum} berhasil direset ke status Tersedia.`, 'success');
-        fetchBooths();
+        showToast(`Bilik ${String(boothNumber).padStart(2, '0')} berhasil direset ke status Tersedia.`, 'success');
+        fetchBoothsFromSupabase();
       }
     } catch {
-      showToast(`Bilik ${boothNum} direset secara lokal.`, 'info');
+      showToast(`Bilik ${boothNumber} direset secara lokal.`, 'info');
     } finally {
+      const num = String(boothNumber).padStart(2, '0');
       const timeStr = new Date().toLocaleTimeString('id-ID');
       setActivityLogs((prev) => [
         {
           id: `log-${Date.now()}`,
           time: timeStr,
-          text: `Admin mereset sesi Bilik 0${boothNum} ke status Tersedia.`,
+          text: `Admin mereset sesi Bilik ${num} ke status Tersedia.`,
           type: 'status',
         },
         ...prev.slice(0, 19),
@@ -244,8 +280,8 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const countTersedia = booths.filter((b) => b.status === 'Tersedia').length;
-  const countDigunakan = booths.filter((b) => b.status === 'Sedang Memilih').length;
+  const countTersedia = booths.filter((b) => b.status === 'TERSEDIA' || b.status === 'KOSONG' || b.status === 'Tersedia').length;
+  const countDigunakan = booths.filter((b) => b.status === 'DIGUNAKAN' || b.status === 'TERISI' || b.status === 'Sedang Memilih').length;
 
   // Custom Tooltip Recharts untuk Trafik Bilik
   const TrafficTooltip = ({ active, payload, label }: any) => {
@@ -492,7 +528,7 @@ export default function AdminDashboardPage() {
                 Status Real-time Bilik Suara
               </h2>
               <p className="text-xs text-slate-500">
-                Pemantauan {booths.length} bilik fisik terhubung sinkronisasi real-time PostgreSQL Supabase
+                Pemantauan {booths.length} bilik fisik terhubung sinkronisasi real-time
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs font-semibold">
@@ -508,66 +544,30 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* DYNAMIC GRID BOOTHS */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            {booths.map((b) => {
-              const numMatch = b.name.match(/\d+/) || b.id.match(/\d+/);
-              const boothNum = numMatch ? parseInt(numMatch[0], 10) : 1;
-              const isUsed = b.status === 'Sedang Memilih';
-              const isResetting = resettingBoothId === boothNum;
-
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {booths.map((booth) => {
+              const boothNumStr = String(booth.booth_number).padStart(2, '0');
+              const isAvailable = booth.status === 'TERSEDIA' || booth.status === 'KOSONG' || booth.status === 'Tersedia';
+              const isResetting = resettingBoothId === booth.booth_number;
               return (
-                <div
-                  key={b.id}
-                  className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between ${
-                    isUsed
-                      ? 'border-rose-300 bg-rose-50/40 ring-2 ring-rose-100 shadow-xs'
-                      : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300'
-                  }`}
-                >
+                <div key={booth.id || booth.booth_number} className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col justify-between">
                   <div>
-                    {/* Top: Nomor Bilik & Status Badge */}
-                    <div className="flex items-center justify-between gap-1 mb-2">
-                      <span className="text-xs font-black text-slate-900">
-                        {b.name}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
-                          isUsed
-                            ? 'bg-rose-100 text-rose-800 border-rose-200 animate-pulse'
-                            : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                        }`}
-                      >
-                        {isUsed ? 'Digunakan' : 'Tersedia'}
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-bold text-slate-800">Bilik {boothNumStr}</span>
+                      <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${isAvailable ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                        {isAvailable ? 'Tersedia' : 'Digunakan'}
                       </span>
                     </div>
-
-                    {/* Middle: Nama Pemilih / NIM Aktif */}
-                    <div className="py-2 border-t border-b border-slate-200/60 my-2 text-[11px] min-h-[50px] flex flex-col justify-center">
-                      {isUsed ? (
-                        <>
-                          <span className="font-bold text-slate-900 truncate block">
-                            {b.voterName || 'Mahasiswa'}
-                          </span>
-                          <span className="font-mono text-slate-500 text-[10px] block">
-                            NIM: {b.voterNim || '-'}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-slate-400 italic text-center block">
-                          - (Kosong) -
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-center text-xs text-slate-400 py-3">
+                      {isAvailable ? '- (Kosong) -' : (booth.current_voter || booth.current_voter_name || 'Sedang Memilih')}
+                    </p>
                   </div>
-
-                  {/* Bottom: Tombol Darurat [Reset] */}
                   <button
-                    onClick={() => handleResetBooth(boothNum)}
+                    onClick={() => handleResetSingleBooth(booth.id, booth.booth_number)}
                     disabled={isResetting}
-                    title={`Reset ${b.name}`}
-                    className="w-full py-1.5 px-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    className="w-full py-1.5 text-xs text-slate-600 border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    <RotateCcw className={`w-3 h-3 ${isResetting ? 'animate-spin' : ''}`} />
+                    <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
                     <span>Reset</span>
                   </button>
                 </div>

@@ -16,7 +16,7 @@ ALTER TABLE IF EXISTS booths
   ADD COLUMN IF NOT EXISTS current_voter_prodi TEXT;
 
 -- 2. RPC to dynamically sync number of active booths
-CREATE OR REPLACE FUNCTION sync_booths_count(p_target_count INT)
+CREATE OR REPLACE FUNCTION set_total_booths(target_count INT)
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -25,15 +25,15 @@ DECLARE
   v_current_count INT;
   v_i INT;
 BEGIN
-  IF p_target_count < 1 THEN
-    p_target_count := 1;
+  IF target_count < 1 THEN
+    target_count := 1;
   END IF;
 
   SELECT COUNT(*) INTO v_current_count FROM booths;
 
-  -- Jika jumlah kurang, insert bilik baru
-  IF v_current_count < p_target_count THEN
-    FOR v_i IN (v_current_count + 1)..p_target_count LOOP
+  -- Jika target lebih besar, buat bilik baru
+  IF target_count > v_current_count THEN
+    FOR v_i IN (v_current_count + 1)..target_count LOOP
       INSERT INTO booths (booth_number, name, status, ip_address, is_active, updated_at)
       VALUES (
         v_i,
@@ -46,25 +46,32 @@ BEGIN
       ON CONFLICT (booth_number) DO UPDATE
       SET is_active = TRUE, status = 'TERSEDIA';
     END LOOP;
+  -- Jika target lebih kecil, hapus bilik berlebih agar baris tabel tepat sesuai target
+  ELSIF target_count < v_current_count THEN
+    DELETE FROM booths WHERE booth_number > target_count;
   END IF;
 
-  -- Jika jumlah lebih, set bilik di atas target menjadi tidak aktif
-  IF v_current_count > p_target_count THEN
-    UPDATE booths
-    SET is_active = FALSE, status = 'NONAKTIF'
-    WHERE booth_number > p_target_count;
-
-    -- Pastikan bilik <= target aktif
-    UPDATE booths
-    SET is_active = TRUE
-    WHERE booth_number <= p_target_count;
-  END IF;
+  -- Pastikan semua bilik yang tersisa berstatus aktif
+  UPDATE booths
+  SET is_active = TRUE
+  WHERE booth_number <= target_count;
 
   RETURN json_build_object(
     'success', true,
-    'total_active', p_target_count,
-    'message', 'Konfigurasi bilik diperbarui menjadi ' || p_target_count || ' bilik aktif'
+    'total_active', target_count,
+    'message', 'Konfigurasi bilik diperbarui menjadi ' || target_count || ' bilik aktif'
   );
+END;
+$$;
+
+-- Alias sync_booths_count
+CREATE OR REPLACE FUNCTION sync_booths_count(p_target_count INT)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN set_total_booths(p_target_count);
 END;
 $$;
 

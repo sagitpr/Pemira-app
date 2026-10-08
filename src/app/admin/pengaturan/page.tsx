@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin, AdminAccount } from '@/context/AdminContext';
 import AdminHeader from '@/components/admin/AdminHeader';
+import { createClient } from '@/lib/supabase/client';
 import {
   Users,
   Monitor,
@@ -30,6 +31,24 @@ export default function AdminPengaturanPage() {
 
   const [totalBooths, setTotalBooths] = useState(config.totalBooths || 10);
   const [sessionTimeout, setSessionTimeout] = useState(config.sessionTimeoutSeconds || 180);
+  const [saving, setSaving] = useState(false);
+
+  // Load jumlah bilik aktual dari Supabase saat pertama kali dibuka
+  useEffect(() => {
+    async function loadCurrentBoothCount() {
+      try {
+        const supabase = createClient();
+        const { data, count } = await supabase.from('booths').select('*', { count: 'exact' });
+        if (count && count > 0) {
+          setTotalBooths(count);
+          updateConfig({ totalBooths: count });
+        }
+      } catch (err) {
+        console.warn('Gagal memuat jumlah bilik:', err);
+      }
+    }
+    loadCurrentBoothCount();
+  }, []);
 
   // Modal Tambah Admin
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -44,22 +63,74 @@ export default function AdminPengaturanPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
 
-  const handleSaveConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await fetch('/api/admin/booths/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ totalBooths: Number(totalBooths) }),
-      });
-    } catch (err) {
-      console.warn('Sync booths API error:', err);
+  const handleSaveBoothConfig = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const count = parseInt(String(totalBooths), 10);
+    if (isNaN(count) || count < 1 || count > 50) {
+      alert('Jumlah bilik harus antara 1 sampai 50');
+      return;
     }
-    updateConfig({
-      totalBooths: Number(totalBooths),
-      sessionTimeoutSeconds: Number(sessionTimeout),
-    });
-    showToast('Konfigurasi bilik berhasil disimpan.', 'success');
+
+    setSaving(true);
+    try {
+      const supabase = createClient();
+
+      // Panggil RPC Supabase untuk menambah/mengurangi bilik di database
+      const { data, error } = await supabase.rpc('set_total_booths', {
+        target_count: count,
+      });
+
+      if (error) {
+        // Fallback 1: Jika RPC belum terpasang, coba via API admin route
+        const res = await fetch('/api/admin/booths/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ totalBooths: count }),
+        });
+        const resJson = await res.json().catch(() => null);
+
+        if (!resJson?.success) {
+          // Fallback 2: Insert / sync manual ke tabel booths
+          const { data: existingBooths } = await supabase.from('booths').select('booth_number');
+          const currentTotal = existingBooths?.length || 0;
+
+          if (count > currentTotal) {
+            const newRows = [];
+            for (let i = currentTotal + 1; i <= count; i++) {
+              newRows.push({
+                booth_number: i,
+                name: `Bilik ${String(i).padStart(2, '0')}`,
+                status: 'TERSEDIA',
+              });
+            }
+            await supabase.from('booths').insert(newRows);
+          } else if (count < currentTotal) {
+            await supabase.from('booths').delete().gt('booth_number', count);
+          }
+        }
+      } else {
+        // Panggil juga API route sebagai sinkronisasi tambahan
+        fetch('/api/admin/booths/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ totalBooths: count }),
+        }).catch(() => {});
+      }
+
+      // Simpan juga setting batas waktu jika ada
+      localStorage.setItem('pemira_booth_timeout', String(sessionTimeout));
+      updateConfig({
+        totalBooths: count,
+        sessionTimeoutSeconds: Number(sessionTimeout),
+      });
+      alert(`Konfigurasi berhasil disimpan! Jumlah bilik aktif kini: ${count} bilik.`);
+      showToast(`Konfigurasi tersimpan: ${count} bilik aktif.`, 'success');
+    } catch (err: any) {
+      console.error('Gagal update bilik:', err);
+      alert('Gagal menyimpan konfigurasi bilik: ' + (err?.message || 'Terjadi kesalahan'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAddAdmin = (e: React.FormEvent) => {
@@ -258,7 +329,7 @@ export default function AdminPengaturanPage() {
             </div>
           </div>
 
-          <form onSubmit={handleSaveConfig} className="space-y-5">
+          <form onSubmit={handleSaveBoothConfig} className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">
@@ -267,13 +338,13 @@ export default function AdminPengaturanPage() {
                 <input
                   type="number"
                   min="1"
-                  max="20"
+                  max="50"
                   value={totalBooths}
                   onChange={(e) => setTotalBooths(Number(e.target.value))}
                   className="w-full p-2.5 rounded-xl border border-slate-200 text-xs font-mono font-bold text-slate-900 bg-slate-50 focus:outline-hidden focus:border-sky-500"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
-                  Default: 10 bilik
+                  Batas: 1 - 50 bilik (Default: 10 bilik)
                 </span>
               </div>
 
@@ -299,9 +370,10 @@ export default function AdminPengaturanPage() {
             <div className="flex justify-end pt-2">
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-all shadow-sm cursor-pointer"
+                disabled={saving}
+                className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-all shadow-sm cursor-pointer disabled:opacity-50"
               >
-                Simpan Konfigurasi
+                {saving ? 'Menyimpan...' : 'Simpan Konfigurasi'}
               </button>
             </div>
           </form>

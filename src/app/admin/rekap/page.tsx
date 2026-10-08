@@ -61,6 +61,27 @@ export default function AdminRekapPage() {
   // 1. Fetch DPT & Realtime Stats
   const fetchVotersAndStats = async () => {
     try {
+      // 1. Coba panggil /api/admin/stats yang menggunakan service role supabaseAdmin
+      const res = await fetch('/api/admin/stats');
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.voters) && json.voters.length > 0) {
+        const votersData = json.voters;
+        setRawVoters(votersData);
+        const tDpt = json.stats.totalDpt;
+        const sMasuk = json.stats.sudahMemilih;
+        const bMemilih = json.stats.belumMemilih;
+        const part = json.stats.partisipasi;
+        setTotalDpt(tDpt);
+        setSuaraMasuk(sMasuk);
+        setBelumMemilih(bMemilih);
+        setTingkatPartisipasi(part);
+        return;
+      }
+    } catch (e) {
+      // Fallback direct supabase query
+    }
+
+    try {
       const supabase = createClient();
       const { data: votersData } = await supabase.from('voters').select('*');
       if (votersData) {
@@ -156,20 +177,23 @@ export default function AdminRekapPage() {
     };
   }, [chartType]);
 
+  // Normalisasi perbandingan string (case-insensitive & alphanumeric only)
+  const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
   // Bangun daftar 14 Program Studi secara dinamis dari FACULTIES_DATA & rawVoters
   const allProdisDetailed = FACULTIES_DATA.flatMap((fac) =>
     fac.prodis.map((p) => {
-      const pNameLower = p.name.toLowerCase();
-      const pIdLower = p.id.toLowerCase();
+      const pNameNorm = normalizeText(p.name);
+      const pIdNorm = normalizeText(p.id);
 
-      // Cari pemilih dari database yang jurusannya cocok
-      const matchedVoters = rawVoters.filter((v: any) => {
-        const vProdi = (v.prodi_name || v.prodiName || v.prodi || '').trim().toLowerCase();
+      // Cari pemilih dari database yang jurusannya cocok dengan normalisasi
+      const matchedVoters = (rawVoters || []).filter((v: any) => {
+        const vProdi = normalizeText(v.prodi || v.prodi_name || v.prodiName);
         return (
-          vProdi === pNameLower ||
-          vProdi.includes(pNameLower) ||
-          pNameLower.includes(vProdi) ||
-          vProdi === pIdLower
+          vProdi === pNameNorm ||
+          vProdi.includes(pNameNorm) ||
+          pNameNorm.includes(vProdi) ||
+          (pIdNorm && vProdi === pIdNorm)
         );
       });
 
@@ -186,6 +210,7 @@ export default function AdminRekapPage() {
         totalDpt: pTotalDpt,
         suaraMasuk: pSuaraMasuk,
         belumMemilih: pBelum,
+        sisaBelum: pBelum,
         partisipasi: pPartisipasi,
       };
     })
