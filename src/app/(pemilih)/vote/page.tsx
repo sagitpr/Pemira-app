@@ -8,6 +8,7 @@ import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
 import AppLogo from '@/components/common/AppLogo';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
+import { createClient } from '@/lib/supabase/client';
 import {
   Check,
   CheckCircle2,
@@ -61,6 +62,10 @@ function VoteContent() {
   const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 03');
   const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(3);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [isTokenExpired, setIsTokenExpired] = useState<boolean>(false);
+  const [dbCandidatesLoaded, setDbCandidatesLoaded] = useState<boolean>(false);
+  const [dbBemCandidates, setDbBemCandidates] = useState<Candidate[]>([]);
+  const [dbHimaCandidates, setDbHimaCandidates] = useState<Candidate[]>([]);
 
   // Form State
   const [inputNim, setInputNim] = useState<string>('');
@@ -82,7 +87,7 @@ function VoteContent() {
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const audioIntervalRef = useRef<any>(null);
 
-  // 1. Initial Booth Assignment & URL Token Burn
+  // 1. Initial Booth Assignment & URL Token Burn with Tolerance
   useEffect(() => {
     let rawToken: string | null = null;
     let rawBooth = 'Bilik 03';
@@ -106,26 +111,76 @@ function VoteContent() {
       console.warn('Parameter read error:', e);
     }
 
-    const initBooth = async () => {
+    const initSession = async () => {
       try {
-        const res = await fetch('/api/vote/assign-booth', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: rawToken, preferredBooth: rawBooth }),
-        });
-        const data = await res.json();
-        if (data?.waiting) {
-          setSessionError('Seluruh bilik suara sedang penuh. Mohon menunggu antrean atau scan ulang proyektor.');
-        } else if (data?.success) {
-          setAssignedBoothName(data.boothName || rawBooth);
-          setAssignedBoothNumber(data.boothNumber || 3);
+        // Toleransi validasi token QR lokal (minimal 60-90 detik, gunakan 90 detik)
+        if (rawToken && rawToken.startsWith('UBTH-')) {
+          const parts = rawToken.split('-');
+          if (parts.length >= 2) {
+            const tokenTime = parseInt(parts[1], 36);
+            if (!isNaN(tokenTime)) {
+              const elapsedSeconds = (Date.now() - tokenTime) / 1000;
+              if (elapsedSeconds > 90) {
+                setIsTokenExpired(true);
+                return;
+              }
+            }
+          }
         }
-      } catch {
-        setAssignedBoothName(rawBooth);
+
+        // Alokasikan bilik suara via endpoint API
+        try {
+          const res = await fetch('/api/vote/assign-booth', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: rawToken, preferredBooth: rawBooth }),
+          });
+          const data = await res.json();
+          if (data?.expired) {
+            setIsTokenExpired(true);
+            return;
+          }
+          if (data?.waiting) {
+            setSessionError('Seluruh bilik suara sedang penuh. Mohon menunggu antrean atau scan ulang proyektor.');
+            return;
+          } else if (data?.success) {
+            setAssignedBoothName(data.boothName || rawBooth);
+            setAssignedBoothNumber(data.boothNumber || 3);
+          }
+        } catch (boothErr) {
+          console.warn('[VOTE_BOOTH_WARN] Fallback alokasi bilik lokal:', boothErr);
+          setAssignedBoothName(rawBooth);
+        }
+
+        // Query candidates dari Supabase
+        try {
+          const supabase = createClient();
+          const { data: dbData, error: dbErr } = await supabase
+            .from('candidates')
+            .select('*');
+
+          if (dbErr) {
+            // Pisahkan kondisi error jaringan/tabel dengan kondisi data belum tersedia
+            console.warn('[CANDIDATES_QUERY_WARN] Menggunakan fallback kandidat:', dbErr);
+          } else if (Array.isArray(dbData)) {
+            // Query berhasil! Jika dbData === [], ini kondisi paslon belum diinput (empty state), BUKAN exception
+            const bem = dbData.filter((c: any) => c.type === 'BEM');
+            const hima = dbData.filter((c: any) => c.type === 'HIMA');
+            setDbBemCandidates(bem);
+            setDbHimaCandidates(hima);
+            setDbCandidatesLoaded(true);
+          }
+        } catch (candFetchErr) {
+          console.warn('[CANDIDATES_FETCH_WARN]', candFetchErr);
+        }
+      } catch (err) {
+        // Logging detail console klien sesuai arahan
+        console.error('[VOTE_INIT_ERROR]', err);
+        setSessionError('Terjadi kendala saat menyinkronkan sesi pemilihan.');
       }
     };
 
-    initBooth();
+    initSession();
   }, [searchParams]);
 
   // 2. Real-time NIM detection
@@ -302,22 +357,67 @@ function VoteContent() {
     return `0${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const safeBemList = bemCandidates || [];
-  const safeHimaList = himaCandidates || [];
+  const safeBemList = dbCandidatesLoaded
+    ? dbBemCandidates
+    : (bemCandidates && bemCandidates.length > 0 ? bemCandidates : []);
+  const safeHimaList = dbCandidatesLoaded
+    ? dbHimaCandidates
+    : (himaCandidates && himaCandidates.length > 0 ? himaCandidates : []);
   const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
   const selectedHimaCandidate = safeHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || safeHimaList[0] || null;
 
+  // 1. TAMPILAN PERINGATAN SPESIFIK TOKEN QR KEDALUWARSA
+  if (isTokenExpired) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 select-none font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-rose-200/90 shadow-xl text-center space-y-5 animate-in fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200 shadow-xs">
+            <Clock className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight">
+              Token QR Kedaluwarsa
+            </h2>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
+              Silakan lakukan scan ulang pada layar proyektor utama.
+            </p>
+          </div>
+          <button
+            onClick={() => router.push('/qr-screen')}
+            className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+          >
+            Kembali ke Layar QR Kiosk
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. EMPTY STATE PASLON KOSONG INFORMATIF (Bukan exception error)
   if (currentStep !== 5 && safeBemList.length === 0 && safeHimaList.length === 0) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans">
-        <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
-            <Info className="w-6 h-6" />
+      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans select-none">
+        <div className="max-w-md w-full p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4 animate-in fade-in">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200 shadow-xs">
+            <Info className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">Data Paslon Sedang Dipersiapkan oleh KPUM</h3>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Data kandidat pemilihan belum dimasukkan oleh panitia KPUM. Silakan hubungi petugas bilik suara atau tunggu pengumuman panitia.
-          </p>
+          <div>
+            <h3 className="text-xl font-black text-slate-900 tracking-tight">
+              Sesi Pemilihan Belum Dimulai
+            </h3>
+            <p className="text-xs text-slate-500 mt-2 leading-relaxed font-medium">
+              Data pasangan calon BEM &amp; HIMA sedang dipersiapkan oleh KPUM. Silakan tunggu arahan dari petugas bilik suara.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => router.push('/qr-screen')}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-colors shadow-sm cursor-pointer"
+            >
+              Kembali ke Layar QR Kiosk
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1046,7 +1146,7 @@ class VoteErrorBoundary extends React.Component<
   }
 
   componentDidCatch(error: any) {
-    console.warn('Caught client-side exception in VotePage:', error);
+    console.error('[VOTE_INIT_ERROR]', error);
   }
 
   render() {

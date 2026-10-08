@@ -5,6 +5,16 @@ import AdminHeader from '@/components/admin/AdminHeader';
 import { useAdmin, BoothStatus } from '@/context/AdminContext';
 import { createClient } from '@/lib/supabase/client';
 import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
+import {
   RotateCcw,
   Users,
   CheckCircle2,
@@ -18,6 +28,7 @@ import {
   Radio,
   Shield,
   EyeOff,
+  Lock,
 } from 'lucide-react';
 
 interface SupabaseBoothRecord {
@@ -47,8 +58,15 @@ const DEFAULT_10_BOOTHS: BoothStatus[] = Array.from({ length: 10 }, (_, i) => ({
 
 export default function AdminDashboardPage() {
   const { globalSummary, electionStatus, setElectionStatus, isSensorActive, showToast } = useAdmin();
+  const isSensorMode = isSensorActive;
+
   const [booths, setBooths] = useState<BoothStatus[]>(DEFAULT_10_BOOTHS);
   const [resettingBoothId, setResettingBoothId] = useState<number | null>(null);
+
+  // Timeline Line Chart State
+  const [chartType, setChartType] = useState<'BEM' | 'HIMA'>('BEM');
+  const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
 
   // Activity Log Stream
   const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([
@@ -78,9 +96,35 @@ export default function AdminDashboardPage() {
     },
   ]);
 
+  // Fetch Timeline Data (Interval 10 Menit)
+  const fetchTimeline = async (type = chartType) => {
+    try {
+      const res = await fetch(`/api/admin/stats/timeline?type=${type}`);
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.data)) {
+        setTimelineData(json.data);
+      }
+    } catch (err) {
+      console.warn('Gagal memuat timeline suara:', err);
+    }
+  };
+
+  useEffect(() => {
+    setIsMounted(true);
+    fetchTimeline(chartType);
+
+    // Polling berkala tiap 30 detik untuk sinkronisasi otomatis
+    const interval = setInterval(() => {
+      fetchTimeline(chartType);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [chartType]);
+
   // Realtime Supabase Channel
   useEffect(() => {
     let channel: any = null;
+    let votesChannel: any = null;
 
     try {
       const supabase = createClient();
@@ -155,19 +199,30 @@ export default function AdminDashboardPage() {
           }
         )
         .subscribe();
+
+      // Listen to votes table for realtime timeline updates
+      votesChannel = (supabase as any)
+        .channel('votes-realtime-dashboard')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'votes' },
+          () => {
+            fetchTimeline(chartType);
+          }
+        )
+        .subscribe();
     } catch (err) {
       console.warn('Realtime subscription error:', err);
     }
 
     return () => {
-      if (channel) {
-        try {
-          const supabase = createClient();
-          supabase.removeChannel(channel);
-        } catch {}
-      }
+      try {
+        const supabase = createClient();
+        if (channel) supabase.removeChannel(channel);
+        if (votesChannel) supabase.removeChannel(votesChannel);
+      } catch {}
     };
-  }, []);
+  }, [chartType]);
 
   const handleResetBooth = async (boothNum: number) => {
     setResettingBoothId(boothNum);
@@ -181,20 +236,35 @@ export default function AdminDashboardPage() {
       const data = await res.json();
 
       if (data?.success) {
+        showToast(`Bilik 0${boothNum} berhasil direset ke status Tersedia.`, 'success');
         setBooths((prev) =>
           prev.map((b, idx) =>
             idx + 1 === boothNum
-              ? { ...b, status: 'Tersedia', voterNim: undefined, voterName: undefined, prodiName: undefined }
+              ? {
+                  ...b,
+                  status: 'Tersedia',
+                  voterNim: undefined,
+                  voterName: undefined,
+                  prodiName: undefined,
+                }
               : b
           )
         );
-        showToast(`Bilik ${boothNum} direset ke status Tersedia.`, 'info');
+      } else {
+        throw new Error(data?.message || 'Gagal mereset');
       }
     } catch {
+      // Local fallback reset
       setBooths((prev) =>
         prev.map((b, idx) =>
           idx + 1 === boothNum
-            ? { ...b, status: 'Tersedia', voterNim: undefined, voterName: undefined, prodiName: undefined }
+            ? {
+                ...b,
+                status: 'Tersedia',
+                voterNim: undefined,
+                voterName: undefined,
+                prodiName: undefined,
+              }
             : b
         )
       );
@@ -217,17 +287,38 @@ export default function AdminDashboardPage() {
   const countTersedia = booths.filter((b) => b.status === 'Tersedia').length;
   const countDigunakan = booths.filter((b) => b.status === 'Sedang Memilih').length;
 
-  // Interval traffic mock data for visual chart
-  const trafficIntervals = [
-    { label: '08:00', count: 12 },
-    { label: '08:10', count: 18 },
-    { label: '08:20', count: 22 },
-    { label: '08:30', count: 35 },
-    { label: '08:40', count: 42 },
-    { label: '08:50', count: 28 },
-    { label: '09:00', count: 19 },
-  ];
-  const maxTrafficCount = Math.max(...trafficIntervals.map((t) => t.count));
+  // Deteksi kunci paslon yang ada pada data timeline
+  const candidateKeys = Array.from(
+    new Set(timelineData.flatMap((d) => Object.keys(d).filter((k) => k !== 'time')))
+  );
+
+  // Custom Tooltip Recharts dengan dukungan Mode Sensor
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-slate-900/95 backdrop-blur-md text-white p-3 rounded-2xl shadow-xl border border-slate-700 text-xs font-sans min-w-[160px]">
+          <p className="font-bold text-slate-300 border-b border-slate-700/80 pb-1 mb-2 flex items-center gap-1.5 font-mono text-[11px]">
+            <Clock className="w-3.5 h-3.5 text-sky-400" />
+            <span>Waktu: {label} WIB</span>
+          </p>
+          <div className="space-y-1.5">
+            {payload.map((entry: any, index: number) => (
+              <div key={`item-${index}`} className="flex items-center justify-between gap-4">
+                <span className="flex items-center gap-1.5 font-bold" style={{ color: entry.color }}>
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                  {entry.name}:
+                </span>
+                <span className="font-mono font-bold text-slate-100">
+                  {isSensorMode ? '*** Suara' : `${Number(entry.value).toLocaleString('id-ID')} Suara`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
@@ -306,7 +397,7 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
                 SUARA MASUK
               </span>
-              {isSensorActive ? (
+              {isSensorMode ? (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xl font-mono font-black text-amber-600 filter blur-xs select-none">
                     *** Suara
@@ -355,6 +446,163 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
+        {/* SECTION: MULTI-LINE CHART DINAMIKA PEROLEHAN SUARA PASLON (INTERVAL 10 MENIT) */}
+        <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs relative overflow-hidden">
+          {/* Header Card */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Dinamika Perolehan Suara Paslon (Interval 10 Menit)</span>
+                  {isSensorMode && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      <span>Mode Sensor Aktif</span>
+                    </span>
+                  )}
+                </h2>
+                <p className="text-xs text-slate-500 font-medium">
+                  Tren akumulasi suara masuk per pasangan calon diperbarui otomatis per interval 10 menit
+                </p>
+              </div>
+            </div>
+
+            {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setChartType('BEM')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartType === 'BEM'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                BEM Universitas
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType('HIMA')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  chartType === 'HIMA'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                }`}
+              >
+                HIMA
+              </button>
+            </div>
+          </div>
+
+          {/* Chart Wrapper Container with Sensor Blur Effect & Overlay */}
+          <div className="relative min-h-[320px] w-full">
+            {/* SENSOR BADGE OVERLAY */}
+            {isSensorMode && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px] pointer-events-none rounded-2xl">
+                <div className="px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wider shadow-lg flex items-center gap-2 border border-amber-400">
+                  <span className="text-base">🔒</span>
+                  <span>GRAFIK DISENSOR OLEH KPUM</span>
+                </div>
+                <p className="text-[11px] text-slate-600 font-bold mt-2 bg-white/80 px-3 py-1 rounded-full shadow-2xs">
+                  Aktivasi mode saksi / rekap publik untuk membuka sensor grafik suara
+                </p>
+              </div>
+            )}
+
+            {/* Recharts Container */}
+            <div
+              className={`w-full h-80 transition-all duration-300 ${
+                isSensorMode ? 'filter blur-[8px] pointer-events-none select-none' : ''
+              }`}
+            >
+              {isMounted ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={timelineData}
+                    margin={{ top: 20, right: 30, left: 10, bottom: 10 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                    <XAxis
+                      dataKey="time"
+                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                    />
+                    <YAxis
+                      tick={{ fill: '#64748b', fontSize: 11, fontWeight: 600 }}
+                      tickLine={false}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                      allowDecimals={false}
+                      tickFormatter={(val) => (isSensorMode ? '***' : val)}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend
+                      wrapperStyle={{ paddingTop: 16, fontSize: 12, fontWeight: 700 }}
+                      iconType="circle"
+                    />
+
+                    {/* Paslon 01: Navy / Sky Blue (#0284c7), garis halus dengan titik penanda (dot) */}
+                    <Line
+                      type="monotone"
+                      dataKey="Paslon 01"
+                      name="Paslon 01"
+                      stroke="#0284c7"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#0284c7', strokeWidth: 2, stroke: '#ffffff' }}
+                      activeDot={{ r: 6, stroke: '#0284c7', strokeWidth: 2 }}
+                    />
+
+                    {/* Paslon 02: Emerald / Green (#10b981) */}
+                    <Line
+                      type="monotone"
+                      dataKey="Paslon 02"
+                      name="Paslon 02"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
+                      activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
+                    />
+
+                    {/* Paslon 03: Amber / Oranye (#f59e0b) jika ada di data */}
+                    {candidateKeys.includes('Paslon 03') && (
+                      <Line
+                        type="monotone"
+                        dataKey="Paslon 03"
+                        name="Paslon 03"
+                        stroke="#f59e0b"
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#ffffff' }}
+                        activeDot={{ r: 6, stroke: '#f59e0b', strokeWidth: 2 }}
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-slate-50/50 rounded-2xl">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                    <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                    <span>Memuat grafik tren perolehan suara...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer Card */}
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium mt-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Sinkronisasi otomatis per 30 detik &amp; PostgreSQL Realtime</span>
+            </span>
+            <span className="font-mono text-slate-400">
+              Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : 'Himpunan Mahasiswa (HIMA)'}
+            </span>
+          </div>
+        </section>
+
         {/* SECTION: TAMPILAN 10 BILIK SUARA (FORMAT GRID 5x2 RINGKAS) */}
         <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
@@ -363,7 +611,7 @@ export default function AdminDashboardPage() {
                 Status 10 Bilik Suara Fisik
               </h2>
               <p className="text-xs text-slate-500">
-                Format Grid 5x2 terhubung sinkronisasi real-time PostgreSQL Supabase
+                Format Grid 5x2 terhubung sinkronisasi real-time PostgreSQL Supabase (Concurrency SKIP LOCKED)
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs font-semibold">
@@ -446,101 +694,9 @@ export default function AdminDashboardPage() {
           </div>
         </section>
 
-        {/* SECTION 2: WIDGET GRAFIK TRAFIK 10 MENIT & LIVE ACTIVITY LOG */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* KIRI: GRAFIK TRAFIK BILIK PER 10 MENIT (7 COLS) */}
-          <section className="lg:col-span-7 bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between">
-            <div>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Trafik Pengunjung Bilik (Interval 10 Menit)
-                    </h3>
-                    <p className="text-[11px] text-slate-400">
-                      Frekuensi penyelesaian suara mahasiswa di 10 bilik
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-bold text-[11px] flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-slate-500" />
-                    <span>Rata-rata Durasi di Bilik: ~1.5 menit</span>
-                  </span>
-                </div>
-              </div>
-
-              {/* HIGHLIGHT STATS */}
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">
-                    Peak Traffic (Puncak)
-                  </span>
-                  <span className="text-sm font-bold text-slate-900 font-mono mt-0.5 block">
-                    08:40 (42 Mahasiswa / 10m)
-                  </span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">
-                    Throughput Bilik
-                  </span>
-                  <span className="text-sm font-bold text-emerald-600 font-mono mt-0.5 block">
-                    ~3.5 Mahasiswa / Menit
-                  </span>
-                </div>
-              </div>
-
-              {/* VISUAL BAR CHART INTERAKTIF */}
-              <div className="space-y-2 pt-2">
-                <div className="h-44 w-full flex items-end justify-between gap-3 px-2 pb-2 border-b border-slate-200">
-                  {trafficIntervals.map((item, idx) => {
-                    const heightPercent = Math.max(15, Math.round((item.count / maxTrafficCount) * 100));
-                    const isPeak = item.count === maxTrafficCount;
-
-                    return (
-                      <div key={idx} className="flex-1 flex flex-col items-center gap-1 group relative">
-                        {/* Tooltip Hover */}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-8 bg-slate-900 text-white text-[10px] py-1 px-2 rounded-md font-mono whitespace-nowrap pointer-events-none shadow-md z-10">
-                          {item.count} Pemilih ({item.label})
-                        </div>
-
-                        {/* Bar */}
-                        <div
-                          style={{ height: `${heightPercent}%` }}
-                          className={`w-full max-w-[36px] rounded-t-xl transition-all duration-300 ${
-                            isPeak
-                              ? 'bg-slate-900 group-hover:bg-slate-800'
-                              : 'bg-sky-400/80 group-hover:bg-sky-500'
-                          }`}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Sumbu X (Labels Jam) */}
-                <div className="flex items-center justify-between px-2 text-[10px] font-mono text-slate-400">
-                  {trafficIntervals.map((item, idx) => (
-                    <span key={idx} className="text-center flex-1">
-                      {item.label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 text-[11px] text-slate-400 border-t border-slate-100 flex items-center justify-between mt-4">
-              <span>Data dihitung dari penyelesaian sesi bilik suara</span>
-              <span className="font-bold text-slate-600">Interval: 10m</span>
-            </div>
-          </section>
-
-          {/* KANAN: LIVE ACTIVITY LOG STREAM (5 COLS) */}
-          <section className="lg:col-span-5 bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between">
+        {/* SECTION 2: LIVE ACTIVITY LOG STREAM */}
+        <div className="grid grid-cols-1 gap-6">
+          <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
                 <div className="flex items-center gap-2">

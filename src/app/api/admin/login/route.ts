@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
+import { signAdminToken } from '@/lib/auth/jwt';
 
 export async function POST(request: Request) {
   try {
@@ -11,20 +12,22 @@ export async function POST(request: Request) {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    // Verifikasi kredensial (default: admin@pemira2026.ac.id / kpum2026#secure)
+    // Validasi kredensial (default: admin@pemira2026.ac.id / kpum2026#secure)
     let isValid = false;
-    let userRole = 'Super Admin';
+    let userRole: 'admin' | 'superadmin' = 'admin';
     let userName = 'Admin KPUM Utama';
 
     if (cleanEmail === 'admin@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
       isValid = true;
+      userRole = 'superadmin';
+      userName = 'Admin KPUM Utama';
     } else if (cleanEmail === 'saksi01@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
       isValid = true;
-      userRole = 'Saksi Paslon 01';
+      userRole = 'admin';
       userName = 'Saksi Resmi Paslon 01';
     } else if (cleanEmail === 'saksi02@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
       isValid = true;
-      userRole = 'Saksi Paslon 02';
+      userRole = 'admin';
       userName = 'Saksi Resmi Paslon 02';
     } else {
       // Verifikasi dari Supabase database jika tersedia
@@ -39,7 +42,7 @@ export async function POST(request: Request) {
         if (data && !error) {
           if (data.password === cleanPass || cleanPass === 'kpum2026#secure') {
             isValid = true;
-            userRole = data.role || userRole;
+            userRole = (data.role?.toLowerCase() === 'superadmin' ? 'superadmin' : 'admin');
             userName = data.name || userName;
           }
         }
@@ -58,14 +61,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const sessionPayload = Buffer.from(
-      JSON.stringify({
-        email: cleanEmail,
-        role: userRole,
-        name: userName,
-        loginAt: Date.now(),
-      })
-    ).toString('base64');
+    // Buat token JWT dengan masa aktif 8 jam
+    const token = await signAdminToken({
+      role: userRole,
+      email: cleanEmail,
+      name: userName,
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -73,18 +74,17 @@ export async function POST(request: Request) {
       user: { email: cleanEmail, role: userRole, name: userName },
     });
 
-    const isHttps = request.url.startsWith('https://') || process.env.NODE_ENV === 'production';
-
-    // Terbitkan cookie admin_session dengan flag httpOnly: true, secure: true (jika HTTPS/prod), sameSite: 'lax', path: '/'
-    response.cookies.set({
-      name: 'admin_session',
-      value: sessionPayload,
-      path: '/',
+    // Set cookie admin_jwt_token (8 jam)
+    response.cookies.set('admin_jwt_token', token, {
       httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 60 * 60 * 24, // 24 hours
-      secure: isHttps,
+      path: '/',
+      maxAge: 8 * 60 * 60, // 8 jam
     });
+
+    // Hapus legacy session cookie jika ada
+    response.cookies.delete('admin_session');
 
     return response;
   } catch (error: any) {
