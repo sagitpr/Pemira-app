@@ -106,6 +106,13 @@ interface AdminContextType {
   // Toast
   toasts: ToastMessage[];
   showToast: (message: string, type?: ToastMessage['type']) => void;
+
+  // Sensor & Status
+  isSensorActive: boolean;
+  setIsSensorActive: (active: boolean) => void;
+  toggleSensor: () => void;
+  electionStatus: 'AKTIF' | 'JEDA' | 'TUTUP';
+  setElectionStatus: (status: 'AKTIF' | 'JEDA' | 'TUTUP') => void;
 }
 
 export const MOCK_VOTERS: Voter[] = [];
@@ -150,6 +157,35 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<SystemConfig>(INITIAL_CONFIG);
   const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>(INITIAL_ADMINS);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [isSensorActive, setIsSensorActive] = useState<boolean>(false);
+  const [electionStatus, setElectionStatusState] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
+
+  const toggleSensor = () => setIsSensorActive((prev) => !prev);
+
+  const setElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
+    setElectionStatusState(newStatus);
+    try {
+      await fetch('/api/admin/election-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch {}
+    showToast(`Status pemilihan: ${newStatus}`, newStatus === 'AKTIF' ? 'success' : newStatus === 'JEDA' ? 'warning' : 'error');
+  };
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/admin/election-status');
+        const data = await res.json();
+        if (data?.success && data?.status) {
+          setElectionStatusState(data.status);
+        }
+      } catch {}
+    };
+    fetchStatus();
+  }, []);
 
   const showToast = (message: string, type: ToastMessage['type'] = 'info') => {
     const id = Date.now().toString();
@@ -407,6 +443,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         deleteAdminAccount,
         toasts,
         showToast,
+        isSensorActive,
+        setIsSensorActive,
+        toggleSensor,
+        electionStatus,
+        setElectionStatus,
       }}
     >
       {children}

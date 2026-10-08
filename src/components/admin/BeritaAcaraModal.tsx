@@ -453,6 +453,31 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
                         {totalsBem.sumTidakHadir}
                       </td>
                     </tr>
+                    {/* Baris PERSENTASE (%) Resmi */}
+                    <tr className="bg-slate-100 font-bold text-slate-900 border-t border-slate-800">
+                      <td colSpan={2} className="border border-slate-800 p-2 text-center tracking-wider text-[11px]">
+                        PERSENTASE (%)
+                      </td>
+                      {activeBemPaslons.map((paslon: any) => {
+                        const keyNumber = paslon?.number ?? paslon?.candidate_number ?? 0;
+                        const votes = totalsBem.sumVotesPerPaslon[keyNumber] || 0;
+                        const pct = totalsBem.sumHadir > 0 ? `${((votes / totalsBem.sumHadir) * 100).toFixed(1)}%` : '0.0%';
+                        return (
+                          <td key={String(paslon?.number ?? paslon?.id)} className="border border-slate-800 p-2 text-center font-mono text-xs">
+                            {pct}
+                          </td>
+                        );
+                      })}
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs">
+                        100%
+                      </td>
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs text-emerald-800">
+                        {totalsBem.sumDpt > 0 ? `${((totalsBem.sumHadir / totalsBem.sumDpt) * 100).toFixed(1)}%` : '0.0%'}
+                      </td>
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs text-slate-600">
+                        {totalsBem.sumDpt > 0 ? `${((totalsBem.sumTidakHadir / totalsBem.sumDpt) * 100).toFixed(1)}%` : '0.0%'}
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
@@ -511,6 +536,24 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
                       </td>
                       <td className="border border-slate-800 p-2.5 text-center font-mono text-sm">
                         {totalsHima.sumTidakHadir}
+                      </td>
+                    </tr>
+                    {/* Baris PERSENTASE (%) HIMA */}
+                    <tr className="bg-slate-100 font-bold text-slate-900 border-t border-slate-800">
+                      <td colSpan={3} className="border border-slate-800 p-2 text-center tracking-wider text-[11px]">
+                        PERSENTASE (%)
+                      </td>
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs">
+                        {totalsHima.sumHadir > 0 ? `${((totalsHima.sumSuara / totalsHima.sumHadir) * 100).toFixed(1)}%` : '0.0%'}
+                      </td>
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs">
+                        100%
+                      </td>
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs text-emerald-800">
+                        {totalsHima.sumDpt > 0 ? `${((totalsHima.sumHadir / totalsHima.sumDpt) * 100).toFixed(1)}%` : '0.0%'}
+                      </td>
+                      <td className="border border-slate-800 p-2 text-center font-mono text-xs text-slate-600">
+                        {totalsHima.sumDpt > 0 ? `${((totalsHima.sumTidakHadir / totalsHima.sumDpt) * 100).toFixed(1)}%` : '0.0%'}
                       </td>
                     </tr>
                   </tbody>

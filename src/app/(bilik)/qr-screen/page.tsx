@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import QRCode from 'react-qr-code';
-import { RotateCw, Clock, Maximize2, Minimize2 } from 'lucide-react';
-import AppLogo from '@/components/common/AppLogo';
+import { RotateCw, Clock, Maximize2, Minimize2, PauseCircle, StopCircle } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +11,7 @@ export default function QrScreenPage() {
   const [timeLeft, setTimeLeft] = useState(30);
   const [baseUrl, setBaseUrl] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
   const containerRef = useRef<HTMLDivElement>(null);
 
   const generateNewToken = () => {
@@ -26,6 +26,23 @@ export default function QrScreenPage() {
       setBaseUrl(window.location.origin);
     }
     generateNewToken();
+  }, []);
+
+  // Poll election status every 3 seconds
+  useEffect(() => {
+    const checkStatus = async () => {
+      try {
+        const res = await fetch('/api/admin/election-status');
+        const data = await res.json();
+        if (data?.success && data?.status) {
+          setElectionStatus(data.status);
+        }
+      } catch {}
+    };
+
+    checkStatus();
+    const interval = setInterval(checkStatus, 3000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -79,11 +96,11 @@ export default function QrScreenPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-900/15 via-40% to-[#FAF9F5] to-75%" />
       </div>
 
-      {/* Aksen Lengkungan Vektor Biru Sudut Kiri Atas (Sesuai Screenshot Referensi) */}
+      {/* Aksen Lengkungan Vektor Biru Sudut Kiri Atas */}
       <div className="pointer-events-none absolute -top-16 -left-16 z-10 h-56 w-56 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 opacity-90 shadow-lg" />
       <div className="pointer-events-none absolute -top-24 -left-24 z-10 h-72 w-72 rounded-full border-[16px] border-sky-300/40" />
 
-      {/* Aksen Lengkungan Vektor Bawah (Kiri & Kanan Sesuai Screenshot) */}
+      {/* Aksen Lengkungan Vektor Bawah (Kiri & Kanan) */}
       <div className="pointer-events-none absolute -bottom-16 -left-16 z-10 h-64 w-64">
         <svg viewBox="0 0 200 200" fill="none" className="w-full h-full">
           <path d="M 0 160 C 60 140, 120 180, 180 120" stroke="#0284c7" strokeWidth="4" fill="none" opacity="0.7" />
@@ -106,11 +123,21 @@ export default function QrScreenPage() {
         {isFullscreen ? <Minimize2 className="h-5 w-5" /> : <Maximize2 className="h-5 w-5" />}
       </button>
 
-      {/* Header Teks Atas (Dibuat Sangat Jelas Terbaca dengan Kontras & Logo Resmi) */}
+      {/* Header Teks Atas & Logo Resmi */}
       <header className="z-20 mt-4 flex flex-col items-center text-center max-w-4xl px-4">
         {/* Official Logo Badge */}
         <div className="mb-2 drop-shadow-md">
-          <AppLogo size={52} showText={false} />
+          <img
+            src="/candidate/image/logo-pemira.png"
+            alt="Logo Pemira UBTH"
+            className="h-14 w-auto object-contain mx-auto drop-shadow-sm"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('/candidates/image/Image-logo-Pemira.png')) {
+                target.src = '/candidates/image/Image-logo-Pemira.png';
+              }
+            }}
+          />
         </div>
 
         <span className="text-xs sm:text-sm font-extrabold tracking-[0.35em] text-white uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">
@@ -126,55 +153,84 @@ export default function QrScreenPage() {
         </span>
       </header>
 
-      {/* Kartu QR Code (Bingkai Sudut Biru Sesuai Referensi, Tanpa Kotak Nomor Tambahan) */}
-      <div className="z-20 my-auto flex flex-col items-center">
-        <div className="relative rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-slate-100">
-          {/* 4 Sudut Fokus Cyan */}
-          <div className="absolute -top-3 -left-3 h-8 w-8 rounded-tl-xl border-t-4 border-l-4 border-cyan-400" />
-          <div className="absolute -top-3 -right-3 h-8 w-8 rounded-tr-xl border-t-4 border-r-4 border-cyan-400" />
-          <div className="absolute -bottom-3 -left-3 h-8 w-8 rounded-bl-xl border-b-4 border-l-4 border-cyan-400" />
-          <div className="absolute -bottom-3 -right-3 h-8 w-8 rounded-br-xl border-b-4 border-r-4 border-cyan-400" />
+      {/* KONDISI STATUS: TUTUP (QR Code OFF & Tampilkan Banner Layar Penuh) */}
+      {electionStatus === 'TUTUP' ? (
+        <div className="z-20 my-auto flex flex-col items-center max-w-2xl px-6 text-center animate-in fade-in zoom-in-95">
+          <div className="p-8 sm:p-12 rounded-3xl bg-white/95 backdrop-blur-md shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200 shadow-xs">
+              <StopCircle className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-950 uppercase tracking-tight">
+              PEMILIHAN RESMI DITUTUP - TERIMA KASIH ATAS PARTISIPASI MAHASISWA UBTH
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              Seluruh proses pemungutan suara telah selesai secara tertib dan aman. Tabulasi perolehan suara sedang direkapitulasi secara resmi oleh Komisi Pemilihan Raya Universitas.
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* KONDISI STATUS: AKTIF ATAU JEDA (QR Code Ditampilkan) */
+        <div className="z-20 my-auto flex flex-col items-center">
+          <div className="relative rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-slate-100">
+            {/* 4 Sudut Fokus Cyan */}
+            <div className="absolute -top-3 -left-3 h-8 w-8 rounded-tl-xl border-t-4 border-l-4 border-cyan-400" />
+            <div className="absolute -top-3 -right-3 h-8 w-8 rounded-tr-xl border-t-4 border-r-4 border-cyan-400" />
+            <div className="absolute -bottom-3 -left-3 h-8 w-8 rounded-bl-xl border-b-4 border-l-4 border-cyan-400" />
+            <div className="absolute -bottom-3 -right-3 h-8 w-8 rounded-br-xl border-b-4 border-r-4 border-cyan-400" />
 
-          {/* QR Code */}
-          <div className="flex h-60 w-60 items-center justify-center sm:h-72 sm:w-72">
-            {voteUrl ? (
-              <QRCode
-                size={260}
-                style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
-                value={voteUrl}
-                viewBox="0 0 256 256"
-              />
-            ) : (
-              <div className="h-60 w-60 animate-pulse rounded-lg bg-slate-100" />
-            )}
+            {/* QR Code */}
+            <div className="flex h-60 w-60 items-center justify-center sm:h-72 sm:w-72 relative">
+              {voteUrl ? (
+                <QRCode
+                  size={260}
+                  style={{ height: 'auto', maxWidth: '100%', width: '100%' }}
+                  value={voteUrl}
+                  viewBox="0 0 256 256"
+                />
+              ) : (
+                <div className="h-60 w-60 animate-pulse rounded-lg bg-slate-100" />
+              )}
+
+              {/* OVERLAY STATUS JEDA DI ATAS QR */}
+              {electionStatus === 'JEDA' && (
+                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-4 text-center text-white z-10">
+                  <div className="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-black text-[11px] uppercase tracking-wider mb-2 shadow-md">
+                    STATUS: JEDA / ISTIRAHAT
+                  </div>
+                  <p className="text-[11px] text-slate-200 font-semibold leading-relaxed">
+                    Sesi pemilihan sedang dijeda sementara oleh KPUM. Silakan scan untuk persiapan antrean bilik.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Tombol Refresh Token Kecil di Sudut */}
+            <button
+              onClick={generateNewToken}
+              title="Refresh Token"
+              className="absolute -bottom-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md border border-slate-200 text-slate-500 hover:text-slate-900 transition cursor-pointer"
+            >
+              <RotateCw className="h-4 w-4" />
+            </button>
           </div>
 
-          {/* Tombol Refresh Token Kecil di Sudut */}
-          <button
-            onClick={generateNewToken}
-            title="Refresh Token"
-            className="absolute -bottom-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md border border-slate-200 text-slate-500 hover:text-slate-900 transition cursor-pointer"
-          >
-            <RotateCw className="h-4 w-4" />
-          </button>
-        </div>
+          {/* Teks Instruksi Bawah QR */}
+          <h2 className="mt-6 text-sm sm:text-base md:text-lg font-black tracking-wider text-slate-800 uppercase">
+            SILAKAN SCAN MENGGUNAKAN HP ANDA
+          </h2>
 
-        {/* Teks Instruksi Bawah QR */}
-        <h2 className="mt-6 text-sm sm:text-base md:text-lg font-black tracking-wider text-slate-800 uppercase">
-          SILAKAN SCAN MENGGUNAKAN HP ANDA
-        </h2>
-
-        {/* Badge Timer Merah */}
-        <div className="mt-3 flex items-center gap-2 rounded-full bg-red-50/90 px-5 py-1.5 border border-red-200 shadow-xs backdrop-blur-xs">
-          <Clock className="h-4 w-4 text-red-500" />
-          <span className="text-xs font-bold tracking-wider text-slate-600 uppercase">
-            QR VALID DALAM:
-          </span>
-          <span className="text-sm font-extrabold tabular-nums text-red-600 font-mono">
-            {formattedTime}
-          </span>
+          {/* Badge Timer Merah */}
+          <div className="mt-3 flex items-center gap-2 rounded-full bg-red-50/90 px-5 py-1.5 border border-red-200 shadow-xs backdrop-blur-xs">
+            <Clock className="h-4 w-4 text-red-500" />
+            <span className="text-xs font-bold tracking-wider text-slate-600 uppercase">
+              QR VALID DALAM:
+            </span>
+            <span className="text-sm font-extrabold tabular-nums text-red-600 font-mono">
+              {formattedTime}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Footer */}
       <footer className="z-20 mb-1 text-center">

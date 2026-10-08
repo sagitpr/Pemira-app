@@ -31,13 +31,28 @@ export default function AdminSidebar() {
       {/* Top Section */}
       <div className="p-4">
         {/* App Logo */}
-        <div className="h-14 px-2 flex items-center mb-6">
-          <AppLogo
-            size={36}
-            showText={true}
-            subtitle="KPR UBTH"
-            subtitleClassName="text-[#0284c7] font-bold tracking-wider"
+        <div className="h-16 px-2 flex items-center gap-3 mb-6">
+          <img
+            src="/candidate/image/logo-pemira.png"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('/candidates/image/Image-logo-Pemira.png')) {
+                target.src = '/candidates/image/Image-logo-Pemira.png';
+              } else {
+                target.style.display = 'none';
+              }
+            }}
+            alt="Logo Pemira"
+            className="h-14 w-auto object-contain drop-shadow-sm"
           />
+          <div>
+            <span className="text-sm font-black text-slate-900 tracking-tight block leading-tight">
+              PEMIRA 2026
+            </span>
+            <span className="text-[10px] font-bold text-[#0284c7] tracking-wider uppercase block">
+              KPR UBTH
+            </span>
+          </div>
         </div>
 
         {/* Navigation Items */}

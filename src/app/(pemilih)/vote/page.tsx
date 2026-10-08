@@ -36,7 +36,25 @@ function VoteContent() {
     castVote,
     updateBoothStatus,
     showToast,
+    electionStatus: contextStatus,
   } = useAdmin();
+
+  const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>(contextStatus || 'AKTIF');
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/admin/election-status');
+        const data = await res.json();
+        if (data?.success && data?.status) {
+          setElectionStatus(data.status);
+        }
+      } catch {}
+    };
+    fetchStatus();
+    const interval = setInterval(fetchStatus, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Current Step: 0 = Penugasan Bilik, 1 = Validasi Pemilih, 2 = BEM, 3 = HIMA, 4 = Konfirmasi, 5 = Selesai
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -55,6 +73,7 @@ function VoteContent() {
   // Modal
   const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isJedaModalDismissed, setIsJedaModalDismissed] = useState(false);
 
   // Timers
   const [timerSeconds, setTimerSeconds] = useState(180); // 03:00 default voting session
@@ -304,6 +323,22 @@ function VoteContent() {
     );
   }
 
+  if (currentStep !== 5 && electionStatus === 'TUTUP') {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans select-none">
+        <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200 shadow-xs">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-black text-slate-900 uppercase">Pemilihan Telah Ditutup</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Pemilihan Telah Ditutup oleh KPUM. Terima kasih atas partisipasi Anda.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (sessionError) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 select-none">
@@ -330,10 +365,53 @@ function VoteContent() {
 
   return (
     <div className="relative min-h-screen bg-slate-50 flex flex-col justify-between overflow-x-hidden font-sans text-slate-800 select-none">
+      {/* JEDA NOTIFICATION BANNER */}
+      {electionStatus === 'JEDA' && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs font-bold text-center flex items-center justify-center gap-2 border-b border-amber-600 shadow-xs sticky top-0 z-30">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-slate-950" />
+          <span>Pemilihan Sedang Dijeda / Istirahat oleh KPUM. Formulir suara terkunci sementara hingga sesi dibuka kembali.</span>
+        </div>
+      )}
+
+      {/* JEDA WARNING MODAL */}
+      {electionStatus === 'JEDA' && !isJedaModalDismissed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 border border-amber-200 shadow-2xl text-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200 shadow-xs">
+              <AlertTriangle className="w-8 h-8 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-900">
+                Peringatan: Pemilihan Dijeda
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
+                Pemilihan Sedang Dijeda / Istirahat oleh KPUM. Formulir suara terkunci sementara hingga sesi dibuka kembali.
+              </p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setIsJedaModalDismissed(true)}
+                className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs transition-colors shadow-md cursor-pointer"
+              >
+                Mengerti, Tunggu Sesi Dibuka
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TOP HEADER */}
       <header className="relative z-20 px-6 sm:px-12 py-4 flex items-center justify-between border-b border-slate-200/80 bg-white shadow-2xs">
         <div className="flex items-center gap-3">
-          <AppLogo size={40} showText={false} />
+          <img
+            src="/candidate/image/logo-pemira.png"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+            alt="Logo Pemira"
+            className="h-12 w-auto object-contain mx-auto"
+          />
           <div>
             <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 block leading-tight">
               PEMIRA UBTH 2026
@@ -553,14 +631,14 @@ function VoteContent() {
                     </div>
                   </div>
 
-                  {/* 2 Candidate Cards Grid (Soft Squircle & Deep Navy Selected State) */}
+                  {/* Candidate Cards Grid (Soft Squircle & Deep Navy Selected State) */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {(safeBemList || []).slice(0, 2).map((cand) => {
+                    {(safeBemList || []).map((cand) => {
                       const isSelected = String(selectedBemId) === String(cand?.id);
                       const displayPhoto = cand?.photoUrl || cand?.photo_url;
                       const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
                       const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                      const displayNumber = cand?.number ?? cand?.candidateNumber ?? cand?.candidate_number ?? '01';
+                      const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
 
                       return (
                         <div
@@ -641,7 +719,7 @@ function VoteContent() {
                                 onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
                                 className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
                               >
-                                Pilih Nomor Urut {cand?.number}
+                                Pilih Nomor Urut {displayNumber}
                               </button>
                             )}
                           </div>
@@ -683,12 +761,12 @@ function VoteContent() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {(safeHimaList || []).slice(0, 2).map((cand) => {
+                    {(safeHimaList || []).map((cand) => {
                       const isSelected = String(selectedHimaId) === String(cand?.id);
                       const displayPhoto = cand?.photoUrl || cand?.photo_url;
                       const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
                       const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                      const displayNumber = cand?.number ?? cand?.candidateNumber ?? cand?.candidate_number ?? '01';
+                      const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
 
                       return (
                         <div
@@ -764,13 +842,13 @@ function VoteContent() {
                                 <span>Terpilih sebagai Pilihan Anda</span>
                               </div>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
-                                className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
-                              >
-                                Pilih Nomor Urut {cand?.number}
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
+                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
+                                >
+                                  Pilih Nomor Urut {displayNumber}
+                                </button>
                             )}
                           </div>
                         </div>
@@ -823,13 +901,13 @@ function VoteContent() {
                     <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                       <span className="text-slate-500">Pilihan BEM-U :</span>
                       <span className="font-bold text-slate-900 font-mono">
-                        Paslon {selectedBemCandidate?.number || '01'} ({selectedBemCandidate?.leaderName || selectedBemCandidate?.leader_name || '-'})
+                        Paslon {selectedBemCandidate?.candidate_number ?? selectedBemCandidate?.candidateNumber ?? selectedBemCandidate?.number ?? '01'} ({selectedBemCandidate?.leader_name || selectedBemCandidate?.leaderName || '-'})
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">Pilihan HIMA :</span>
                       <span className="font-bold text-slate-900 font-mono">
-                        Paslon {selectedHimaCandidate?.number || '01'} ({selectedHimaCandidate?.leaderName || selectedHimaCandidate?.leader_name || '-'})
+                        Paslon {selectedHimaCandidate?.candidate_number ?? selectedHimaCandidate?.candidateNumber ?? selectedHimaCandidate?.number ?? '01'} ({selectedHimaCandidate?.leader_name || selectedHimaCandidate?.leaderName || '-'})
                       </span>
                     </div>
                   </div>
@@ -849,11 +927,21 @@ function VoteContent() {
                     </button>
                     <button
                       type="button"
-                      disabled={isSubmitting}
-                      onClick={handleFinalSubmit}
+                      disabled={isSubmitting || electionStatus === 'JEDA'}
+                      onClick={() => {
+                        if (electionStatus === 'JEDA') {
+                          showToast?.('Pemilihan Sedang Dijeda / Istirahat oleh KPUM. Formulir suara terkunci sementara.', 'warning');
+                          return;
+                        }
+                        handleFinalSubmit();
+                      }}
                       className="w-1/2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md shadow-slate-900/15 transition-all cursor-pointer disabled:opacity-60"
                     >
-                      {isSubmitting ? 'Merekam Suara...' : 'KIRIM SUARA SAH'}
+                      {isSubmitting
+                        ? 'Merekam Suara...'
+                        : electionStatus === 'JEDA'
+                        ? 'PEMILIHAN DIJEDA'
+                        : 'KIRIM SUARA SAH'}
                     </button>
                   </div>
                 </div>
@@ -944,19 +1032,64 @@ function VoteContent() {
   );
 }
 
-export default function VotingPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-slate-50">
-          <div className="text-center">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-900 border-t-transparent" />
-            <p className="mt-3 text-xs font-bold text-slate-600">Menyiapkan Bilik Suara Digital...</p>
+class VoteErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any) {
+    console.warn('Caught client-side exception in VotePage:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans">
+          <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-800">Menyinkronkan Sesi Bilik Suara</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Terjadi penyesuaian jaringan pada sesi pemilihan. Silakan tekan tombol di bawah untuk memuat ulang formulir bilik suara.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+            >
+              Muat Ulang Halaman
+            </button>
           </div>
         </div>
-      }
-    >
-      <VoteContent />
-    </Suspense>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function VotingPage() {
+  return (
+    <VoteErrorBoundary>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center bg-slate-50">
+            <div className="text-center">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-900 border-t-transparent" />
+              <p className="mt-3 text-xs font-bold text-slate-600">Menyiapkan Bilik Suara Digital...</p>
+            </div>
+          </div>
+        }
+      >
+        <VoteContent />
+      </Suspense>
+    </VoteErrorBoundary>
   );
 }

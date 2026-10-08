@@ -63,10 +63,19 @@ export default function AdminLoginPage() {
             <div className="w-16 h-16 shrink-0 flex items-center justify-center drop-shadow-sm">
               {!imgError ? (
                 <img
-                  src="/api/logo"
+                  src="/candidate/image/logo-pemira.png"
                   alt="Logo Resmi UBTH"
-                  className="w-16 h-16 object-contain"
-                  onError={() => setImgError(true)}
+                  className="w-16 h-16 object-contain drop-shadow-sm"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.src.includes('/candidates/image/Image-logo-Pemira.png')) {
+                      target.src = '/candidates/image/Image-logo-Pemira.png';
+                    } else if (!target.src.includes('/api/logo')) {
+                      target.src = '/api/logo';
+                    } else {
+                      setImgError(true);
+                    }
+                  }}
                 />
               ) : (
                 <div className="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white font-black text-xl shadow-md">

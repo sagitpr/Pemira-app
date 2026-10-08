@@ -37,6 +37,8 @@ export interface Candidate {
   misi?: string[];
   programs?: string[];
   avatarGradient?: string;
+  votes?: number;
+  vote_count?: number;
 }
 
 export const FACULTIES_DATA: FacultyGroup[] = [

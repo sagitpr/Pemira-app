@@ -30,10 +30,19 @@ export default function AppLogo({
       >
         {!imgError ? (
           <img
-            src="/api/logo"
-            alt="Logo Komisi Pemilihan Raya Universitas BTH"
-            className="w-full h-full object-contain drop-shadow-xs"
-            onError={() => setImgError(true)}
+            src="/candidate/image/logo-pemira.png"
+            alt="Logo Pemira UBTH"
+            className="w-full h-full object-contain drop-shadow-sm"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('/candidates/image/Image-logo-Pemira.png')) {
+                target.src = '/candidates/image/Image-logo-Pemira.png';
+              } else if (!target.src.includes('/api/logo')) {
+                target.src = '/api/logo';
+              } else {
+                setImgError(true);
+              }
+            }}
           />
         ) : (
           /* High-Fidelity Vector Fallback matching the official badge */
