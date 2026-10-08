@@ -27,6 +27,11 @@ export default function AdminDptPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'belum' | 'selesai'>('ALL');
 
+  // Deletion States
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+  const [isResettingAll, setIsResettingAll] = useState(false);
+
   // Modal Tambah DPT Manual
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newNim, setNewNim] = useState('');
@@ -92,6 +97,62 @@ export default function AdminDptPage() {
     return matchSearch && matchStatus;
   });
 
+  // Hapus Pemilih per Baris
+  const handleDeleteVoter = async (voter: Voter) => {
+    const voterIdOrNim = voter.id || voter.nim;
+    if (!confirm(`Hapus pemilih ${voter.name || voter.nim} dari DPT?`)) return;
+
+    setDeletingId(voterIdOrNim);
+    try {
+      const supabase = createClient();
+      let query = supabase.from('voters').delete();
+      if (voter.id && !voter.id.startsWith('v-') && !voter.id.startsWith('csv-')) {
+        query = query.eq('id', voter.id);
+      } else {
+        query = query.eq('nim', voter.nim);
+      }
+      const { error } = await query;
+      if (error) {
+        // Fallback coba hapus dengan NIM
+        await supabase.from('voters').delete().eq('nim', voter.nim);
+      }
+    } catch (err) {
+      console.warn('Gagal menghapus dari database Supabase:', err);
+    }
+
+    setVoters((prev) => prev.filter((v) => v.id !== voter.id && v.nim !== voter.nim));
+    deleteVoterContext(voter.id || voter.nim);
+    showToast(`Pemilih ${voter.name} (${voter.nim}) berhasil dihapus dari DPT.`, 'info');
+    setDeletingId(null);
+  };
+
+  // Kosongkan Seluruh Data DPT Massal
+  const handleResetAllVoters = async () => {
+    setIsResettingAll(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('voters')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Menghapus semua baris
+
+      if (error) {
+        // Fallback jika id bukan bertipe uuid
+        await supabase
+          .from('voters')
+          .delete()
+          .neq('nim', 'NON_EXISTENT_NIM_99999');
+      }
+    } catch (err) {
+      console.warn('Gagal mengosongkan tabel voters di Supabase:', err);
+    }
+
+    setVoters([]);
+    showToast('Seluruh data DPT berhasil dikosongkan.', 'warning');
+    setIsResettingAll(false);
+    setShowResetConfirmModal(false);
+  };
+
   // Tambah DPT Manual ke Supabase & Local State
   const handleCreateVoter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +198,7 @@ export default function AdminDptPage() {
     setNewName('');
   };
 
-  // Upload & Import CSV langsung ke Supabase
+  // Upload & Import CSV langsung ke Supabase dengan Filter Baris Sampah
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -172,39 +233,65 @@ export default function AdminDptPage() {
         continue;
       }
 
-      const cols = line.split(',').map((c) => c.replace(/["']/g, '').trim());
-      if (cols.length >= 2) {
-        const nim = cols[0];
-        const name = cols[1];
-        const prodi = cols[2] || 'S1 Farmasi';
-        const faculty = (cols[3] || 'FARMASI') as any;
-        const angkatan = cols[4] || '2024';
+      // Deteksi separator koma, titik koma, atau tab
+      let separator = ',';
+      if (line.includes(';') && !line.includes(',')) separator = ';';
+      else if (line.includes('\t')) separator = '\t';
 
-        newItems.push({
-          nim,
-          name,
-          prodi_name: prodi,
-          faculty_id: faculty,
-          angkatan,
-          has_voted: false,
-          status: 'belum',
-        });
+      const cols = line.split(separator).map((c) => c.replace(/["']/g, '').trim());
+      if (cols.length < 2) continue;
 
-        mappedItems.push({
-          id: `csv-${Date.now()}-${i}`,
-          nim,
-          name,
-          facultyId: faculty,
-          prodiId: 'csv',
-          prodiName: prodi,
-          angkatan,
-          status: 'belum',
-        });
+      const rawNim = cols[0];
+      const rawName = cols[1];
+
+      // FILTER BARIS SAMPAH DARI SHEET EXCEL:
+      // 1. Abaikan baris jika NIM kosong atau bukan berupa angka valid (misal: "TOTAL MAHASISWA", "JUMLAH", dll)
+      if (!rawNim) continue;
+      const cleanNim = rawNim.trim();
+      if (!/^\d+$/.test(cleanNim)) continue;
+
+      // 2. Abaikan baris jika kolom Nama kosong
+      const cleanName = rawName.trim();
+      if (!cleanName || cleanName.length < 2) continue;
+
+      // 3. Abaikan jika kolom Nama berisi teks footer/rekap
+      const lowerName = cleanName.toLowerCase();
+      if (
+        lowerName.includes('total mahasiswa') ||
+        lowerName.includes('jumlah') ||
+        lowerName.includes('rekapitulasi')
+      ) {
+        continue;
       }
+
+      const prodi = cols[2] || 'S1 Farmasi';
+      const faculty = (cols[3] || 'FARMASI') as any;
+      const angkatan = cols[4] || '2024';
+
+      newItems.push({
+        nim: cleanNim,
+        name: cleanName,
+        prodi_name: prodi,
+        faculty_id: faculty,
+        angkatan,
+        has_voted: false,
+        status: 'belum',
+      });
+
+      mappedItems.push({
+        id: `csv-${Date.now()}-${i}`,
+        nim: cleanNim,
+        name: cleanName,
+        facultyId: faculty,
+        prodiId: 'csv',
+        prodiName: prodi,
+        angkatan,
+        status: 'belum',
+      });
     }
 
     if (newItems.length === 0) {
-      showToast('Tidak ada baris data DPT yang valid.', 'error');
+      showToast('Tidak ada baris data DPT yang valid ditemukan.', 'error');
       setIsImporting(false);
       return;
     }
@@ -243,7 +330,7 @@ export default function AdminDptPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={fetchSupabaseVoters}
               disabled={isLoading}
@@ -252,6 +339,18 @@ export default function AdminDptPage() {
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
+
+            {/* Tombol Bahaya: Kosongkan DPT */}
+            <button
+              onClick={() => setShowResetConfirmModal(true)}
+              disabled={voters.length === 0}
+              title="Kosongkan seluruh data DPT"
+              className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/70 px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-100/80 transition-colors cursor-pointer disabled:opacity-40"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Kosongkan DPT</span>
+            </button>
+
             <button
               onClick={() => setIsImportModalOpen(true)}
               className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-2 transition-all shadow-2xs cursor-pointer"
@@ -259,6 +358,7 @@ export default function AdminDptPage() {
               <Upload className="w-4 h-4 text-sky-600" />
               <span>Import CSV</span>
             </button>
+
             <button
               onClick={() => setIsAddModalOpen(true)}
               className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md shadow-slate-900/15 cursor-pointer"
@@ -351,7 +451,7 @@ export default function AdminDptPage() {
             </div>
           </div>
 
-          {/* TABEL DATA RINGKAS: NIM | NAMA MAHASISWA | PROGRAM STUDI | STATUS HAK SUARA | WAKTU MEMILIH */}
+          {/* TABEL DATA: NIM | NAMA MAHASISWA | PROGRAM STUDI | STATUS HAK SUARA | WAKTU MEMILIH | AKSI */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead>
@@ -361,19 +461,20 @@ export default function AdminDptPage() {
                   <th className="py-3 px-5">Program Studi</th>
                   <th className="py-3 px-4 text-center w-36">Status Hak Suara</th>
                   <th className="py-3 px-5 text-right w-44">Waktu Memilih</th>
+                  <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 w-24">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                    <td colSpan={6} className="py-12 text-center text-slate-400">
                       <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-400" />
                       <span>Memuat data DPT dari server...</span>
                     </td>
                   </tr>
                 ) : filteredVoters.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                    <td colSpan={6} className="py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-1.5">
                         <Users className="w-8 h-8 text-slate-300 mb-1" />
                         <span className="font-semibold text-slate-600">
@@ -383,7 +484,7 @@ export default function AdminDptPage() {
                         </span>
                         {voters.length === 0 && (
                           <span className="text-[11px] text-slate-400">
-                            Gunakan tombol "+ Tambah Mahasiswa" atau "Impor CSV" di atas untuk memasukkan data DPT.
+                            Gunakan tombol "+ Tambah DPT" atau "Import CSV" di atas untuk memasukkan data DPT.
                           </span>
                         )}
                       </div>
@@ -392,6 +493,7 @@ export default function AdminDptPage() {
                 ) : (
                   filteredVoters.map((v) => {
                     const isVoted = v.status === 'selesai';
+                    const isDeletingThis = deletingId === (v.id || v.nim);
 
                     return (
                       <tr key={v.id} className="hover:bg-slate-50/70 transition-colors">
@@ -423,6 +525,17 @@ export default function AdminDptPage() {
                         <td className="py-3 px-5 text-right font-mono text-slate-500 text-[11px]">
                           {v.votedAt || '-'}
                         </td>
+                        {/* Kolom Aksi Hapus Per Baris */}
+                        <td className="px-6 py-4 text-center">
+                          <button
+                            onClick={() => handleDeleteVoter(v)}
+                            disabled={isDeletingThis}
+                            title="Hapus Pemilih"
+                            className="inline-flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 className={`h-4 w-4 ${isDeletingThis ? 'animate-pulse text-rose-500' : ''}`} />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })
@@ -432,6 +545,56 @@ export default function AdminDptPage() {
           </div>
         </section>
       </main>
+
+      {/* MODAL KONFIRMASI KOSONGKAN SELURUH DPT */}
+      {showResetConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-rose-100 text-center space-y-5">
+            <div className="w-14 h-14 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200 shadow-xs">
+              <AlertCircle className="w-7 h-7 text-rose-600" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-lg font-black text-slate-900 tracking-tight">
+                Hapus Seluruh Data DPT?
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                Tindakan ini akan menghapus semua pemilih yang terdaftar di database. Gunakan fitur ini jika terjadi kesalahan saat import CSV.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 text-left space-y-1">
+              <span className="font-bold text-slate-800 block">Informasi Penghapusan:</span>
+              <p>
+                Jumlah pemilih yang akan dihapus: <strong className="text-rose-600">{voters.length} Mahasiswa</strong>.
+              </p>
+              <p className="text-[11px] text-slate-500">
+                Data yang telah dihapus tidak dapat dipulihkan kembali kecuali melalui impor ulang CSV.
+              </p>
+            </div>
+
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirmModal(false)}
+                disabled={isResettingAll}
+                className="w-1/2 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleResetAllVoters}
+                disabled={isResettingAll}
+                className="w-1/2 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isResettingAll ? 'Menghapus...' : 'Ya, Hapus Semua Data'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL + TAMBAH DPT */}
       {isAddModalOpen && (
