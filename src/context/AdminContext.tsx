@@ -108,25 +108,11 @@ interface AdminContextType {
   showToast: (message: string, type?: ToastMessage['type']) => void;
 }
 
-const INITIAL_VOTERS: Voter[] = [
-  { id: 'v-01', nim: '23010101', name: 'Ahmad Faisal', facultyId: 'FTB', prodiId: 'bd', prodiName: 'Bisnis Digital', angkatan: '2023', status: 'selesai', votedAt: '06/10/2026 09:15', boothId: 'Bilik 01' },
-  { id: 'v-02', nim: '23010102', name: 'Bella Safitri', facultyId: 'FTB', prodiId: 'si', prodiName: 'Sistem Informasi', angkatan: '2023', status: 'selesai', votedAt: '06/10/2026 09:22', boothId: 'Bilik 02' },
-  { id: 'v-03', nim: '22020105', name: 'Citra Dewi Permata', facultyId: 'FIKES', prodiId: 's1-kep', prodiName: 'S1 Keperawatan', angkatan: '2022', status: 'selesai', votedAt: '06/10/2026 09:30', boothId: 'Bilik 03' },
-  { id: 'v-04', nim: '24030112', name: 'Dimas Kurniawan', facultyId: 'FARMASI', prodiId: 's1-far', prodiName: 'S1 Farmasi', angkatan: '2024', status: 'memilih', votedAt: '06/10/2026 09:44', boothId: 'Bilik 01' },
-  { id: 'v-05', nim: '23010204', name: 'Elsa Rahmadani', facultyId: 'FTB', prodiId: 'tp', prodiName: 'Teknologi Pangan', angkatan: '2023', status: 'belum' },
-  { id: 'v-06', nim: '22020210', name: 'Fajar Nugraha', facultyId: 'FIKES', prodiId: 'ars', prodiName: 'S1 Administrasi Rumah Sakit', angkatan: '2022', status: 'belum' },
-  { id: 'v-07', nim: '24030201', name: 'Gina Lestari', facultyId: 'FARMASI', prodiId: 's1-kos', prodiName: 'S1 Rekayasa Kosmetik', angkatan: '2024', status: 'belum' },
-  { id: 'v-08', nim: '23020302', name: 'Hafizh Pratama', facultyId: 'FIKES', prodiId: 's1-gz', prodiName: 'S1 Gizi', angkatan: '2023', status: 'belum' },
-  { id: 'v-09', nim: '21020405', name: 'Indah Puspa', facultyId: 'FIKES', prodiId: 'd3-kep', prodiName: 'D3 Keperawatan', angkatan: '2021', status: 'belum' },
-  { id: 'v-10', nim: '23010309', name: 'Joko Triyono', facultyId: 'FTB', prodiId: 'kw', prodiName: 'Kewirausahaan', angkatan: '2023', status: 'belum' },
-  { id: 'v-11', nim: '22020501', name: 'Karina Anindya', facultyId: 'FIKES', prodiId: 'd3-ro', prodiName: 'D3 Refraksi Optisi', angkatan: '2022', status: 'belum' },
-  { id: 'v-12', nim: '24020615', name: 'Lukman Hakim', facultyId: 'FIKES', prodiId: 'd3-tlm', prodiName: 'D3 Teknologi Lab Medis', angkatan: '2024', status: 'belum' },
-  { id: 'v-13', nim: '23030303', name: 'Maya Melinda', facultyId: 'FARMASI', prodiId: 'd3-far', prodiName: 'D3 Farmasi', angkatan: '2023', status: 'belum' },
-  { id: 'v-14', nim: '22030402', name: 'Naufal Rizky', facultyId: 'FARMASI', prodiId: 'prof-apt', prodiName: 'Profesi Apoteker', angkatan: '2022', status: 'belum' },
-];
+export const MOCK_VOTERS: Voter[] = [];
+const INITIAL_VOTERS: Voter[] = [];
 
 const INITIAL_BOOTHS: BoothStatus[] = [
-  { id: 'b-01', name: 'Bilik 01 (Auditorium)', status: 'Sedang Memilih', voterNim: '24030112', voterName: 'Dimas Kurniawan', prodiName: 'S1 Farmasi', startedAt: '09:44:12', durationSeconds: 65, ipAddress: '192.168.1.101' },
+  { id: 'b-01', name: 'Bilik 01 (Auditorium)', status: 'Tersedia', ipAddress: '192.168.1.101' },
   { id: 'b-02', name: 'Bilik 02 (Auditorium)', status: 'Tersedia', ipAddress: '192.168.1.102' },
   { id: 'b-03', name: 'Bilik 03 (Gedung B)', status: 'Tersedia', ipAddress: '192.168.1.103' },
   { id: 'b-04', name: 'Bilik 04 (Gedung B)', status: 'Tersedia', ipAddress: '192.168.1.104' },
@@ -144,7 +130,7 @@ const INITIAL_CONFIG: SystemConfig = {
   universityName: 'Universitas Bakti Tunas Husada',
   electionYear: '2026',
   electionStatus: 'Dibuka',
-  totalBooths: 4,
+  totalBooths: 10,
   sessionTimeoutSeconds: 180,
   allowAbstain: false,
   showLiveCountToPublic: true,
@@ -154,11 +140,11 @@ const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [currentAdmin, setCurrentAdmin] = useState<AdminAccount | null>(INITIAL_ADMINS[0]);
-  const [voters, setVoters] = useState<Voter[]>(INITIAL_VOTERS);
-  const [bemCandidates, setBemCandidates] = useState<Candidate[]>(BEM_CANDIDATES);
-  const [himaCandidates, setHimaCandidates] = useState<Candidate[]>(HIMA_CANDIDATES);
+  const [voters, setVoters] = useState<Voter[]>([]);
+  const [bemCandidates, setBemCandidates] = useState<Candidate[]>([]);
+  const [himaCandidates, setHimaCandidates] = useState<Candidate[]>([]);
   const [booths, setBooths] = useState<BoothStatus[]>(INITIAL_BOOTHS);
-  const [bemResults, setBemResults] = useState<PaslonResult[]>(BEM_REKAP_RESULTS);
+  const [bemResults, setBemResults] = useState<PaslonResult[]>([]);
   const [prodiRekapList, setProdiRekapList] = useState<ProdiRekap[]>(PRODI_REKAP_LIST);
   const [globalSummary, setGlobalSummary] = useState<GlobalRekapSummary>(GLOBAL_REKAP_SUMMARY);
   const [config, setConfig] = useState<SystemConfig>(INITIAL_CONFIG);

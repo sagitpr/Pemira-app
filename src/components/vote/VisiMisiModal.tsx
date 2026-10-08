@@ -57,7 +57,7 @@ export default function VisiMisiModal({
               Slogan &amp; Nilai Perjuangan
             </span>
             <p className="font-semibold text-sky-950 italic">
-              &ldquo;{candidate.tagline}&rdquo;
+              &ldquo;{candidate.tagline || candidate.slogan || 'Menuju Kampus BTH Berkemajuan dan Berintegritas'}&rdquo;
             </p>
           </div>
 

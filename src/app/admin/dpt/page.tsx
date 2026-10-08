@@ -373,8 +373,20 @@ export default function AdminDptPage() {
                   </tr>
                 ) : filteredVoters.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-10 text-center text-slate-400 italic">
-                      Tidak ada data pemilih yang sesuai dengan kriteria pencarian.
+                    <td colSpan={5} className="py-12 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-1.5">
+                        <Users className="w-8 h-8 text-slate-300 mb-1" />
+                        <span className="font-semibold text-slate-600">
+                          {voters.length === 0
+                            ? 'Belum ada data DPT. Silakan tambahkan DPT atau impor file CSV.'
+                            : 'Tidak ada data pemilih yang sesuai dengan kriteria pencarian.'}
+                        </span>
+                        {voters.length === 0 && (
+                          <span className="text-[11px] text-slate-400">
+                            Gunakan tombol "+ Tambah Mahasiswa" atau "Impor CSV" di atas untuk memasukkan data DPT.
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (

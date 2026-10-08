@@ -43,12 +43,12 @@ function VoteContent() {
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   // Form State
-  const [inputNim, setInputNim] = useState<string>('24030112');
+  const [inputNim, setInputNim] = useState<string>('');
   const [detectedVoter, setDetectedVoter] = useState<any>(null);
 
   // Selections
-  const [selectedBemId, setSelectedBemId] = useState<string>('bem-01');
-  const [selectedHimaId, setSelectedHimaId] = useState<string>('hima-ftb-01');
+  const [selectedBemId, setSelectedBemId] = useState<string>('');
+  const [selectedHimaId, setSelectedHimaId] = useState<string>('');
 
   // Modal
   const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
@@ -232,10 +232,10 @@ function VoteContent() {
     } catch {}
 
     if (!selectedBemId && (bemCandidates || []).length > 0) {
-      setSelectedBemId(String(bemCandidates[0]?.id ?? 'bem-01'));
+      setSelectedBemId(String(bemCandidates[0]?.id));
     }
     if (!selectedHimaId && (himaCandidates || []).length > 0) {
-      setSelectedHimaId(String(himaCandidates[0]?.id ?? 'hima-ftb-01'));
+      setSelectedHimaId(String(himaCandidates[0]?.id));
     }
 
     setCurrentStep(2);
@@ -249,25 +249,26 @@ function VoteContent() {
     }
 
     setIsSubmitting(true);
+    const voterNim = detectedVoter?.nim || inputNim || '';
 
     try {
       await fetch('/api/vote/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nim: detectedVoter?.nim || '24030112',
+          nim: voterNim,
           boothNumber: assignedBoothNumber,
           bemCandidateId: selectedBemId,
           himaCandidateId: selectedHimaId,
         }),
       });
 
-      castVote?.(detectedVoter?.nim || '24030112', selectedBemId, selectedHimaId);
+      castVote?.(voterNim, selectedBemId, selectedHimaId);
       updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
       setIsSubmitting(false);
       setCurrentStep(5);
     } catch {
-      castVote?.(detectedVoter?.nim || '24030112', selectedBemId, selectedHimaId);
+      castVote?.(voterNim, selectedBemId, selectedHimaId);
       updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
       setIsSubmitting(false);
       setCurrentStep(5);
@@ -284,6 +285,19 @@ function VoteContent() {
   const safeHimaList = himaCandidates || [];
   const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
   const selectedHimaCandidate = safeHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || safeHimaList[0] || null;
+
+  if (currentStep !== 5 && safeBemList.length === 0 && safeHimaList.length === 0) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans">
+        <div className="max-w-md p-6 bg-white rounded-2xl shadow-sm border border-slate-200">
+          <h3 className="text-lg font-bold text-slate-800">Pemilihan Belum Dimulai</h3>
+          <p className="mt-2 text-sm text-slate-500">
+            Data kandidat belum dimasukkan oleh panitia KPUM. Silakan hubungi petugas bilik.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (sessionError) {
     return (
@@ -804,13 +818,13 @@ function VoteContent() {
                     <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                       <span className="text-slate-500">Pilihan BEM-U :</span>
                       <span className="font-bold text-slate-900 font-mono">
-                        Paslon {selectedBemCandidate?.number || '01'} ({selectedBemCandidate?.leaderName || '-'})
+                        Paslon {selectedBemCandidate?.number || '01'} ({selectedBemCandidate?.leaderName || selectedBemCandidate?.leader_name || '-'})
                       </span>
                     </div>
                     <div className="flex justify-between items-center">
                       <span className="text-slate-500">Pilihan HIMA :</span>
                       <span className="font-bold text-slate-900 font-mono">
-                        Paslon {selectedHimaCandidate?.number || '01'} ({selectedHimaCandidate?.leaderName || '-'})
+                        Paslon {selectedHimaCandidate?.number || '01'} ({selectedHimaCandidate?.leaderName || selectedHimaCandidate?.leader_name || '-'})
                       </span>
                     </div>
                   </div>
