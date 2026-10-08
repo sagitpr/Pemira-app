@@ -11,9 +11,67 @@ ALTER TABLE IF EXISTS voters
 -- Ensure booths table has is_active and proper structure
 ALTER TABLE IF EXISTS booths
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS voter_name TEXT,
+  ADD COLUMN IF NOT EXISTS voter_nim TEXT,
+  ADD COLUMN IF NOT EXISTS voter_prodi TEXT,
   ADD COLUMN IF NOT EXISTS current_voter_nim TEXT,
   ADD COLUMN IF NOT EXISTS current_voter_name TEXT,
-  ADD COLUMN IF NOT EXISTS current_voter_prodi TEXT;
+  ADD COLUMN IF NOT EXISTS current_voter_prodi TEXT,
+  ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+
+-- RPC to reset a single booth and revert voter to 'BELUM'
+CREATE OR REPLACE FUNCTION reset_single_booth(p_booth_id TEXT DEFAULT NULL, p_booth_number INT DEFAULT NULL)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_voter_nim TEXT;
+  v_booth_num INT;
+BEGIN
+  -- Dapatkan NIM pemilih dan nomor bilik
+  SELECT 
+    COALESCE(voter_nim, current_voter_nim), 
+    booth_number
+  INTO v_voter_nim, v_booth_num
+  FROM booths
+  WHERE (p_booth_id IS NOT NULL AND id::text = p_booth_id)
+     OR (p_booth_number IS NOT NULL AND booth_number = p_booth_number)
+  LIMIT 1;
+
+  -- Revert status voter jika ada
+  IF v_voter_nim IS NOT NULL THEN
+    UPDATE voters
+    SET voting_status = 'BELUM',
+        has_voted = FALSE,
+        start_vote_at = NULL,
+        completed_at = NULL,
+        duration_seconds = NULL
+    WHERE nim = v_voter_nim;
+  END IF;
+
+  -- Reset status bilik
+  UPDATE booths
+  SET status = 'TERSEDIA',
+      voter_name = NULL,
+      voter_nim = NULL,
+      voter_prodi = NULL,
+      current_voter_name = NULL,
+      current_voter_nim = NULL,
+      current_voter_prodi = NULL,
+      started_at = NULL,
+      updated_at = NOW()
+  WHERE (p_booth_id IS NOT NULL AND id::text = p_booth_id)
+     OR (p_booth_number IS NOT NULL AND booth_number = p_booth_number);
+
+  RETURN json_build_object(
+    'success', true,
+    'booth_number', v_booth_num,
+    'voter_nim', v_voter_nim,
+    'message', 'Bilik berhasil direset ke status TERSEDIA'
+  );
+END;
+$$;
 
 -- 2. RPC to dynamically sync number of active booths
 CREATE OR REPLACE FUNCTION set_total_booths(target_count INT)

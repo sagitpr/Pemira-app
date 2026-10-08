@@ -6,21 +6,27 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { boothNumber, nim, name, prodi } = body;
+    const { boothNumber, nim, name, prodi, startedAt } = body;
 
     const num = typeof boothNumber === 'number'
       ? boothNumber
       : parseInt(String(boothNumber).replace(/\D/g, '') || '1', 10);
 
+    const nowIso = startedAt || new Date().toISOString();
+
     try {
       const { data, error } = await supabaseAdmin
         .from('booths')
         .update({
-          current_voter_nim: nim,
-          current_voter_name: name,
-          current_voter_prodi: prodi,
-          status: 'Sedang Memilih',
-          updated_at: new Date().toISOString(),
+          status: 'DIGUNAKAN',
+          voter_name: name || null,
+          voter_nim: nim || null,
+          voter_prodi: prodi || null,
+          current_voter_name: name || null,
+          current_voter_nim: nim || null,
+          current_voter_prodi: prodi || null,
+          started_at: nowIso,
+          updated_at: nowIso,
         })
         .eq('booth_number', num);
 
@@ -31,7 +37,6 @@ export async function POST(request: Request) {
       console.warn('Supabase booths presence update note:', dbErr);
     }
 
-    // Return success response so client continues smoothly
     return NextResponse.json({
       success: true,
       boothNumber: num,

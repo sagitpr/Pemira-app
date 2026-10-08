@@ -366,6 +366,26 @@ function VoteContent() {
     }
 
     try {
+      const supabase = createClient();
+      await supabase
+        .from('booths')
+        .update({
+          status: 'DIGUNAKAN',
+          voter_name: detectedVoter?.name,
+          voter_nim: detectedVoter?.nim,
+          voter_prodi: detectedVoter?.prodiName,
+          current_voter_name: detectedVoter?.name,
+          current_voter_nim: detectedVoter?.nim,
+          current_voter_prodi: detectedVoter?.prodiName,
+          started_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('booth_number', assignedBoothNumber);
+    } catch (bErr) {
+      console.warn('Direct booth update note:', bErr);
+    }
+
+    try {
       await fetch('/api/vote/presence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -374,6 +394,7 @@ function VoteContent() {
           nim: detectedVoter?.nim,
           name: detectedVoter?.name,
           prodi: detectedVoter?.prodiName,
+          startedAt: nowIso,
         }),
       });
     } catch {}

@@ -111,9 +111,13 @@ export async function POST(request: Request) {
         .from('booths')
         .update({
           status: 'TERSEDIA',
+          voter_name: null,
+          voter_nim: null,
+          voter_prodi: null,
           current_voter_nim: null,
           current_voter_name: null,
           current_voter_prodi: null,
+          started_at: null,
           updated_at: nowIso,
         })
         .eq('booth_number', num);

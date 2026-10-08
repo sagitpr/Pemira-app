@@ -5,11 +5,12 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export async function POST(request: Request) {
   try {
+    let body: any = null;
     let token: string | null = null;
     let preferredBooth: string | null = null;
 
     try {
-      const body = await request.json();
+      body = await request.json();
       token = body?.token || null;
       preferredBooth = body?.preferredBooth || null;
     } catch {
@@ -66,6 +67,33 @@ export async function POST(request: Request) {
         waiting: true,
         message: 'Semua bilik suara sedang penuh',
       }, { status: 200 });
+    }
+
+    // Jika data pemilih disertakan, simpan langsung ke tabel booths
+    const voter = body?.voter || null;
+    const voterNim = body?.nim || voter?.nim || null;
+    const voterName = body?.name || body?.nama || voter?.name || voter?.nama || null;
+    const voterProdi = body?.prodi || voter?.prodi || null;
+
+    if (data?.booth_id && (voterNim || voterName)) {
+      try {
+        await supabaseAdmin
+          .from('booths')
+          .update({
+            status: 'DIGUNAKAN',
+            voter_name: voterName,
+            voter_nim: voterNim,
+            voter_prodi: voterProdi,
+            current_voter_name: voterName,
+            current_voter_nim: voterNim,
+            current_voter_prodi: voterProdi,
+            started_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', data.booth_id);
+      } catch (e) {
+        console.warn('Gagal update voter ke assigned booth:', e);
+      }
     }
 
     return NextResponse.json({
