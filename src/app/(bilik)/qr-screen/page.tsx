@@ -59,7 +59,7 @@ export default function QrScreenPage() {
     }
   };
 
-  const voteUrl = baseUrl ? `${baseUrl}/vote?token=${token}&booth=01` : '';
+  const voteUrl = baseUrl ? `${baseUrl}/vote?token=${token}` : '';
   const formattedTime = `00:${timeLeft < 10 ? `0${timeLeft}` : timeLeft}`;
 
   return (
@@ -70,7 +70,7 @@ export default function QrScreenPage() {
       {/* Layer Video YouTube Background */}
       <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
         <iframe
-          className="absolute top-1/2 left-1/2 h-[56.25vw] min-h-screen w-[177.77vh] min-w-full -translate-x-1/2 -translate-y-1/2 opacity-70 scale-125 pointer-events-none"
+          className="absolute top-1/2 left-1/2 h-[56.25vw] min-h-screen w-[177.77vh] min-w-full -translate-x-1/2 -translate-y-1/2 opacity-40 scale-125 pointer-events-none"
           src="https://www.youtube.com/embed/uQFd91AhFes?autoplay=1&mute=1&controls=0&loop=1&playlist=uQFd91AhFes&playsinline=1&rel=0&showinfo=0&modestbranding=1"
           title="Background Kampus UBTH"
           allow="autoplay; encrypted-media"
@@ -129,11 +129,11 @@ export default function QrScreenPage() {
       {/* Kartu QR Code (Bingkai Sudut Biru Sesuai Referensi, Tanpa Kotak Nomor Tambahan) */}
       <div className="z-20 my-auto flex flex-col items-center">
         <div className="relative rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-slate-100">
-          {/* 4 Sudut Fokus Biru */}
-          <div className="absolute -top-3 -left-3 h-8 w-8 rounded-tl-xl border-t-4 border-l-4 border-sky-500" />
-          <div className="absolute -top-3 -right-3 h-8 w-8 rounded-tr-xl border-t-4 border-r-4 border-sky-500" />
-          <div className="absolute -bottom-3 -left-3 h-8 w-8 rounded-bl-xl border-b-4 border-l-4 border-sky-500" />
-          <div className="absolute -bottom-3 -right-3 h-8 w-8 rounded-br-xl border-b-4 border-r-4 border-sky-500" />
+          {/* 4 Sudut Fokus Cyan */}
+          <div className="absolute -top-3 -left-3 h-8 w-8 rounded-tl-xl border-t-4 border-l-4 border-cyan-400" />
+          <div className="absolute -top-3 -right-3 h-8 w-8 rounded-tr-xl border-t-4 border-r-4 border-cyan-400" />
+          <div className="absolute -bottom-3 -left-3 h-8 w-8 rounded-bl-xl border-b-4 border-l-4 border-cyan-400" />
+          <div className="absolute -bottom-3 -right-3 h-8 w-8 rounded-br-xl border-b-4 border-r-4 border-cyan-400" />
 
           {/* QR Code */}
           <div className="flex h-60 w-60 items-center justify-center sm:h-72 sm:w-72">

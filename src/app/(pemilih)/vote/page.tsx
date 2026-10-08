@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
@@ -289,10 +291,13 @@ function VoteContent() {
   if (currentStep !== 5 && safeBemList.length === 0 && safeHimaList.length === 0) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans">
-        <div className="max-w-md p-6 bg-white rounded-2xl shadow-sm border border-slate-200">
-          <h3 className="text-lg font-bold text-slate-800">Pemilihan Belum Dimulai</h3>
-          <p className="mt-2 text-sm text-slate-500">
-            Data kandidat belum dimasukkan oleh panitia KPUM. Silakan hubungi petugas bilik.
+        <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+            <Info className="w-6 h-6" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900">Data Paslon Sedang Dipersiapkan oleh KPUM</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            Data kandidat pemilihan belum dimasukkan oleh panitia KPUM. Silakan hubungi petugas bilik suara atau tunggu pengumuman panitia.
           </p>
         </div>
       </div>

@@ -49,20 +49,22 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
     if (bemCandidates && bemCandidates.length > 0) {
       return bemCandidates.map((c) => ({
         id: c.id,
-        number: c.number,
-        name: `${c.leaderName} & ${c.viceLeaderName}`,
+        number: c.number || (c.candidate_number ? `0${c.candidate_number}` : '01'),
+        candidate_number: c.candidate_number ?? c.candidateNumber,
+        name: `${c.leaderName || c.leader_name || 'Calon Ketua'} & ${c.viceLeaderName || c.vice_leader_name || 'Calon Wakil'}`,
       }));
     }
     if (bemResults && bemResults.length > 0) {
       return bemResults.map((r) => ({
         id: r.id,
         number: r.number,
+        candidate_number: undefined,
         name: r.name,
       }));
     }
     return [
-      { id: '01', number: '01', name: 'Paslon 01' },
-      { id: '02', number: '02', name: 'Paslon 02' },
+      { id: '01', number: '01', candidate_number: 1, name: 'Paslon 01' },
+      { id: '02', number: '02', candidate_number: 2, name: 'Paslon 02' },
     ];
   }, [bemCandidates, bemResults]);
 
@@ -93,13 +95,22 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
       const tidakHadirCount = Math.max(0, dptCount - hadirCount);
 
       // 4. Suara per Paslon BEM riil
-      const votesPerPaslon: Record<string, number> = {};
-      activeBemPaslons.forEach((paslon) => {
+      const votesPerPaslon: Record<string | number, number> = {};
+      activeBemPaslons.forEach((paslon: any) => {
         // Cek jika ada detail di prodiMock paslonList
-        const foundCand = prodiMock?.paslonList?.find(
-          (cand) => cand.number === paslon.number || cand.id.includes(paslon.number)
-        );
-        votesPerPaslon[paslon.number] = foundCand ? foundCand.votes : 0;
+        const paslonNumStr = String(paslon?.number ?? paslon?.candidate_number ?? '');
+
+        const foundCand = prodiMock?.paslonList?.find((cand: any) => {
+          const candNumStr = String(cand?.number ?? cand?.candidate_number ?? '');
+          const candIdStr = String(cand?.id ?? '');
+          
+          if (paslonNumStr && candNumStr === paslonNumStr) return true;
+          if (paslonNumStr && candIdStr.includes(paslonNumStr)) return true;
+          return false;
+        });
+
+        const keyNumber = paslon?.number ?? paslon?.candidate_number ?? 0;
+        votesPerPaslon[keyNumber] = foundCand ? (foundCand.votes ?? 0) : 0;
       });
 
       return {
@@ -134,9 +145,11 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
       const tidakHadirCount = Math.max(0, dptCount - hadirCount);
 
       // Cari kandidat HIMA prodi tersebut
-      const candHima = (himaCandidates || []).filter((h) => h.faculty === prodi.faculty);
+      const candHima = (himaCandidates || []).filter(
+        (h) => (h.facultyId || h.faculty_id) === prodi.faculty
+      );
       const paslonNames = prodiMock?.paslonList?.map((p) => `${p.number}. ${p.name} (${p.votes} suara)`).join(', ') ||
-        (candHima.length > 0 ? candHima.map((c) => `${c.number}. ${c.leaderName}`).join(', ') : 'Calon Terdaftar');
+        (candHima.length > 0 ? candHima.map((c) => `${c.number ?? c.candidate_number ?? '01'}. ${c.leaderName || c.leader_name || 'Kandidat'}`).join(', ') : 'Calon Terdaftar');
 
       const leadingHimaName = prodiMock?.paslonList?.[0]
         ? `${prodiMock.paslonList[0].name}`
@@ -164,10 +177,11 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
     const sumHadir = dynamicBemTabulasi.reduce((acc, row) => acc + row.hadir, 0);
     const sumTidakHadir = dynamicBemTabulasi.reduce((acc, row) => acc + row.tidakHadir, 0);
 
-    const sumVotesPerPaslon: Record<string, number> = {};
-    activeBemPaslons.forEach((paslon) => {
-      sumVotesPerPaslon[paslon.number] = dynamicBemTabulasi.reduce(
-        (acc, row) => acc + (row.votesPerPaslon[paslon.number] || 0),
+    const sumVotesPerPaslon: Record<string | number, number> = {};
+    activeBemPaslons.forEach((paslon: any) => {
+      const keyNumber = paslon?.number ?? paslon?.candidate_number ?? 0;
+      sumVotesPerPaslon[keyNumber] = dynamicBemTabulasi.reduce(
+        (acc, row) => acc + (row.votesPerPaslon[keyNumber] || 0),
         0
       );
     });
@@ -380,8 +394,8 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
                       </th>
                     </tr>
                     <tr className="bg-slate-50 text-center font-bold">
-                      {activeBemPaslons.map((paslon) => (
-                        <th key={paslon.number} className="border border-slate-800 p-1.5 w-16 font-mono">
+                      {activeBemPaslons.map((paslon: any) => (
+                        <th key={String(paslon?.number ?? paslon?.id)} className="border border-slate-800 p-1.5 w-16 font-mono">
                           {paslon.number}
                         </th>
                       ))}
@@ -394,14 +408,17 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
                         <td className="border border-slate-800 p-2 font-medium uppercase">
                           {row.name}
                         </td>
-                        {activeBemPaslons.map((paslon) => (
-                          <td
-                            key={paslon.number}
-                            className="border border-slate-800 p-2 text-center font-mono font-semibold"
-                          >
-                            {row.votesPerPaslon[paslon.number] ?? 0}
-                          </td>
-                        ))}
+                        {activeBemPaslons.map((paslon: any) => {
+                          const keyNumber = paslon?.number ?? paslon?.candidate_number ?? 0;
+                          return (
+                            <td
+                              key={String(paslon?.number ?? paslon?.id)}
+                              className="border border-slate-800 p-2 text-center font-mono font-semibold"
+                            >
+                              {row.votesPerPaslon[keyNumber] ?? 0}
+                            </td>
+                          );
+                        })}
                         <td className="border border-slate-800 p-2 text-center font-mono font-semibold">
                           {row.dpt}
                         </td>
@@ -418,11 +435,14 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
                       <td colSpan={2} className="border border-slate-800 p-2.5 text-center tracking-wider">
                         JUMLAH
                       </td>
-                      {activeBemPaslons.map((paslon) => (
-                        <td key={paslon.number} className="border border-slate-800 p-2.5 text-center font-mono text-sm">
-                          {totalsBem.sumVotesPerPaslon[paslon.number] || 0}
-                        </td>
-                      ))}
+                      {activeBemPaslons.map((paslon: any) => {
+                        const keyNumber = paslon?.number ?? paslon?.candidate_number ?? 0;
+                        return (
+                          <td key={String(paslon?.number ?? paslon?.id)} className="border border-slate-800 p-2.5 text-center font-mono text-sm">
+                            {totalsBem.sumVotesPerPaslon[keyNumber] || 0}
+                          </td>
+                        );
+                      })}
                       <td className="border border-slate-800 p-2.5 text-center font-mono text-sm">
                         {totalsBem.sumDpt}
                       </td>
