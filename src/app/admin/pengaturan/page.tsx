@@ -398,13 +398,27 @@ export default function AdminPengaturanPage() {
               <div>
                 <h4 className="text-xs font-bold text-slate-900 mb-1">Reset Status DPT</h4>
                 <p className="text-[11px] text-slate-500 mb-3">
-                  Kembalikan status semua pemilih ke status &quot;Belum Memilih&quot;.
+                  Kembalikan status semua pemilih di database Supabase ke status &quot;Belum Memilih&quot;.
                 </p>
               </div>
               <button
-                onClick={() => {
-                  if (confirm('Yakin ingin mereset seluruh status kehadiran DPT?')) {
+                onClick={async () => {
+                  if (!confirm('Yakin ingin mereset seluruh status kehadiran DPT di database Supabase menjadi Belum Memilih?')) return;
+                  try {
+                    const res = await fetch('/api/admin/pengaturan/reset', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ target: 'voters_status' }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json.success) {
+                      showToast(json.message || 'Gagal mereset status DPT di database.', 'error');
+                      return;
+                    }
                     resetAllVoters();
+                    showToast(json.message, 'warning');
+                  } catch (err: any) {
+                    showToast(err.message || 'Gagal menghubungi server.', 'error');
                   }
                 }}
                 className="w-full py-2 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
@@ -418,13 +432,27 @@ export default function AdminPengaturanPage() {
               <div>
                 <h4 className="text-xs font-bold text-rose-900 mb-1">Reset Total Perolehan Suara</h4>
                 <p className="text-[11px] text-rose-600/80 mb-3">
-                  Nolkan seluruh suara BEM dan HIMA untuk persiapan pemungutan suara resmi.
+                  Nolkan seluruh suara BEM dan HIMA di database Supabase untuk persiapan pemungutan suara resmi.
                 </p>
               </div>
               <button
-                onClick={() => {
-                  if (confirm('PERINGATAN: Seluruh suara yang masuk akan dihapus dan kembali ke 0. Lanjutkan?')) {
+                onClick={async () => {
+                  if (!confirm('PERINGATAN: Seluruh suara yang masuk akan dihapus permanen dari database Supabase dan kembali ke 0. Lanjutkan?')) return;
+                  try {
+                    const res = await fetch('/api/admin/pengaturan/reset', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ target: 'votes' }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json.success) {
+                      showToast(json.message || 'Gagal mereset suara di database.', 'error');
+                      return;
+                    }
                     resetAllVotes();
+                    showToast(json.message, 'warning');
+                  } catch (err: any) {
+                    showToast(err.message || 'Gagal menghubungi server.', 'error');
                   }
                 }}
                 className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"

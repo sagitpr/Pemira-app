@@ -24,6 +24,7 @@ import {
   User,
   Monitor,
   Info,
+  AlertCircle,
 } from 'lucide-react';
 
 function VoteContent() {
@@ -70,7 +71,12 @@ function VoteContent() {
 
   // Form State
   const [inputNim, setInputNim] = useState<string>('');
+  const [inputName, setInputName] = useState<string>('');
   const [detectedVoter, setDetectedVoter] = useState<any>(null);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verifySuccess, setVerifySuccess] = useState<string | null>(null);
+  const [isVerified, setIsVerified] = useState<boolean>(false);
 
   // Selections
   const [selectedBemId, setSelectedBemId] = useState<string>('');
@@ -226,46 +232,91 @@ function VoteContent() {
     };
   }, [isWaitingQueue, showToast]);
 
-  // 2. Real-time NIM detection with Supabase lookup
-  useEffect(() => {
-    if (!inputNim) {
+  // 2. Verifikasi Identitas Pemilih (NIM & Nama Lengkap wajib cocok 100% dengan DPT)
+  const handleVerifyIdentity = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    const cleanNim = inputNim.trim();
+    const cleanName = inputName.trim();
+
+    if (!cleanNim) {
+      setVerifyError('Silakan masukkan NIM Anda.');
+      setVerifySuccess(null);
+      setIsVerified(false);
       setDetectedVoter(null);
+      showToast?.('Silakan masukkan NIM Anda.', 'error');
       return;
     }
-    const cleanNim = inputNim.trim();
-    const safeVoters = voters || [];
-    const found = safeVoters.find((v) => v?.nim?.trim() === cleanNim);
-    if (found) {
-      setDetectedVoter(found);
-    } else {
-      setDetectedVoter({
-        nim: cleanNim,
-        name: 'Mahasiswa UBTH',
-        facultyId: 'FTB',
-        prodiName: 'Bisnis Digital',
-        status: 'belum',
-      });
-      (async () => {
-        try {
-          const supabase = createClient();
-          const { data } = await supabase
-            .from('voters')
-            .select('*')
-            .eq('nim', cleanNim)
-            .single();
-          if (data) {
-            setDetectedVoter({
-              nim: data.nim,
-              name: data.name,
-              facultyId: data.faculty_id || data.facultyId || 'FTB',
-              prodiName: data.prodi_name || data.prodiName || 'Bisnis Digital',
-              status: data.voting_status || (data.has_voted ? 'selesai' : 'belum'),
-            });
-          }
-        } catch {}
-      })();
+
+    if (!cleanName) {
+      setVerifyError('Silakan masukkan nama lengkap Anda.');
+      setVerifySuccess(null);
+      setIsVerified(false);
+      setDetectedVoter(null);
+      showToast?.('Silakan masukkan nama lengkap Anda.', 'error');
+      return;
     }
-  }, [inputNim, voters]);
+
+    setIsVerifying(true);
+    setVerifyError(null);
+    setVerifySuccess(null);
+
+    try {
+      const res = await fetch('/api/vote/verify-voter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nim: cleanNim, name: cleanName }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        setIsVerified(false);
+        setDetectedVoter(null);
+        setVerifySuccess(null);
+        const errMsg = json.message || 'Verifikasi identitas gagal.';
+        setVerifyError(errMsg);
+        showToast?.(errMsg, 'error');
+        return;
+      }
+
+      setIsVerified(true);
+      setDetectedVoter(json.voter);
+      setVerifyError(null);
+      setVerifySuccess(json.message || 'Identitas berhasil diverifikasi. Anda dapat melanjutkan ke pemilihan.');
+      showToast?.(json.message || 'Identitas berhasil diverifikasi.', 'success');
+    } catch (err: any) {
+      setIsVerified(false);
+      setDetectedVoter(null);
+      setVerifySuccess(null);
+      const networkMsg = 'Terjadi kendala jaringan saat memverifikasi identitas. Silakan coba lagi.';
+      setVerifyError(networkMsg);
+      showToast?.(networkMsg, 'error');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Reset status verifikasi jika pemilih mengubah isi input NIM atau Nama
+  const handleNimChange = (val: string) => {
+    setInputNim(val);
+    if (isVerified || verifyError || verifySuccess) {
+      setIsVerified(false);
+      setDetectedVoter(null);
+      setVerifyError(null);
+      setVerifySuccess(null);
+    }
+  };
+
+  const handleNameChange = (val: string) => {
+    setInputName(val);
+    if (isVerified || verifyError || verifySuccess) {
+      setIsVerified(false);
+      setDetectedVoter(null);
+      setVerifyError(null);
+      setVerifySuccess(null);
+    }
+  };
 
   // 3. Voting Session Countdown (Steps 2 - 4)
   useEffect(() => {
@@ -344,8 +395,13 @@ function VoteContent() {
 
   // Step 1 -> 2: Lanjut Memilih & Update status MENGERJAKAN
   const handleProceedToStep2 = async () => {
-    if (!detectedVoter) {
-      showToast?.('Masukkan NIM mahasiswa yang valid.', 'error');
+    if (!isVerified || !detectedVoter) {
+      showToast?.('Identitas wajib diverifikasi terlebih dahulu sebelum membuka surat suara.', 'error');
+      return;
+    }
+
+    if (detectedVoter.hasVoted || detectedVoter.status === 'selesai') {
+      showToast?.('Anda sudah menggunakan hak suara pada pemilihan ini.', 'error');
       return;
     }
 
@@ -436,11 +492,12 @@ function VoteContent() {
     }
 
     try {
-      await fetch('/api/vote/submit', {
+      const res = await fetch('/api/vote/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nim: voterNim,
+          name: detectedVoter?.name || inputName.trim(),
           boothNumber: assignedBoothNumber,
           bemCandidateId: selectedBemId,
           himaCandidateId: selectedHimaId || 'none',
@@ -448,15 +505,25 @@ function VoteContent() {
         }),
       });
 
+      const json = await res.json();
+
+      if (!res.ok || !json.success) {
+        setIsSubmitting(false);
+        const errMsg = json.message || 'Penyimpanan suara gagal di database.';
+        showToast?.(errMsg, 'error');
+        alert(`Gagal mengirim suara: ${errMsg}`);
+        return;
+      }
+
       castVote?.(voterNim, selectedBemId, selectedHimaId || '');
       updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
       setIsSubmitting(false);
       setCurrentStep(5);
-    } catch {
-      castVote?.(voterNim, selectedBemId, selectedHimaId || '');
-      updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
+    } catch (err: any) {
+      console.error('[VOTE_SUBMIT_FATAL_ERROR]', err);
       setIsSubmitting(false);
-      setCurrentStep(5);
+      showToast?.('Kendala jaringan: Gagal terhubung ke server pemungutan suara.', 'error');
+      alert('Kendala jaringan: Suara belum tersimpan di server. Silakan klik tombol Konfirmasi & Kirim Suara lagi.');
     }
   };
 
@@ -780,6 +847,7 @@ function VoteContent() {
                   </div>
 
                   <div className="space-y-4">
+                    {/* Input NIM */}
                     <div>
                       <label className="text-xs font-bold text-slate-700 block mb-1.5">
                         Nomor Induk Mahasiswa (NIM)
@@ -790,59 +858,107 @@ function VoteContent() {
                           type="text"
                           placeholder="Contoh: 210401xxx"
                           value={inputNim}
-                          onChange={(e) => setInputNim(e.target.value)}
+                          onChange={(e) => handleNimChange(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyIdentity(); }}
                           className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all"
                         />
                       </div>
                     </div>
 
-                    {/* Live Detection Info Box */}
-                    {detectedVoter ? (
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-900 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    {/* Input Nama Lengkap */}
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                        Nama Lengkap (Sesuai DPT)
+                      </label>
+                      <div className="relative">
+                        <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Masukkan nama lengkap sesuai kartu mahasiswa"
+                          value={inputName}
+                          onChange={(e) => handleNameChange(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyIdentity(); }}
+                          className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tombol Verifikasi Identitas DPT */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyIdentity()}
+                        disabled={isVerifying || !inputNim.trim() || !inputName.trim()}
+                        className={`w-full py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          isVerified
+                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20'
+                            : isVerifying || !inputNim.trim() || !inputName.trim()
+                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20'
+                        }`}
+                      >
+                        {isVerifying ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                            <span>Memverifikasi Data ke Database Supabase...</span>
+                          </>
+                        ) : isVerified ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Identitas Terverifikasi — Klik Ulang untuk Cek Ulang</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldCheck className="w-4 h-4" />
+                            <span>Verifikasi Identitas Pemilih</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Notification & Status Cards */}
+                    {isVerifying ? (
+                      <div className="flex items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+                        <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin shrink-0" />
+                        <span className="font-medium">Memeriksa kesesuaian NIM dan Nama Lengkap pada sistem DPT...</span>
+                      </div>
+                    ) : verifyError ? (
+                      <div className="flex items-start gap-2.5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold block text-rose-900">Verifikasi Ditolak</span>
+                          <span className="text-rose-700">{verifyError}</span>
+                        </div>
+                      </div>
+                    ) : isVerified && detectedVoter ? (
+                      <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-xs text-emerald-950 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                           <div>
-                            <span className="text-slate-500 block text-[11px]">Mahasiswa Terverifikasi DPT:</span>
+                            <span className="text-emerald-700 block text-[11px] font-semibold">
+                              {verifySuccess || 'Identitas Terverifikasi DPT'}
+                            </span>
                             <span className="font-bold text-slate-900 text-sm">
-                              {detectedVoter?.name || 'Mahasiswa'}
+                              {detectedVoter.name}
                             </span>
                             <span className="text-slate-600 block text-[11px]">
-                              {detectedVoter?.prodiName || 'Program Studi Terdaftar'}
+                              NIM: {detectedVoter.nim} • {detectedVoter.prodiName}
                             </span>
                           </div>
                         </div>
-                        <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-slate-900 text-white uppercase">
-                          {detectedVoter?.facultyId || 'UBTH'}
+                        <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-emerald-800 text-white uppercase">
+                          {detectedVoter.facultyId || 'UBTH'}
                         </span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200">
                         <Info className="w-4 h-4 shrink-0 text-slate-400" />
-                        <span>Data program studi akan otomatis terdeteksi dari NIM Anda.</span>
+                        <span>Ketikkan NIM dan nama lengkap Anda yang terdaftar pada DPT untuk memverifikasi hak suara.</span>
                       </div>
                     )}
 
-                    {/* Quick Demo NIMs */}
-                    <div className="pt-1">
-                      <span className="text-[11px] font-bold text-slate-400 block mb-1.5">
-                        Pilih Cepat Sampel Demo Mahasiswa:
-                      </span>
-                      <div className="flex flex-wrap gap-2">
-                        {[
-                          { nim: '24030112', label: 'Dimas (Farmasi)' },
-                          { nim: '23010045', label: 'Alya (Bisnis Digital)' },
-                          { nim: '22020089', label: 'Rian (Keperawatan)' },
-                        ].map((d) => (
-                          <button
-                            key={d.nim}
-                            type="button"
-                            onClick={() => setInputNim(d.nim)}
-                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors cursor-pointer"
-                          >
-                            {d.label}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="text-[11px] text-slate-400 italic">
+                      * Penulisan NIM dan nama harus sesuai dengan database DPT. Hak suara dijamin bersifat rahasia (asas Luber Jurdil).
                     </div>
                   </div>
 
@@ -858,7 +974,12 @@ function VoteContent() {
                     <button
                       type="button"
                       onClick={handleProceedToStep2}
-                      className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-md shadow-slate-900/15 flex items-center gap-2 cursor-pointer"
+                      disabled={!isVerified || !detectedVoter || detectedVoter.hasVoted || isVerifying}
+                      className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
+                        !isVerified || !detectedVoter || detectedVoter.hasVoted || isVerifying
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
+                          : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/15 cursor-pointer'
+                      }`}
                     >
                       <span>Lanjut ke Pemilihan BEM</span>
                       <ArrowRight className="w-4 h-4" />

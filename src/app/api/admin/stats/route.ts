@@ -8,7 +8,7 @@ export async function GET() {
     // 1. Ambil data voters langsung dari database Supabase
     const { data: voters, error: votersErr } = await supabaseAdmin
       .from('voters')
-      .select('id, nim, prodi, has_voted, voting_status');
+      .select('id, nim, prodi, prodi_name, has_voted, voting_status');
 
     if (votersErr) {
       console.error('Error fetching voters in stats API:', votersErr);

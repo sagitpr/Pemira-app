@@ -63,7 +63,7 @@ export default function AdminRekapPage() {
     try {
       const supabase = createClient();
       const { data: votersList, error } = await supabase.from('voters').select('*');
-      if (!error && Array.isArray(votersList) && votersList.length > 0) {
+      if (!error && Array.isArray(votersList)) {
         setRawVoters(votersList);
         const totalDptCount = votersList.length;
         const sudahMemilihCount = votersList.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
@@ -83,7 +83,7 @@ export default function AdminRekapPage() {
       // Fallback service role API jika anon client terhalang RLS
       const res = await fetch('/api/admin/stats');
       const json = await res.json();
-      if (json?.success && Array.isArray(json?.voters) && json.voters.length > 0) {
+      if (json?.success && Array.isArray(json?.voters)) {
         const votersData = json.voters;
         setRawVoters(votersData);
         const tDpt = json.stats.totalDpt;

@@ -47,9 +47,42 @@ export default function AdminDptPage() {
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch dari tabel Supabase 'voters'
+  // Fetch dari tabel Supabase 'voters' via API & client fallback
   const fetchSupabaseVoters = async () => {
     setIsLoading(true);
+    try {
+      // 1. Coba via API admin route
+      const res = await fetch('/api/admin/dpt');
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.voters)) {
+        const mapped: Voter[] = json.voters.map((d: any) => {
+          const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
+          const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
+          return {
+            id: String(d.id || d.nim),
+            nim: d.nim,
+            name: d.name,
+            facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
+            prodiId: d.prodi_id || d.prodiId || 'general',
+            prodiName: d.prodi_name || d.prodi || d.prodiName || 'Program Studi',
+            angkatan: d.angkatan || '2024',
+            status,
+            voting_status: rawStatus as any,
+            start_vote_at: d.start_vote_at,
+            completed_at: d.completed_at,
+            duration_seconds: d.duration_seconds,
+            votedAt: d.voted_at || d.votedAt || undefined,
+            boothId: d.booth_id || d.boothId || undefined,
+          };
+        });
+        setVoters(mapped);
+        setIsLoading(false);
+        return;
+      }
+    } catch (apiErr) {
+      console.warn('API DPT fetch fallback:', apiErr);
+    }
+
     try {
       const supabase = createClient();
       const { data, error } = await supabase
@@ -57,7 +90,7 @@ export default function AdminDptPage() {
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (!error && data && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         const mapped: Voter[] = data.map((d: any) => {
           const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
           const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
@@ -67,8 +100,8 @@ export default function AdminDptPage() {
             name: d.name,
             facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
             prodiId: d.prodi_id || d.prodiId || 'general',
-            prodiName: d.prodi_name || d.prodiName || 'Program Studi',
-            angkatan: d.angkatan || '2023',
+            prodiName: d.prodi_name || d.prodi || d.prodiName || 'Program Studi',
+            angkatan: d.angkatan || '2024',
             status,
             voting_status: rawStatus as any,
             start_vote_at: d.start_vote_at,
@@ -80,11 +113,10 @@ export default function AdminDptPage() {
         });
         setVoters(mapped);
       } else {
-        // Fallback ke default voters context
-        setVoters(fallbackVoters);
+        setVoters([]);
       }
     } catch {
-      setVoters(fallbackVoters);
+      setVoters([]);
     } finally {
       setIsLoading(false);
     }
@@ -117,63 +149,56 @@ export default function AdminDptPage() {
     return matchSearch && matchStatus;
   });
 
-  // Hapus Pemilih per Baris
+  // Hapus Pemilih per Baris ke Database
   const handleDeleteVoter = async (voter: Voter) => {
     const voterIdOrNim = voter.id || voter.nim;
-    if (!confirm(`Hapus pemilih ${voter.name || voter.nim} dari DPT?`)) return;
+    if (!confirm(`Hapus pemilih ${voter.name || voter.nim} dari DPT database permanen?`)) return;
 
     setDeletingId(voterIdOrNim);
     try {
-      const supabase = createClient();
-      let query = supabase.from('voters').delete();
-      if (voter.id && !voter.id.startsWith('v-') && !voter.id.startsWith('csv-')) {
-        query = query.eq('id', voter.id);
-      } else {
-        query = query.eq('nim', voter.nim);
+      const res = await fetch(`/api/admin/dpt?id=${encodeURIComponent(voter.id)}&nim=${encodeURIComponent(voter.nim)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Gagal menghapus data dari database.', 'error');
+        setDeletingId(null);
+        return;
       }
-      const { error } = await query;
-      if (error) {
-        // Fallback coba hapus dengan NIM
-        await supabase.from('voters').delete().eq('nim', voter.nim);
-      }
-    } catch (err) {
-      console.warn('Gagal menghapus dari database Supabase:', err);
-    }
 
-    setVoters((prev) => prev.filter((v) => v.id !== voter.id && v.nim !== voter.nim));
-    deleteVoterContext(voter.id || voter.nim);
-    showToast(`Pemilih ${voter.name} (${voter.nim}) berhasil dihapus dari DPT.`, 'info');
-    setDeletingId(null);
+      setVoters((prev) => prev.filter((v) => v.id !== voter.id && v.nim !== voter.nim));
+      deleteVoterContext(voter.id || voter.nim);
+      showToast(`Pemilih ${voter.name} (${voter.nim}) berhasil dihapus dari DPT.`, 'info');
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungi server.', 'error');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
-  // Kosongkan Seluruh Data DPT Massal
+  // Kosongkan Seluruh Data DPT Massal di Database
   const handleResetAllVoters = async () => {
     setIsResettingAll(true);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('voters')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Menghapus semua baris
-
-      if (error) {
-        // Fallback jika id bukan bertipe uuid
-        await supabase
-          .from('voters')
-          .delete()
-          .neq('nim', 'NON_EXISTENT_NIM_99999');
+      const res = await fetch('/api/admin/dpt?all=true', { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Gagal mengosongkan DPT.', 'error');
+        setIsResettingAll(false);
+        return;
       }
-    } catch (err) {
-      console.warn('Gagal mengosongkan tabel voters di Supabase:', err);
-    }
 
-    setVoters([]);
-    showToast('Seluruh data DPT berhasil dikosongkan.', 'warning');
-    setIsResettingAll(false);
-    setShowResetConfirmModal(false);
+      setVoters([]);
+      showToast('Seluruh data DPT berhasil dikosongkan dari database Supabase.', 'warning');
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungi server.', 'error');
+    } finally {
+      setIsResettingAll(false);
+      setShowResetConfirmModal(false);
+    }
   };
 
-  // Tambah DPT Manual ke Supabase & Local State
+  // Tambah DPT Manual ke Database Supabase
   const handleCreateVoter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNim.trim() || !newName.trim()) {
@@ -182,43 +207,39 @@ export default function AdminDptPage() {
     }
 
     setIsSubmitting(true);
-    const newEntry: Voter = {
-      id: `v-${Date.now()}`,
-      nim: newNim.trim(),
-      name: newName.trim(),
-      facultyId: newFaculty,
-      prodiId: 'general',
-      prodiName: newProdi,
-      angkatan: newAngkatan,
-      status: 'belum',
-    };
-
     try {
-      const supabase = createClient();
-      await supabase.from('voters').insert([
-        {
-          nim: newEntry.nim,
-          name: newEntry.name,
-          faculty_id: newEntry.facultyId,
-          prodi_name: newEntry.prodiName,
-          angkatan: newEntry.angkatan,
-          has_voted: false,
-          status: 'belum',
-        },
-      ]);
-    } catch {}
+      const res = await fetch('/api/admin/dpt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nim: newNim.trim(),
+          name: newName.trim(),
+          faculty_id: newFaculty,
+          prodi_name: newProdi,
+          angkatan: newAngkatan,
+        }),
+      });
 
-    setVoters((prev) => [newEntry, ...prev]);
-    addVoterContext(newEntry);
-    showToast(`DPT ${newEntry.name} (${newEntry.nim}) berhasil ditambahkan.`, 'success');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Gagal menyimpan ke database Supabase.', 'error');
+        setIsSubmitting(false);
+        return;
+      }
 
-    setIsSubmitting(false);
-    setIsAddModalOpen(false);
-    setNewNim('');
-    setNewName('');
+      showToast(data.message, 'success');
+      setIsAddModalOpen(false);
+      setNewNim('');
+      setNewName('');
+      await fetchSupabaseVoters();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungi server.', 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  // Upload & Import CSV langsung ke Supabase dengan Filter Baris Sampah
+  // Upload & Import CSV langsung ke Supabase dengan Batch & Duplicate Detection
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -240,94 +261,29 @@ export default function AdminDptPage() {
     }
 
     setIsImporting(true);
-    const lines = csvText.trim().split('\n');
-    const newItems: any[] = [];
-    const mappedItems: Voter[] = [];
-
-    // Parse CSV: NIM, Nama, Prodi, Fakultas, Angkatan
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      // Skip header row if exists
-      if (i === 0 && (line.toLowerCase().includes('nim') || line.toLowerCase().includes('nama'))) {
-        continue;
-      }
-
-      // Deteksi separator koma, titik koma, atau tab
-      let separator = ',';
-      if (line.includes(';') && !line.includes(',')) separator = ';';
-      else if (line.includes('\t')) separator = '\t';
-
-      const cols = line.split(separator).map((c) => c.replace(/["']/g, '').trim());
-      if (cols.length < 2) continue;
-
-      const rawNim = cols[0];
-      const rawName = cols[1];
-
-      // FILTER BARIS SAMPAH DARI SHEET EXCEL:
-      // 1. Abaikan baris jika NIM kosong atau bukan berupa angka valid (misal: "TOTAL MAHASISWA", "JUMLAH", dll)
-      if (!rawNim) continue;
-      const cleanNim = rawNim.trim();
-      if (!/^\d+$/.test(cleanNim)) continue;
-
-      // 2. Abaikan baris jika kolom Nama kosong
-      const cleanName = rawName.trim();
-      if (!cleanName || cleanName.length < 2) continue;
-
-      // 3. Abaikan jika kolom Nama berisi teks footer/rekap
-      const lowerName = cleanName.toLowerCase();
-      if (
-        lowerName.includes('total mahasiswa') ||
-        lowerName.includes('jumlah') ||
-        lowerName.includes('rekapitulasi')
-      ) {
-        continue;
-      }
-
-      const prodi = cols[2] || 'S1 Farmasi';
-      const faculty = (cols[3] || 'FARMASI') as any;
-      const angkatan = cols[4] || '2024';
-
-      newItems.push({
-        nim: cleanNim,
-        name: cleanName,
-        prodi_name: prodi,
-        faculty_id: faculty,
-        angkatan,
-        has_voted: false,
-        status: 'belum',
-      });
-
-      mappedItems.push({
-        id: `csv-${Date.now()}-${i}`,
-        nim: cleanNim,
-        name: cleanName,
-        facultyId: faculty,
-        prodiId: 'csv',
-        prodiName: prodi,
-        angkatan,
-        status: 'belum',
-      });
-    }
-
-    if (newItems.length === 0) {
-      showToast('Tidak ada baris data DPT yang valid ditemukan.', 'error');
-      setIsImporting(false);
-      return;
-    }
-
     try {
-      const supabase = createClient();
-      await supabase.from('voters').upsert(newItems, { onConflict: 'nim' });
-    } catch {}
+      const res = await fetch('/api/admin/dpt/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvText }),
+      });
 
-    setVoters((prev) => [...mappedItems, ...prev]);
-    mappedItems.forEach((item) => addVoterContext(item));
-    showToast(`Berhasil mengimpor ${newItems.length} data pemilih ke tabel voters.`, 'success');
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        showToast(data.message || 'Gagal memproses import CSV.', 'error');
+        setIsImporting(false);
+        return;
+      }
 
-    setIsImporting(false);
-    setIsImportModalOpen(false);
-    setCsvText('');
+      showToast(data.message, 'success');
+      setIsImportModalOpen(false);
+      setCsvText('');
+      await fetchSupabaseVoters();
+    } catch (err: any) {
+      showToast(err.message || 'Terjadi kesalahan saat mengunggah file CSV.', 'error');
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const totalDpt = voters.length;

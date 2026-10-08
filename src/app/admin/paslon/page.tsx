@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
 import AdminHeader from '@/components/admin/AdminHeader';
@@ -18,11 +18,10 @@ import {
   Upload,
   CheckCircle2,
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 export default function AdminPaslonPage() {
   const {
-    bemCandidates,
-    himaCandidates,
     addCandidate,
     deleteCandidate,
     showToast,
@@ -31,6 +30,10 @@ export default function AdminPaslonPage() {
   const [activeTab, setActiveTab] = useState<'BEM' | 'HIMA'>('BEM');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
+
+  // Persistent candidates state dari Supabase
+  const [candidatesList, setCandidatesList] = useState<Candidate[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Form states
   const [formNumber, setFormNumber] = useState<number>(1);
@@ -44,7 +47,49 @@ export default function AdminPaslonPage() {
   const [formVision, setFormVision] = useState('');
   const [formMission, setFormMission] = useState('');
 
-  const currentCandidates = activeTab === 'BEM' ? bemCandidates : himaCandidates;
+  const fetchCandidates = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/admin/paslon');
+      const json = await res.json();
+      if (json?.success && Array.isArray(json?.candidates)) {
+        setCandidatesList(json.candidates);
+        return;
+      }
+    } catch (e) {
+      console.warn('Fetch paslon note:', e);
+    } finally {
+      setIsLoading(false);
+    }
+
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.from('candidates').select('*').order('candidate_number', { ascending: true });
+      if (Array.isArray(data)) {
+        setCandidatesList(data);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    fetchCandidates();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('realtime_candidates_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
+        fetchCandidates();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const bemCandidatesList = candidatesList.filter((c) => c.type === 'BEM');
+  const himaCandidatesList = candidatesList.filter((c) => c.type === 'HIMA');
+  const currentCandidates = activeTab === 'BEM' ? bemCandidatesList : himaCandidatesList;
 
   const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -57,13 +102,24 @@ export default function AdminPaslonPage() {
     }
   };
 
-  const handleDelete = (id: string | number) => {
-    if (confirm('Yakin ingin menghapus data pasangan calon ini?')) {
+  const handleDelete = async (id: string | number) => {
+    if (!confirm('Yakin ingin menghapus data pasangan calon ini dari database Supabase?')) return;
+    try {
+      const res = await fetch(`/api/admin/paslon?id=${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.message || 'Gagal menghapus calon dari database.', 'error');
+        return;
+      }
+      showToast(json.message, 'info');
       deleteCandidate(String(id));
+      await fetchCandidates();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungi server.', 'error');
     }
   };
 
-  const handleSaveCandidate = (e: React.FormEvent) => {
+  const handleSaveCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formLeader.trim() || !formVice.trim()) {
       showToast('Nama Calon Ketua dan Wakil Ketua wajib diisi.', 'error');
@@ -75,44 +131,56 @@ export default function AdminPaslonPage() {
       ? formMission.split('\n').map((m) => m.trim()).filter(Boolean)
       : ['Membangun sinergi aktif seluruh mahasiswa.', 'Mendorong transparansi dan karya nyata.'];
 
-    const newCandidate: Candidate = {
+    const newCandidate = {
       id: `${formType.toLowerCase()}-${Date.now()}`,
       candidate_number: Number(formNumber),
-      candidateNumber: Number(formNumber),
       number: paddedNumber,
       type: formType,
       faculty_id: formType === 'HIMA' ? formFaculty : undefined,
-      facultyId: formType === 'HIMA' ? formFaculty : undefined,
       prodi_id: formType === 'HIMA' ? formProdi : undefined,
-      prodiId: formType === 'HIMA' ? formProdi : undefined,
-      facultyName: formType === 'HIMA' ? `Fakultas ${formFaculty}` : undefined,
+      faculty_name: formType === 'HIMA' ? `Fakultas ${formFaculty}` : undefined,
       leader_name: formLeader.trim(),
-      leaderName: formLeader.trim(),
       vice_leader_name: formVice.trim(),
-      viceLeaderName: formVice.trim(),
       slogan: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
       tagline: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
-      photo_url: formPhotoUrl.trim() || undefined,
-      photoUrl: formPhotoUrl.trim() || undefined,
       vision: formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
       visi: formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
       mission: missionArray,
       misi: missionArray,
       programs: ['Program Sinergi Mahasiswa', 'Advokasi Terbuka Terpadu'],
-      avatarGradient: 'from-sky-700 to-indigo-900',
+      photo_url: formPhotoUrl.trim() || undefined,
+      avatar_gradient: 'from-sky-700 to-indigo-900',
     };
 
-    addCandidate(newCandidate);
-    setIsAddModalOpen(false);
+    try {
+      const res = await fetch('/api/admin/paslon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCandidate),
+      });
 
-    // Reset Form
-    setFormLeader('');
-    setFormVice('');
-    setFormSlogan('');
-    setFormPhotoUrl('');
-    setFormVision('');
-    setFormMission('');
-    showToast(`Paslon ${paddedNumber} (${formLeader} & ${formVice}) berhasil didaftarkan.`, 'success');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        showToast(json.message || 'Gagal menyimpan calon ke database.', 'error');
+        return;
+      }
+
+      showToast(json.message, 'success');
+      addCandidate(newCandidate as any);
+      setIsAddModalOpen(false);
+
+      // Reset Form
+      setFormLeader('');
+      setFormVice('');
+      setFormSlogan('');
+      setFormPhotoUrl('');
+      setFormVision('');
+      setFormMission('');
+
+      await fetchCandidates();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menghubungi server.', 'error');
+    }
   };
 
   return (
@@ -162,7 +230,7 @@ export default function AdminPaslonPage() {
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            BEM Univ ({bemCandidates.length})
+            BEM Univ ({bemCandidatesList.length})
           </button>
 
           <button
@@ -173,7 +241,7 @@ export default function AdminPaslonPage() {
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
-            HIMA Prodi ({himaCandidates.length})
+            HIMA Prodi ({himaCandidatesList.length})
           </button>
         </div>
 

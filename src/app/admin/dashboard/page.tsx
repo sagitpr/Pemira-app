@@ -194,7 +194,7 @@ export default function AdminDashboardPage() {
         .from('voters')
         .select('id, has_voted, voting_status');
 
-      if (!error && Array.isArray(votersData) && votersData.length > 0) {
+      if (!error && Array.isArray(votersData)) {
         const totalDpt = votersData.length;
         const sudahMemilih = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
         setTotalDpt(totalDpt);

@@ -6,9 +6,18 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nim, boothNumber, bemCandidateId, himaCandidateId, durationSeconds } = body;
+    const { nim, name, boothNumber, bemCandidateId, himaCandidateId, durationSeconds } = body;
 
-    // Validasi: Pemilihan BEM wajib dipilih
+    const cleanNim = String(nim || '').trim();
+    const cleanName = String(name || '').trim();
+
+    if (!cleanNim) {
+      return NextResponse.json(
+        { success: false, message: 'NIM pemilih wajib disertakan.' },
+        { status: 400 }
+      );
+    }
+
     if (!bemCandidateId) {
       return NextResponse.json(
         {
@@ -19,11 +28,31 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!nim) {
-      return NextResponse.json(
-        { success: false, message: 'NIM pemilih wajib disertakan.' },
-        { status: 400 }
-      );
+    // 1. Validasi Status Pemilihan (Pastikan status AKTIF)
+    try {
+      const { data: configData } = await supabaseAdmin
+        .from('system_config')
+        .select('election_status')
+        .limit(1)
+        .maybeSingle();
+
+      if (configData?.election_status) {
+        const st = configData.election_status.toUpperCase();
+        if (st === 'JEDA' || st === 'DIJEDA') {
+          return NextResponse.json(
+            { success: false, message: 'Pemungutan suara sedang dijeda sementara oleh panitia KPUM.' },
+            { status: 403 }
+          );
+        }
+        if (st === 'TUTUP' || st === 'DITUTUP' || st === 'SELESAI') {
+          return NextResponse.json(
+            { success: false, message: 'Pemungutan suara telah resmi ditutup oleh panitia KPUM.' },
+            { status: 403 }
+          );
+        }
+      }
+    } catch (confErr) {
+      console.warn('Election status verification note:', confErr);
     }
 
     const num = typeof boothNumber === 'number'
@@ -32,32 +61,31 @@ export async function POST(request: Request) {
 
     const nowIso = new Date().toISOString();
 
-    // 1. Eksekusi Atomic RPC submit_vote jika ada
+    // 2. Eksekusi Atomic RPC submit_vote jika tersedia di Supabase
     try {
       const { data, error } = await supabaseAdmin.rpc('submit_vote', {
-        p_nim: nim,
+        p_nim: cleanNim,
         p_booth_number: num,
         p_bem_candidate_id: String(bemCandidateId),
         p_hima_candidate_id: himaCandidateId ? String(himaCandidateId) : null,
+        p_duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : null,
+        p_name: cleanName || null,
       });
 
-      if (!error && data && data.success) {
-        // Update tambahan status voter jika kolom duration_seconds tersedia
-        if (typeof durationSeconds === 'number') {
-          await supabaseAdmin
-            .from('voters')
-            .update({
-              duration_seconds: durationSeconds,
-              voting_status: 'SELESAI',
-              completed_at: nowIso,
-            })
-            .eq('nim', nim);
+      if (!error && data) {
+        if (!data.success) {
+          // RPC menolak (misal: NIM tidak terdaftar atau sudah pernah memilih)
+          return NextResponse.json(
+            { success: false, message: data.message || 'Pemberian suara ditolak.' },
+            { status: 400 }
+          );
         }
 
+        const ticket = data.ticket_number || `UBTH-${Date.now().toString().slice(-6)}`;
         const response = NextResponse.json({
           success: true,
-          ticketNumber: data.ticket_number || `UBTH-${Date.now().toString().slice(-6)}`,
-          message: 'Suara sah berhasil dienkripsi dan dicatat secara atomik.',
+          ticketNumber: ticket,
+          message: data.message || 'Suara sah berhasil dienkripsi dan dicatat secara atomik.',
         });
 
         response.cookies.set({
@@ -70,43 +98,106 @@ export async function POST(request: Request) {
         return response;
       }
     } catch (rpcErr) {
-      console.warn('RPC submit_vote execution note:', rpcErr);
+      console.warn('RPC submit_vote not installed, using atomic fallback:', rpcErr);
     }
 
-    // 2. Direct Supabase Fallback Update
-    try {
-      // Simpan suara BEM
-      await supabaseAdmin.from('votes').insert([
+    // 3. Fallback Transaksional Atomik Server-Side (Optimistic Lock)
+    // a. Cek keberadaan dan kelayakan pemilih di DPT
+    const { data: voter, error: voterCheckErr } = await supabaseAdmin
+      .from('voters')
+      .select('id, nim, name, has_voted, voting_status')
+      .eq('nim', cleanNim)
+      .maybeSingle();
+
+    if (voterCheckErr || !voter) {
+      return NextResponse.json(
+        { success: false, message: `NIM ${cleanNim} tidak terdaftar dalam Daftar Pemilih Tetap (DPT).` },
+        { status: 404 }
+      );
+    }
+
+    if (cleanName) {
+      const normInputName = cleanName.toLowerCase().replace(/\s+/g, ' ');
+      const normDbName = String(voter.name || '').toLowerCase().replace(/\s+/g, ' ');
+      if (normInputName !== normDbName) {
+        return NextResponse.json(
+          { success: false, message: 'NIM dan nama tidak sesuai dengan data DPT. Periksa kembali informasi yang dimasukkan.' },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (voter.has_voted === true || voter.voting_status === 'SELESAI') {
+      return NextResponse.json(
+        { success: false, message: `Anda sudah menggunakan hak suara pada pemilihan ini.` },
+        { status: 409 }
+      );
+    }
+
+    // b. Kunci baris pemilih secara optimistik: Update HANYA jika has_voted masih false
+    const { data: updatedVoter, error: updErr } = await supabaseAdmin
+      .from('voters')
+      .update({
+        has_voted: true,
+        voting_status: 'SELESAI',
+        completed_at: nowIso,
+        duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : null,
+        updated_at: nowIso,
+      })
+      .eq('nim', cleanNim)
+      .eq('has_voted', false)
+      .select();
+
+    if (updErr || !updatedVoter || updatedVoter.length === 0) {
+      return NextResponse.json(
         {
-          candidate_id: String(bemCandidateId),
-          category: 'BEM',
+          success: false,
+          message: `Gagal mencatat suara: NIM ${cleanNim} sudah pernah memberikan suara atau sedang diproses paralel.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // c. Masukkan suara BEM ke tabel votes
+    const { error: bemVoteErr } = await supabaseAdmin.from('votes').insert([
+      {
+        candidate_id: String(bemCandidateId),
+        category: 'BEM',
+        created_at: nowIso,
+      },
+    ]);
+
+    if (bemVoteErr) {
+      console.error('Error inserting BEM vote:', bemVoteErr);
+      // Rollback status pemilih jika insert suara gagal
+      await supabaseAdmin
+        .from('voters')
+        .update({ has_voted: false, voting_status: 'BELUM', completed_at: null })
+        .eq('nim', cleanNim);
+
+      return NextResponse.json(
+        { success: false, message: 'Gagal mencatat surat suara BEM ke database.' },
+        { status: 500 }
+      );
+    }
+
+    // d. Masukkan suara HIMA (jika ada dan bukan 'none'/'skip')
+    if (himaCandidateId && himaCandidateId !== 'none' && himaCandidateId !== 'skip' && himaCandidateId !== 'null') {
+      const { error: himaVoteErr } = await supabaseAdmin.from('votes').insert([
+        {
+          candidate_id: String(himaCandidateId),
+          category: 'HIMA',
           created_at: nowIso,
         },
       ]);
 
-      // Simpan suara HIMA jika ada
-      if (himaCandidateId && himaCandidateId !== 'none' && himaCandidateId !== 'skip') {
-        await supabaseAdmin.from('votes').insert([
-          {
-            candidate_id: String(himaCandidateId),
-            category: 'HIMA',
-            created_at: nowIso,
-          },
-        ]);
+      if (himaVoteErr) {
+        console.warn('Warning inserting HIMA vote:', himaVoteErr);
       }
+    }
 
-      // Update status voter
-      await supabaseAdmin
-        .from('voters')
-        .update({
-          voting_status: 'SELESAI',
-          has_voted: true,
-          completed_at: nowIso,
-          duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : null,
-        })
-        .eq('nim', nim);
-
-      // Lepaskan status bilik suara kembali ke TERSEDIA
+    // e. Lepaskan status bilik suara kembali ke TERSEDIA
+    try {
       await supabaseAdmin
         .from('booths')
         .update({
@@ -114,22 +205,37 @@ export async function POST(request: Request) {
           voter_name: null,
           voter_nim: null,
           voter_prodi: null,
-          current_voter_nim: null,
           current_voter_name: null,
+          current_voter_nim: null,
           current_voter_prodi: null,
           started_at: null,
           updated_at: nowIso,
         })
         .eq('booth_number', num);
-    } catch (dbErr) {
-      console.warn('Direct DB vote save error note:', dbErr);
+    } catch (boothErr) {
+      console.warn('Reset booth status note:', boothErr);
     }
+
+    // f. Catat aktivitas ke activity_logs
+    try {
+      const numStr = String(num).padStart(2, '0');
+      const timeStr = new Date().toLocaleTimeString('id-ID');
+      await supabaseAdmin.from('activity_logs').insert([
+        {
+          text: `Pemilih di Bilik ${numStr} telah berhasil menyelesaikan proses voting.`,
+          type: 'done',
+          booth_number: num,
+          time: timeStr,
+          created_at: nowIso,
+        },
+      ]);
+    } catch {}
 
     const ticketNumber = `UBTH-${Math.floor(100000 + Math.random() * 900000)}`;
     const response = NextResponse.json({
       success: true,
       ticketNumber,
-      message: 'Suara sah berhasil dicatat.',
+      message: 'Suara sah berhasil dienkripsi dan dicatat ke database Supabase.',
     });
 
     response.cookies.set({
@@ -141,8 +247,9 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error: any) {
+    console.error('Submit vote fatal error:', error);
     return NextResponse.json(
-      { success: false, message: error.message || 'Terjadi kesalahan pemrosesan suara' },
+      { success: false, message: error.message || 'Terjadi kesalahan sistem pemrosesan suara' },
       { status: 500 }
     );
   }
