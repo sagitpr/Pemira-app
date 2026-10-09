@@ -444,15 +444,19 @@ export default function AdminDashboardPage() {
 
   // Supabase Realtime Channels (Single Source of Truth)
   useEffect(() => {
-    const supabase = createClient();
+    fetchBooths();
+    fetchStats();
+    fetchActivityLogs();
+    fetchTraffic();
 
+    const supabase = createClient();
     const channel = supabase
-      .channel('dashboard_realtime_sync')
+      .channel('live_booths_realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
-        fetchBoothsFromSupabase();
+        fetchBooths();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchStatsFromSupabase();
+        fetchStats();
         fetchTraffic();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (payload: any) => {
@@ -493,24 +497,37 @@ export default function AdminDashboardPage() {
 
     setResettingBoothId(boothNum);
     try {
-      const res = await fetch('/api/admin/booths/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          boothNumber: boothNum,
-          boothId: booth.id,
-          nim: booth.voter_nim || undefined,
-        }),
-      });
-      const data = await res.json();
+      const supabase = createClient();
+      await supabase
+        .from('booths')
+        .update({
+          status: 'TERSEDIA',
+          voter_nim: null,
+          voter_name: null,
+          voter_prodi: null,
+          current_voter_nim: null,
+          current_voter_name: null,
+          current_voter_prodi: null,
+          started_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('booth_number', boothNum);
 
-      if (data?.success) {
-        showToast(`Bilik ${boothNumStr} berhasil direset ke status Tersedia.`, 'success');
-        fetchBoothsFromSupabase();
+      if (booth.voter_nim || booth.current_voter_nim) {
+        const nimToReset = booth.voter_nim || booth.current_voter_nim;
+        await supabase
+          .from('voters')
+          .update({ voting_status: 'BELUM', start_vote_at: null })
+          .eq('nim', nimToReset)
+          .eq('has_voted', false);
       }
-    } catch {
-      showToast(`Bilik ${boothNumStr} direset secara lokal.`, 'info');
+
+      showToast(`Bilik ${boothNumStr} berhasil direset ke status Tersedia.`, 'success');
+      await fetchBooths();
+    } catch (err: any) {
+      showToast(`Gagal reset bilik: ${err?.message || 'Error'}`, 'error');
     } finally {
+      setResettingBoothId(null);
       const timeStr = new Date().toLocaleTimeString('id-ID');
       const logText = isOccupied
         ? `Bilik ${boothNumStr} di-reset oleh Admin KPUM. Mahasiswa ${voterName} dipersilakan scan ulang QR.`

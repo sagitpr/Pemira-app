@@ -124,7 +124,7 @@ export default function AdminPaslonPage() {
   };
 
   const handleSaveCandidate = async (e: React.FormEvent) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!formLeader.trim() || !formVice.trim()) {
       alert('Nama Calon Ketua dan Wakil Ketua wajib diisi.');
       return;
@@ -133,34 +133,40 @@ export default function AdminPaslonPage() {
     setIsSaving(true);
     const formData = {
       nomorUrut: formNumber,
+      candidate_number: formNumber,
       number: formNumber,
       ketua: formLeader.trim(),
+      leader_name: formLeader.trim(),
       wakil: formVice.trim(),
+      vice_leader_name: formVice.trim(),
       kategori: formType,
+      type: formType,
       prodi: formProdi,
       visi: formVision.trim(),
+      vision: formVision.trim(),
       misi: formMission.trim(),
+      mission: formMission.trim(),
       photo_url: formPhotoUrl.trim() || null,
     };
 
     try {
       const supabase = createClient();
-      const candId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${formType.toLowerCase()}-${Date.now()}`;
+      const candId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined;
       const { data, error } = await supabase.from('candidates').insert([{
-        id: candId,
-        candidate_number: Number(formData.nomorUrut || formData.number) || 1,
-        number: String(formData.nomorUrut || formData.number),
-        name: `${formData.ketua} & ${formData.wakil}`,
-        leader_name: formData.ketua,
-        chairman_name: formData.ketua,
-        vice_leader_name: formData.wakil,
-        vice_chairman_name: formData.wakil,
-        category: formData.kategori, // 'BEM' atau 'HIMA'
-        type: formData.kategori,
-        prodi: formData.kategori === 'HIMA' ? formData.prodi : null,
+        ...(candId ? { id: candId } : {}),
+        candidate_number: Number(formData.candidate_number || formData.nomorUrut || '1') || 1,
+        number: String(formData.candidate_number || formData.nomorUrut || '1'),
+        name: `${formData.leader_name || formData.ketua} & ${formData.vice_leader_name || formData.wakil}`,
+        leader_name: formData.leader_name || formData.ketua,
+        chairman_name: formData.leader_name || formData.ketua,
+        vice_leader_name: formData.vice_leader_name || formData.wakil,
+        vice_chairman_name: formData.vice_leader_name || formData.wakil,
+        category: formData.type || formData.kategori || 'BEM',
+        type: formData.type || formData.kategori || 'BEM',
+        prodi: (formData.type === 'HIMA' || formData.kategori === 'HIMA') ? formData.prodi : null,
         faculty: 'FTB',
-        vision: formData.visi || '',
-        mission: formData.misi || '',
+        vision: formData.vision || formData.visi || '',
+        mission: formData.mission || formData.misi || '',
         photo_url: formData.photo_url || null,
       }]);
 
@@ -169,8 +175,8 @@ export default function AdminPaslonPage() {
         throw error;
       }
 
-      alert('Paslon berhasil disimpan ke database!');
-      showToast('Paslon berhasil disimpan ke database!', 'success');
+      alert('Paslon berhasil disimpan ke database Supabase!');
+      showToast('Paslon berhasil disimpan ke database Supabase!', 'success');
       setIsAddModalOpen(false);
 
       // Reset Form

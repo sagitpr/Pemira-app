@@ -326,7 +326,7 @@ export default function AdminDptPage() {
       }));
 
       const supabase = createClient();
-      const CHUNK = 200;
+      const CHUNK = 150;
       for (let i = 0; i < payloadVoters.length; i += CHUNK) {
         const chunk = payloadVoters.slice(i, i + CHUNK);
         const { error } = await supabase.from('voters').upsert(chunk, { onConflict: 'nim' });
@@ -336,8 +336,8 @@ export default function AdminDptPage() {
         }
       }
 
-      alert(`Berhasil menyimpan ${payloadVoters.length} pemilih ke database!`);
-      showToast(`Berhasil menyimpan ${payloadVoters.length} pemilih ke database!`, 'success');
+      alert(`Berhasil mengimpor ${payloadVoters.length} pemilih ke database!`);
+      showToast(`Berhasil mengimpor ${payloadVoters.length} pemilih ke database!`, 'success');
       setIsImportModalOpen(false);
       setCsvText('');
       await fetchSupabaseVoters();

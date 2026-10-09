@@ -99,8 +99,9 @@ export default function AdminPengaturanPage() {
     }
   };
 
-  const handleResetBooths = async () => {
-    if (!confirm('Apakah Anda yakin ingin mereset seluruh bilik suara menjadi TERSEDIA dan mengosongkan pemilih yang sedang berada di bilik?')) return;
+  const handleResetAllBooths = async () => {
+    if (!confirm('Yakin ingin mereset seluruh bilik ke status TERSEDIA?')) return;
+    setSaving(true);
     try {
       const supabase = createClient();
       const { error } = await supabase
@@ -119,99 +120,77 @@ export default function AdminPengaturanPage() {
         .neq('booth_number', 0);
 
       if (error) throw error;
-
-      fetch('/api/admin/pengaturan/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: 'booths' }),
-      }).catch(() => {});
-
-      alert('Seluruh bilik suara berhasil direset ke status TERSEDIA!');
-      showToast('Seluruh bilik suara berhasil direset ke status TERSEDIA.', 'success');
+      alert('Semua bilik berhasil di-reset menjadi TERSEDIA!');
+      showToast('Semua bilik berhasil di-reset menjadi TERSEDIA!', 'success');
     } catch (err: any) {
-      alert('Gagal mereset bilik: ' + (err?.message || 'Terjadi kesalahan'));
-      showToast('Gagal mereset bilik: ' + err.message, 'error');
+      alert('Gagal mereset bilik: ' + err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleSaveBoothConfig = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const count = parseInt(String(totalBooths), 10);
-    if (isNaN(count) || count < 1 || count > 50) {
-      alert('Jumlah bilik harus antara 1 sampai 50');
-      return;
-    }
-
     setSaving(true);
     try {
-      const supabase = createClient();
-
-      // 1. Mutasi langsung ke tabel 'booths' di Supabase
-      const { data: existingBooths, error: selectErr } = await supabase
-        .from('booths')
-        .select('id, booth_number')
-        .order('booth_number', { ascending: true });
-
-      if (selectErr) throw selectErr;
-
-      const currentTotal = existingBooths?.length || 0;
-
-      if (count > currentTotal) {
-        // Jika jumlah bilik ditambah: Jalankan INSERT baris bilik baru ke tabel 'booths'
-        const existingNumbers = new Set((existingBooths || []).map((b: any) => b.booth_number));
-        const newRows = [];
-        for (let i = 1; i <= count; i++) {
-          if (!existingNumbers.has(i)) {
-            newRows.push({
-              booth_number: i,
-              name: `Bilik ${String(i).padStart(2, '0')}`,
-              status: 'TERSEDIA',
-              is_active: true,
-              updated_at: new Date().toISOString(),
-            });
-          }
-        }
-        if (newRows.length > 0) {
-          const { error: insertErr } = await supabase.from('booths').insert(newRows);
-          if (insertErr) throw insertErr;
-        }
-      } else if (count < currentTotal) {
-        // Hapus bilik dengan booth_number lebih dari count
-        const { error: deleteErr } = await supabase
-          .from('booths')
-          .delete()
-          .gt('booth_number', count);
-        if (deleteErr) throw deleteErr;
+      const targetCount = Number(totalBooths);
+      if (isNaN(targetCount) || targetCount < 1) {
+        alert('Jumlah bilik minimal 1');
+        return;
       }
 
-      // Pastikan status bilik 1..count aktif
-      await supabase
-        .from('booths')
-        .update({ is_active: true, updated_at: new Date().toISOString() })
-        .lte('booth_number', count);
+      const supabase = createClient();
 
-      // Simpan total_booths ke tabel system_config di Supabase
+      // 1. Ambil bilik yang ada saat ini dari Supabase
+      const { data: existingBooths, error: fetchErr } = await supabase
+        .from('booths')
+        .select('booth_number')
+        .order('booth_number', { ascending: true });
+
+      if (fetchErr) throw fetchErr;
+
+      const currentCount = existingBooths?.length || 0;
+
+      // 2. Jika target lebih banyak, tambahkan baris baru
+      if (targetCount > currentCount) {
+        const newBooths = [];
+        for (let i = currentCount + 1; i <= targetCount; i++) {
+          newBooths.push({
+            booth_number: i,
+            name: `Bilik ${String(i).padStart(2, '0')}`,
+            status: 'TERSEDIA',
+            is_active: true
+          });
+        }
+        const { error: insertErr } = await supabase.from('booths').insert(newBooths);
+        if (insertErr) throw insertErr;
+      }
+
+      // 3. Jika target lebih sedikit, hapus bilik yang berlebih
+      if (targetCount < currentCount) {
+        const { error: delErr } = await supabase
+          .from('booths')
+          .delete()
+          .gt('booth_number', targetCount);
+        if (delErr) throw delErr;
+      }
+
+      // 4. Update tabel system_config
       await supabase
         .from('system_config')
-        .upsert({ id: 'primary', total_booths: count });
-
-      // Sinkronkan ke API route
-      fetch('/api/admin/booths/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ totalBooths: count }),
-      }).catch(() => {});
+        .upsert({ id: 'primary', total_booths: targetCount, updated_at: new Date().toISOString() });
 
       localStorage.setItem('pemira_booth_timeout', String(sessionTimeout));
       updateConfig({
-        totalBooths: count,
+        totalBooths: targetCount,
         sessionTimeoutSeconds: Number(sessionTimeout),
       });
-      alert(`Konfigurasi berhasil disimpan! Jumlah bilik aktif kini: ${count} bilik.`);
-      showToast(`Konfigurasi tersimpan: ${count} bilik aktif.`, 'success');
+
+      alert(`Berhasil memperbarui konfigurasi! Total bilik sekarang: ${targetCount}`);
+      showToast(`Konfigurasi tersimpan: ${targetCount} bilik aktif.`, 'success');
     } catch (err: any) {
-      console.error('Gagal update bilik:', err);
-      alert('Gagal menyimpan konfigurasi bilik: ' + (err?.message || 'Terjadi kesalahan'));
+      console.error('Error simpan bilik:', err);
+      alert('Gagal menyimpan konfigurasi bilik: ' + (err.message || 'Terjadi kesalahan'));
     } finally {
       setSaving(false);
     }
@@ -551,7 +530,7 @@ export default function AdminPengaturanPage() {
                 </p>
               </div>
               <button
-                onClick={handleResetBooths}
+                onClick={handleResetAllBooths}
                 className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -570,20 +549,25 @@ export default function AdminPengaturanPage() {
                 onClick={async () => {
                   if (!confirm('Yakin ingin mereset seluruh status kehadiran DPT di database Supabase menjadi Belum Memilih?')) return;
                   try {
-                    const res = await fetch('/api/admin/pengaturan/reset', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ target: 'voters_status' }),
-                    });
-                    const json = await res.json();
-                    if (!res.ok || !json.success) {
-                      showToast(json.message || 'Gagal mereset status DPT di database.', 'error');
-                      return;
-                    }
+                    const supabase = createClient();
+                    const { error } = await supabase
+                      .from('voters')
+                      .update({
+                        has_voted: false,
+                        voting_status: 'BELUM',
+                        start_vote_at: null,
+                        completed_at: null,
+                        duration_seconds: null,
+                        updated_at: new Date().toISOString(),
+                      })
+                      .neq('nim', '');
+                    if (error) throw error;
                     resetAllVoters();
-                    showToast(json.message, 'warning');
+                    alert('Status seluruh DPT berhasil di-reset menjadi Belum Memilih!');
+                    showToast('Status kehadiran DPT berhasil di-reset.', 'success');
                   } catch (err: any) {
-                    showToast(err.message || 'Gagal menghubungi server.', 'error');
+                    alert('Gagal mereset status DPT: ' + err.message);
+                    showToast(err.message || 'Gagal mereset DPT.', 'error');
                   }
                 }}
                 className="w-full py-2 px-3 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
@@ -604,20 +588,19 @@ export default function AdminPengaturanPage() {
                 onClick={async () => {
                   if (!confirm('PERINGATAN: Seluruh suara yang masuk akan dihapus permanen dari database Supabase dan kembali ke 0. Lanjutkan?')) return;
                   try {
-                    const res = await fetch('/api/admin/pengaturan/reset', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ target: 'votes' }),
-                    });
-                    const json = await res.json();
-                    if (!res.ok || !json.success) {
-                      showToast(json.message || 'Gagal mereset suara di database.', 'error');
-                      return;
-                    }
+                    const supabase = createClient();
+                    const { error: voteErr } = await supabase.from('votes').delete().neq('id', 0);
+                    if (voteErr) throw voteErr;
+                    await supabase
+                      .from('voters')
+                      .update({ has_voted: false, voting_status: 'BELUM', completed_at: null, start_vote_at: null })
+                      .neq('nim', '');
                     resetAllVotes();
-                    showToast(json.message, 'warning');
+                    alert('Seluruh perolehan suara berhasil di-reset ke 0!');
+                    showToast('Seluruh suara berhasil dinolkan.', 'warning');
                   } catch (err: any) {
-                    showToast(err.message || 'Gagal menghubungi server.', 'error');
+                    alert('Gagal mereset suara: ' + err.message);
+                    showToast(err.message || 'Gagal mereset suara.', 'error');
                   }
                 }}
                 className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
