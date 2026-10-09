@@ -53,19 +53,16 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
         candidate_number: c.candidate_number ?? c.candidateNumber,
         name: `${c.leaderName || c.leader_name || 'Calon Ketua'} & ${c.viceLeaderName || c.vice_leader_name || 'Calon Wakil'}`,
       }));
-    }
-    if (bemResults && bemResults.length > 0) {
-      return bemResults.map((r) => ({
-        id: r.id,
-        number: r.number,
-        candidate_number: undefined,
-        name: r.name,
-      }));
-    }
-    return [
-      { id: '01', number: '01', candidate_number: 1, name: 'Paslon 01' },
-      { id: '02', number: '02', candidate_number: 2, name: 'Paslon 02' },
-    ];
+    }      if (bemResults && bemResults.length > 0) {
+        return bemResults.map((r) => ({
+          id: r.id,
+          number: r.number,
+          candidate_number: undefined,
+          name: r.name,
+        }));
+      }
+      // ZERO DUMMY: tanpa data kandidat dari database, tampilkan daftar kosong.
+      return [];
   }, [bemCandidates, bemResults]);
 
   // Tabulasi BEM 14 Prodi Dinamis
@@ -149,11 +146,13 @@ export default function BeritaAcaraModal({ isOpen, onClose }: BeritaAcaraModalPr
         (h) => (h.facultyId || h.faculty_id) === prodi.faculty
       );
       const paslonNames = prodiMock?.paslonList?.map((p) => `${p.number}. ${p.name} (${p.votes} suara)`).join(', ') ||
-        (candHima.length > 0 ? candHima.map((c) => `${c.number ?? c.candidate_number ?? '01'}. ${c.leaderName || c.leader_name || 'Kandidat'}`).join(', ') : 'Calon Terdaftar');
+        (candHima.length > 0
+          ? candHima.map((c) => `${c.number ?? c.candidate_number ?? '01'}. ${c.leaderName || c.leader_name || 'Kandidat'}`).join(', ')
+          : 'Belum ada paslon terdaftar');
 
       const leadingHimaName = prodiMock?.paslonList?.[0]
         ? `${prodiMock.paslonList[0].name}`
-        : 'Sesuai Penetapan';
+        : 'Belum ada hasil rekapitulasi';
 
       const perolehanSuara = prodiMock?.paslonList?.[0]?.votes || hadirCount;
 

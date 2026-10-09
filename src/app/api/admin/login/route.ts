@@ -12,35 +12,29 @@ export async function POST(request: Request) {
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanPass = (password || '').trim();
 
-    // Validasi kredensial (default: admin@pemira2026.ac.id / kpum2026#secure)
+    // Validasi kredensial MURNI dari tabel admin_users di Supabase (zero hardcode)
     let isValid = false;
     let userRole: 'admin' | 'superadmin' = 'admin';
-    let userName = 'Admin KPUM Utama';
+    let userName = 'Admin KPUM';
 
-    if (cleanEmail === 'admin@pemira2026.ac.id' && cleanPass === 'kpum2026#secure') {
-      isValid = true;
-      userRole = 'superadmin';
-      userName = 'Admin KPUM Utama';
-    } else {
-      // Verifikasi dari Supabase database jika tersedia
-      try {
-        const { data, error } = await supabaseAdmin
-          .from('admin_users')
-          .select('*')
-          .eq('email', cleanEmail)
-          .eq('status', 'Aktif')
-          .single();
+    // Verifikasi dari Supabase database
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('admin_users')
+        .select('*')
+        .eq('email', cleanEmail)
+        .eq('status', 'Aktif')
+        .single();
 
-        if (data && !error) {
-          if (data.password === cleanPass || cleanPass === 'kpum2026#secure') {
-            isValid = true;
-            userRole = (data.role?.toLowerCase() === 'superadmin' ? 'superadmin' : 'admin');
-            userName = data.name || userName;
-          }
+      if (data && !error) {
+        if (data.password === cleanPass) {
+          isValid = true;
+          userRole = (data.role?.toLowerCase() === 'superadmin' ? 'superadmin' : 'admin');
+          userName = data.name || userName;
         }
-      } catch {
-        // Database query failed
       }
+    } catch {
+      // Database query failed
     }
 
     if (!isValid) {

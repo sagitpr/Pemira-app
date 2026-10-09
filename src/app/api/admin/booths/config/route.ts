@@ -6,7 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const total = Math.max(1, Math.min(50, parseInt(body?.totalBooths || '10', 10)));
+    const total = Math.max(1, Math.min(50, parseInt(body?.totalBooths || '16', 10)));
 
     // 1. Coba panggil RPC set_total_booths atau sync_booths_count jika ada
     try {
@@ -57,7 +57,6 @@ export async function POST(request: Request) {
               booth_number: i,
               name: `Bilik ${String(i).padStart(2, '0')}`,
               status: 'TERSEDIA',
-              ip_address: `192.168.1.${100 + i}`,
               is_active: true,
               updated_at: new Date().toISOString(),
             });

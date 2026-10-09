@@ -3,6 +3,51 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
+// Klaim bilik secara atomik dengan optimistic locking:
+// update baris bilik HANYA jika masih TERSEDIA/KOSONG, lalu verifikasi
+// bahwa update menarget persis satu baris (dedua pemilih paralel tidak
+// mungkin sama-sama dianggap berhasil karena Postgres mengevaluasi
+// kondisi per-baris saat UPDATE dieksekusi).
+async function claimBoothAtomically(preferredNum: number | null): Promise<{
+  booth_id: string;
+  booth_number: number;
+  booth_name: string;
+} | null> {
+  const nowIso = new Date().toISOString();
+
+  // Ambil daftar bilik TERSEDIA, utamakan bilik sesuai preferensi
+  let query = supabaseAdmin
+    .from('booths')
+    .select('id, booth_number, name')
+    .or('status.eq.TERSEDIA,status.eq.KOSONG')
+    .order('booth_number', { ascending: true });
+  if (preferredNum) {
+    query = query.eq('booth_number', preferredNum);
+  }
+
+  const { data: candidates, error: selErr } = await query;
+  if (selErr || !candidates || candidates.length === 0) return null;
+
+  for (const cand of candidates) {
+    const { data: claimedRows, error: claimErr } = await supabaseAdmin
+      .from('booths')
+      .update({ status: 'DIGUNAKAN', updated_at: nowIso })
+      .eq('id', cand.id)
+      .in('status', ['TERSEDIA', 'KOSONG'])
+      .select();
+
+    if (!claimErr && claimedRows && claimedRows.length === 1) {
+      return {
+        booth_id: cand.id,
+        booth_number: (cand as any).booth_number,
+        booth_name: (cand as any).name || `Bilik 0${(cand as any).booth_number}`,
+      };
+    }
+    // claimErr atau 0 baris => bilik sudah diklaim pemilih lain, coba berikutnya
+  }
+  return null;
+}
+
 export async function POST(request: Request) {
   try {
     let body: any = null;
@@ -41,23 +86,34 @@ export async function POST(request: Request) {
     if (error) {
       console.error('Error executing assign_available_booth RPC:', error);
 
-      // High availability fallback jika DB rpc belum diaktifkan atau offline
-      let boothNum = 1;
-      if (preferredBooth) {
-        const match = preferredBooth.match(/\d+/);
-        if (match) boothNum = parseInt(match[0], 10);
-      } else {
-        boothNum = (Math.floor(Date.now() / 1000) % 4) + 1;
+      // High availability fallback jika DB rpc belum diaktifkan atau offline.
+      // Klaim bilik secara ATOMIK: update kondisional yang hanya berhasil jika
+      // bilik masih TERSEDIA/KOSONG (optimistic locking), lalu verifikasi kembali
+      // agar dedua pemilih paralel tidak diberi bilik yang sama.
+      const preferredNum = (() => {
+        if (!preferredBooth) return null;
+        const m = preferredBooth.match(/\d+/);
+        return m ? parseInt(m[0], 10) : null;
+      })();
+
+      const claimed = await claimBoothAtomically(preferredNum);
+
+      if (claimed) {
+        return NextResponse.json({
+          success: true,
+          booth_id: claimed.booth_id,
+          booth_number: claimed.booth_number,
+          boothNumber: claimed.booth_number,
+          booth_name: claimed.booth_name,
+          boothName: claimed.booth_name,
+          message: 'Bilik berhasil dialokasikan (Fallback)',
+        }, { status: 200 });
       }
 
       return NextResponse.json({
-        success: true,
-        booth_id: `b-0${boothNum}`,
-        booth_number: boothNum,
-        boothNumber: boothNum,
-        booth_name: `Bilik 0${boothNum}`,
-        boothName: `Bilik 0${boothNum}`,
-        message: 'Bilik berhasil dialokasikan (Fallback)',
+        success: false,
+        waiting: true,
+        message: 'Semua bilik suara sedang penuh',
       }, { status: 200 });
     }
 

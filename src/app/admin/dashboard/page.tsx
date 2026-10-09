@@ -325,7 +325,7 @@ export default function AdminDashboardPage() {
           current_voter_nim: d.current_voter_nim || d.voter_nim || null,
           current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
           started_at: d.started_at || null,
-          ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+          ip_address: d.ip_address || undefined,
           updated_at: d.updated_at,
         }));
       } else {
@@ -346,7 +346,7 @@ export default function AdminDashboardPage() {
             current_voter_nim: d.current_voter_nim || d.voter_nim || null,
             current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
             started_at: d.started_at || null,
-            ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+            ip_address: d.ip_address || undefined,
             updated_at: d.updated_at,
           }));
         }
@@ -370,7 +370,7 @@ export default function AdminDashboardPage() {
             current_voter_nim: d.current_voter_nim || d.voter_nim || null,
             current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
             started_at: d.started_at || null,
-            ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+            ip_address: d.ip_address || undefined,
             updated_at: d.updated_at,
           }));
         }

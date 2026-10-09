@@ -134,7 +134,7 @@ export default function AdminHeader({
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95">
               <div className="px-3 py-2 border-b border-slate-100 text-xs">
                 <p className="font-bold text-slate-900">{currentAdmin?.name || 'Admin KPUM'}</p>
-                <p className="text-[10px] text-slate-500 font-mono">{currentAdmin?.email || 'admin@pemira2026.ac.id'}</p>
+                <p className="text-[10px] text-slate-500 font-mono">{currentAdmin?.email || 'Akun tidak dikenali'}</p>
               </div>
               <button
                 onClick={handleLogout}

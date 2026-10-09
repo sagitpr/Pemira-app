@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
@@ -311,20 +311,40 @@ function VoteContent() {
   };
 
   // 3. Voting Session Countdown (Steps 2 - 4)
+  const handleSessionTimeout = useCallback(async () => {
+    // Lepaskan bilik & pulihkan status pemilih agar tidak terkunci permanen
+    // (pemilih keluar via /qr-screen, bilik kembali TERSEDIA untuk antrean berikutnya)
+    try {
+      await fetch('/api/vote/presence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          boothNumber: assignedBoothNumber,
+          nim: detectedVoter?.nim || inputNim || '',
+          name: detectedVoter?.name || inputName || '',
+          prodi: detectedVoter?.prodi || detectedVoter?.prodiName || '',
+          startedAt: startVoteAt || undefined,
+          release: true,
+        }),
+      });
+    } catch {}
+    router.push('/qr-screen');
+  }, [assignedBoothNumber, detectedVoter, inputName, inputNim, router, startVoteAt]);
+
   useEffect(() => {
     if (currentStep < 2 || currentStep >= 5 || sessionError) return;
     const timer = setInterval(() => {
       setTimerSeconds((prev) => {
         if (prev <= 1) {
           showToast?.('Waktu sesi bilik habis. Bilik dikembalikan ke antrean.', 'warning');
-          router.push('/qr-screen');
+          handleSessionTimeout();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentStep, sessionError, router, showToast]);
+  }, [currentStep, sessionError, handleSessionTimeout, showToast]);
 
   // 4. Post-Submit Step 5 (Solemn, Formal Screen: Web Audio Alert & 3-Minute Countdown, NO CONFETTI)
   useEffect(() => {

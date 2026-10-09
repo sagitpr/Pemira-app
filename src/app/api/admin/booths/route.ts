@@ -3,13 +3,12 @@ export const dynamic = 'force-dynamic';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
-// Standar 16 bilik suara fisik PEMIRA UBTH 2026
+// Standar 16 bilik suara fisik PEMIRA UBTH 2026 (tanpa IP fiktif — kolom ip_address
+// dibiarkan null sampai panitia mengisi alamat fisik jaringan masing-masing bilik)
 const DEFAULT_BOOTHS = Array.from({ length: 16 }, (_, i) => ({
   booth_number: i + 1,
   name: `Bilik ${String(i + 1).padStart(2, '0')}`,
   status: 'TERSEDIA',
-  ip_address: `192.168.1.${101 + i}`,
-  is_active: true,
 }));
 
 // GET: Ambil status seluruh bilik suara
@@ -22,16 +21,17 @@ export async function GET() {
 
     if (error) {
       console.warn('Booths fetch note:', error.message);
-      return NextResponse.json({ success: true, booths: DEFAULT_BOOTHS, data: DEFAULT_BOOTHS });
+      return NextResponse.json({ success: false, booths: [], data: [], message: error.message });
     }
 
     if (!data || data.length === 0) {
-      return NextResponse.json({ success: true, booths: DEFAULT_BOOTHS, data: DEFAULT_BOOTHS });
+      // Database kosong: kembalikan array kosong, JANGAN data tiruan.
+      return NextResponse.json({ success: true, booths: [], data: [] });
     }
 
     return NextResponse.json({ success: true, booths: data, data: data });
   } catch (error: any) {
-    return NextResponse.json({ success: true, booths: DEFAULT_BOOTHS, data: DEFAULT_BOOTHS });
+    return NextResponse.json({ success: false, booths: [], data: [], message: error?.message });
   }
 }
 

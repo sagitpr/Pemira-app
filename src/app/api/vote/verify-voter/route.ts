@@ -110,13 +110,54 @@ export async function POST(request: Request) {
     }
 
     if (String(voter.voting_status || '').toUpperCase() === 'MENGERJAKAN') {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, mintalah panitia untuk me-reset sesi bilik Anda.',
-        },
-        { status: 409 }
-      );
+      // Auto-release sesi macet (> 20 menit tanpa submit): anggap browser pemilih crash,
+      // lepaskan bilik & pulihkan status pemilih agar tidak terblokir permanen.
+      const startAtMs = voter.start_vote_at ? new Date(voter.start_vote_at).getTime() : 0;
+      const stalledMs = Date.now() - startAtMs;
+      if (startAtMs > 0 && stalledMs > 20 * 60 * 1000) {
+        const nowIso = new Date().toISOString();
+        try {
+          await supabaseAdmin
+            .from('voters')
+            .update({ voting_status: 'BELUM', start_vote_at: null, updated_at: nowIso })
+            .eq('nim', cleanNim)
+            .eq('voting_status', 'MENGERJAKAN');
+          await supabaseAdmin
+            .from('booths')
+            .update({
+              status: 'TERSEDIA',
+              voter_name: null,
+              voter_nim: null,
+              voter_prodi: null,
+              current_voter_name: null,
+              current_voter_nim: null,
+              current_voter_prodi: null,
+              started_at: null,
+              updated_at: nowIso,
+            })
+            .eq('voter_nim', cleanNim);
+          voter.voting_status = 'BELUM';
+        } catch (releaseErr) {
+          console.warn('Auto-release sesi macet gagal:', releaseErr);
+          return NextResponse.json(
+            {
+              success: false,
+              message: 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, mintalah panitia untuk me-reset sesi bilik Anda.',
+            },
+            { status: 409 }
+          );
+        }
+      } else {
+        return NextResponse.json(
+          {
+            success: false,
+            message: startAtMs > 0
+              ? 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, tunggu 20 menit untuk pelepasan otomatis atau mintalah panitia me-reset sesi bilik Anda.'
+              : 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, mintalah panitia untuk me-reset sesi bilik Anda.',
+          },
+          { status: 409 }
+        );
+      }
     }
 
     const voterName = voter.nama || voter.name || 'Mahasiswa';

@@ -9,8 +9,8 @@ export default function AdminLoginPage() {
   const router = useRouter();
   const { login } = useAdmin();
 
-  const [email, setEmail] = useState('admin@pemira2026.ac.id');
-  const [password, setPassword] = useState('kpum2026#secure');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -30,14 +30,14 @@ export default function AdminLoginPage() {
       const data = await res.json();
 
       if (res.ok && data.success) {
-        login(email, password);
+        await login(email, password);
         router.push('/admin/dashboard');
         router.refresh();
       } else {
         setErrorMessage(data.message || 'Email atau kata sandi tidak cocok.');
       }
     } catch {
-      const success = login(email, password);
+      const success = await login(email, password);
       if (success) {
         router.push('/admin/dashboard');
       } else {

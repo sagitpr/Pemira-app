@@ -200,17 +200,9 @@ export default function AdminPengaturanPage() {
     showToast('Data akun admin berhasil diperbarui.', 'success');
   };
 
-  // Default single official account
-  const displayAccounts = adminAccounts.length > 0 ? adminAccounts : [
-    {
-      id: 'adm-01',
-      name: 'Admin KPUM Utama',
-      email: 'admin@pemira2026.ac.id',
-      role: 'KPUM Utama' as const,
-      status: 'Aktif' as const,
-      lastActive: 'Aktif sekarang',
-    },
-  ];
+  // ZERO DUMMY: tampilkan akun dari database; jika kosong, tampilkan pesan,
+  // JANGAN fallback akun fiktif hardcoded.
+  const displayAccounts = adminAccounts;
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
@@ -266,7 +258,13 @@ export default function AdminPengaturanPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {displayAccounts.map((acc, idx) => {
+                {displayAccounts.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-xs text-slate-400 font-medium">
+                      Belum ada akun admin terdaftar di database.
+                    </td>
+                  </tr>
+                ) : displayAccounts.map((acc, idx) => {
                   const roleLabel =
                     acc.role === 'KPUM Utama'
                       ? 'Super Admin'

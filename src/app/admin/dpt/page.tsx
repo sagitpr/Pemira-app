@@ -37,7 +37,30 @@ export default function AdminDptPage() {
   const [newNim, setNewNim] = useState('');
   const [newName, setNewName] = useState('');
   const [newFaculty, setNewFaculty] = useState<'FTB' | 'FIKES' | 'FARMASI'>('FTB');
-  const [newProdi, setNewProdi] = useState('Bisnis Digital');
+  const [newProdi, setNewProdi] = useState('');
+
+  // Fetch daftar prodi REAL dari tabel study_program di Supabase
+  const [prodiOptions, setProdiOptions] = useState<
+    { id: number; name: string; faculty: string }[]
+  >([]);
+
+  useEffect(() => {
+    const fetchProdiOptions = async () => {
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('study_program')
+          .select('id, name, faculty')
+          .order('id', { ascending: true });
+        if (!error && Array.isArray(data)) {
+          setProdiOptions(data as { id: number; name: string; faculty: string }[]);
+        }
+      } catch (e) {
+        console.warn('Gagal fetch study_program:', e);
+      }
+    };
+    fetchProdiOptions();
+  }, []);
   const [newAngkatan, setNewAngkatan] = useState('2023');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -218,7 +241,10 @@ export default function AdminDptPage() {
           nim: newNim.trim(),
           name: newName.trim(),
           faculty_id: newFaculty,
+          faculty: newFaculty,
+          prodi_id: prodiOptions.find((p) => p.name === newProdi)?.id ?? null,
           prodi_name: newProdi,
+          prodi: newProdi,
           angkatan: newAngkatan,
         }),
         signal: controller.signal,
@@ -716,30 +742,31 @@ export default function AdminDptPage() {
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Program Studi</label>
                 <select
+                  required
                   value={newProdi}
                   onChange={(e) => setNewProdi(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium focus:outline-hidden focus:border-slate-900"
                 >
-                  <optgroup label="Fakultas Teknologi & Bisnis (FTB)">
-                    <option value="Bisnis Digital">Bisnis Digital</option>
-                    <option value="Sistem Informasi">Sistem Informasi</option>
-                    <option value="Teknologi Pangan">Teknologi Pangan</option>
-                    <option value="Kewirausahaan">Kewirausahaan</option>
-                  </optgroup>
-                  <optgroup label="Fakultas Ilmu Kesehatan (FIKES)">
-                    <option value="S1 Administrasi Rumah Sakit">S1 Administrasi Rumah Sakit</option>
-                    <option value="S1 Keperawatan">S1 Keperawatan</option>
-                    <option value="S1 Gizi">S1 Gizi</option>
-                    <option value="D3 Keperawatan">D3 Keperawatan</option>
-                    <option value="D3 Refraksi Optisi">D3 Refraksi Optisi</option>
-                    <option value="D3 TLM">D3 TLM</option>
-                  </optgroup>
-                  <optgroup label="Fakultas Farmasi">
-                    <option value="S1 Farmasi">S1 Farmasi</option>
-                    <option value="S1 Rekayasa Kosmetik">S1 Rekayasa Kosmetik</option>
-                    <option value="PSPPA (Profesi Apoteker)">PSPPA (Profesi Apoteker)</option>
-                    <option value="S2 Farmasi">S2 Farmasi</option>
-                  </optgroup>
+                  <option value="" disabled>
+                    {prodiOptions.length === 0
+                      ? 'Memuat daftar prodi...'
+                      : 'Pilih Program Studi'}
+                  </option>
+                  {['FTB', 'FIKES', 'FARMASI'].map((fac) => {
+                    const inFaculty = prodiOptions.filter(
+                      (p) => (p.faculty || '').toUpperCase() === fac
+                    );
+                    if (inFaculty.length === 0) return null;
+                    return (
+                      <optgroup key={fac} label={fac}>
+                        {inFaculty.map((p) => (
+                          <option key={p.id} value={p.name}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
               </div>
 

@@ -114,18 +114,9 @@ export async function GET(request: Request) {
     }
 
     // 3. Fallback Awal Pembukaan TPS:
-    // Kembalikan interval awal (08:00 s/d 09:00) bernilai 0 agar grafik tetap ter-render rapi dan konsisten
-    const defaultData = [
-      { time: '08:00', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-      { time: '08:10', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-      { time: '08:20', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-      { time: '08:30', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-      { time: '08:40', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-      { time: '08:50', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-      { time: '09:00', 'Paslon 01': 0, 'Paslon 02': 0, 'Paslon 03': 0 },
-    ];
-
-    return NextResponse.json({ success: true, data: defaultData });
+    // Kembalikan array KOSONG (bukan label "Paslon 01/02/03" fiktif) — frontend
+    // sudah menangani empty state dengan pesan "Belum ada data suara tercatat".
+    return NextResponse.json({ success: true, data: [] });
   } catch (error: any) {
     return NextResponse.json(
       { success: false, message: error.message || 'Gagal memuat timeline suara' },
