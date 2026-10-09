@@ -19,45 +19,45 @@ export default function AdminLoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setErrorMessage('');
     setIsLoading(true);
 
     try {
-      const cleanEmail = email.trim().toLowerCase();
+      const inputEmail = email.trim().toLowerCase();
 
+      // Ambil akun langsung dari tabel admin_users
       const { data: user, error } = await supabase
         .from('admin_users')
         .select('*')
-        .eq('email', cleanEmail)
+        .eq('email', inputEmail)
         .maybeSingle();
 
       if (error) {
-        console.error('Supabase query error:', error);
+        alert('Gagal membaca database: ' + error.message);
+        setIsLoading(false);
+        return;
       }
 
       if (!user) {
-        alert('Email atau akun tidak ditemukan di database!');
-        setErrorMessage('Email atau akun tidak ditemukan di database!');
+        alert('Email tidak ditemukan di database admin!');
+        setIsLoading(false);
         return;
       }
 
-      // Validasi kata sandi dengan memeriksa kolom 'password' maupun 'password_hash'
-      const validPassword = user.password === password || user.password_hash === password;
-      if (!validPassword) {
+      // Cocokkan password (mendukung teks biasa maupun hash)
+      const passwordMatch = user.password === password || user.password_hash === password;
+
+      if (!passwordMatch) {
         alert('Kata sandi salah!');
-        setErrorMessage('Kata sandi salah!');
+        setIsLoading(false);
         return;
       }
 
+      // Simpan sesi dan arahkan ke dashboard
       localStorage.setItem('pemira_admin_session', JSON.stringify(user));
       document.cookie = `pemira_admin_session=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=28800; SameSite=Lax`;
-
-      alert(`Selamat datang, ${user.name || user.full_name || 'Admin'}!`);
       window.location.href = '/admin/dashboard';
     } catch (err: any) {
-      console.error('Error saat login:', err);
-      alert('Terjadi kesalahan: ' + (err.message || 'Gagal masuk.'));
-      setErrorMessage(err.message || 'Gagal masuk.');
+      alert('Terjadi kesalahan: ' + (err?.message || 'Gagal masuk.'));
     } finally {
       setIsLoading(false);
     }
