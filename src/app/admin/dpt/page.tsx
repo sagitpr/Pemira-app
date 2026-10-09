@@ -309,11 +309,17 @@ export default function AdminDptPage() {
 
         const cols = line.split(sep).map((c) => c.replace(/["']/g, '').trim());
         if (cols.length >= 2) {
+          const cleanProdi = String(cols[2] || '').trim();
+          if (!cleanProdi) {
+            console.warn(`Baris NIM ${cols[0]} tidak memiliki keterangan Program Studi.`);
+          }
+
           const item = {
-            nim: cols[0],
-            name: cols[1],
-            nama: cols[1],
-            prodi: cols[2] || 'Kewirausahaan',
+            nim: String(cols[0]).trim(),
+            name: String(cols[1] || '').trim(),
+            nama: String(cols[1] || '').trim(),
+            prodi: cleanProdi, // Murni dari data inputan pengguna
+            faculty: cols[3] || 'FTB',
             has_voted: false,
             voting_status: 'BELUM' as const,
           };

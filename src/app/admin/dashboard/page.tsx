@@ -236,6 +236,7 @@ export default function AdminDashboardPage() {
     }
   };
   const fetchVotersAndStats = fetchVotersStats;
+  const fetchStats = fetchVotersStats;
 
   // 2. Fetch Trafik Pengunjung Bilik (Interval 10 Menit)
   const fetchTraffic = async () => {
@@ -444,12 +445,14 @@ export default function AdminDashboardPage() {
     const supabase = createClient();
 
     const channel = supabase
-      .channel('admin_dashboard_realtime')
+      .channel('pemira_live_dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
+        // Perbarui state bilik secara instan tanpa reload browser
         fetchBooths();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchVotersStats();
+        // Perbarui statistik kehadiran DPT seketika
+        fetchStats();
         fetchTraffic();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => {

@@ -32,11 +32,13 @@ export async function POST(request: Request) {
 
         const cols = line.split(sep).map((c) => c.replace(/["']/g, '').trim());
         if (cols.length >= 2) {
+          const cleanProdi = String(cols[2] || '').trim();
           rawList.push({
-            nim: cols[0],
-            name: cols[1],
-            nama: cols[1],
-            prodi: cols[2] || 'Kewirausahaan',
+            nim: String(cols[0]).trim(),
+            name: String(cols[1] || '').trim(),
+            nama: String(cols[1] || '').trim(),
+            prodi: cleanProdi,
+            faculty: cols[3] || 'FTB',
             has_voted: false,
             voting_status: 'BELUM',
           });
@@ -56,13 +58,20 @@ export async function POST(request: Request) {
     for (const item of rawList) {
       const cleanNim = String(item.nim || '').trim();
       const cleanName = String(item.nama || item.name || '').trim();
-      const cleanProdi = String(item.prodi || item.prodi_name || 'Kewirausahaan').trim();
+      const cleanProdi = String(item.prodi || item.program_studi || item.jurusan || item.prodi_name || '').trim();
+
+      if (!cleanProdi) {
+        console.warn(`Baris NIM ${cleanNim} tidak memiliki keterangan Program Studi.`);
+      }
 
       if (cleanNim && cleanName) {
         payloadVoters.push({
           nim: cleanNim,
           name: cleanName,
+          nama: cleanName,
+          prodi: cleanProdi,
           prodi_name: cleanProdi,
+          faculty: item.faculty || item.fakultas || 'FTB',
           has_voted: Boolean(item.has_voted),
           voting_status: item.voting_status || 'BELUM',
           updated_at: new Date().toISOString(),
@@ -77,37 +86,38 @@ export async function POST(request: Request) {
       );
     }
 
-    // Eksekusi upsert atomic pada kolom nim menggunakan supabaseAdmin
-    let { data, error } = await supabaseAdmin
-      .from('voters')
-      .upsert(payloadVoters, { onConflict: 'nim' });
-
-    // Fallback adaptive jika kolom di database bernama prodi (Error 42703)
-    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
-      console.warn('[DPT_IMPORT_SCHEMA_ADAPTIVE] Retrying with compatible columns:', error.message);
-      const fallbackVoters = payloadVoters.map((v: any) => ({
-        nim: v.nim,
-        name: v.name,
-        prodi: v.prodi_name,
-        has_voted: v.has_voted,
-        voting_status: v.voting_status,
-        updated_at: v.updated_at,
-      }));
-
-      const retryResult = await supabaseAdmin
+    // Eksekusi batch upsert (250 rows per chunk) untuk skalabilitas 2.748 DPT
+    const CHUNK_SIZE = 250;
+    for (let i = 0; i < payloadVoters.length; i += CHUNK_SIZE) {
+      const chunk = payloadVoters.slice(i, i + CHUNK_SIZE);
+      let { error: chunkErr } = await supabaseAdmin
         .from('voters')
-        .upsert(fallbackVoters, { onConflict: 'nim' });
+        .upsert(chunk, { onConflict: 'nim' });
 
-      data = retryResult.data;
-      error = retryResult.error;
-    }
+      // Fallback adaptif kolom jika schema voters menggunakan kolom prodi saja
+      if (chunkErr && (chunkErr.code === '42703' || chunkErr.message?.includes('does not exist'))) {
+        console.warn('[DPT_IMPORT_SCHEMA_ADAPTIVE] Retrying chunk with compatible columns:', chunkErr.message);
+        const fallbackChunk = chunk.map((v: any) => ({
+          nim: v.nim,
+          name: v.name,
+          nama: v.nama,
+          prodi: v.prodi,
+          faculty: v.faculty || 'FTB',
+          has_voted: v.has_voted,
+          voting_status: v.voting_status,
+          updated_at: v.updated_at,
+        }));
 
-    if (error) {
-      console.error('Gagal mengimpor ke Supabase:', error);
-      return NextResponse.json(
-        { success: false, error: error.message, message: 'Gagal mengimpor: ' + error.message },
-        { status: 500 }
-      );
+        const retryRes = await supabaseAdmin
+          .from('voters')
+          .upsert(fallbackChunk, { onConflict: 'nim' });
+
+        if (retryRes.error) {
+          throw retryRes.error;
+        }
+      } else if (chunkErr) {
+        throw chunkErr;
+      }
     }
 
     // Catat log aktivitas secara non-blocking
@@ -126,7 +136,6 @@ export async function POST(request: Request) {
       success: true,
       message: 'Berhasil mengimpor data pemilih!',
       total: payloadVoters.length,
-      data,
     });
   } catch (err: any) {
     console.error('Import CSV fatal error:', err);

@@ -117,6 +117,11 @@ interface AdminContextType {
   toggleSensor: () => void;
   electionStatus: 'AKTIF' | 'JEDA' | 'TUTUP';
   setElectionStatus: (status: 'AKTIF' | 'JEDA' | 'TUTUP') => void;
+
+  // Mobile Sidebar
+  isMobileSidebarOpen: boolean;
+  setIsMobileSidebarOpen: (open: boolean) => void;
+  toggleMobileSidebar: () => void;
 }
 
 export const MOCK_VOTERS: Voter[] = [];
@@ -167,7 +172,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isSensorActive, setIsSensorActive] = useState<boolean>(false);
   const [electionStatus, setElectionStatusState] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
+  const toggleMobileSidebar = () => setIsMobileSidebarOpen((prev) => !prev);
   const toggleSensor = () => setIsSensorActive((prev) => !prev);
 
   const setElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
@@ -449,6 +456,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         toggleSensor,
         electionStatus,
         setElectionStatus,
+        isMobileSidebarOpen,
+        setIsMobileSidebarOpen,
+        toggleMobileSidebar,
       }}
     >
       {children}

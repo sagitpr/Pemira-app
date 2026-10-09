@@ -36,7 +36,7 @@ export async function POST(request: Request) {
           const timeStr = new Date().toLocaleTimeString('id-ID');
           await supabaseAdmin.from('activity_logs').insert([
             {
-              text: `Bilik ${numStr} mulai digunakan oleh pemilih.`,
+              text: `Mahasiswa ${name || nim || 'Pemilih'} (${prodi || 'Program Studi'}) memasuki Bilik ${numStr}.`,
               type: 'alloc',
               booth_number: num,
               time: timeStr,

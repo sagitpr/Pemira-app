@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     // a. Cek keberadaan dan kelayakan pemilih di DPT
     const { data: voter, error: voterCheckErr } = await supabaseAdmin
       .from('voters')
-      .select('id, nim, name, has_voted, voting_status')
+      .select('*')
       .eq('nim', cleanNim)
       .maybeSingle();
 
@@ -118,8 +118,8 @@ export async function POST(request: Request) {
 
     if (cleanName) {
       const normInputName = cleanName.toLowerCase().replace(/\s+/g, ' ');
-      const normDbName = String(voter.name || '').toLowerCase().replace(/\s+/g, ' ');
-      if (normInputName !== normDbName) {
+      const normDbName = String(voter.nama || voter.name || '').toLowerCase().replace(/\s+/g, ' ');
+      if (normInputName !== normDbName && !normDbName.includes(normInputName) && !normInputName.includes(normDbName)) {
         return NextResponse.json(
           { success: false, message: 'NIM dan nama tidak sesuai dengan data DPT. Periksa kembali informasi yang dimasukkan.' },
           { status: 400 }
@@ -134,6 +134,13 @@ export async function POST(request: Request) {
       );
     }
 
+    // Hitung durasi pengerjaan:
+    let finalDurationSeconds = typeof durationSeconds === 'number' && durationSeconds > 0 ? durationSeconds : 0;
+    if (voter.start_vote_at) {
+      const calcSec = Math.round((Date.now() - new Date(voter.start_vote_at).getTime()) / 1000);
+      if (calcSec > 0) finalDurationSeconds = calcSec;
+    }
+
     // b. Kunci baris pemilih secara optimistik: Update HANYA jika has_voted masih false
     const { data: updatedVoter, error: updErr } = await supabaseAdmin
       .from('voters')
@@ -141,7 +148,7 @@ export async function POST(request: Request) {
         has_voted: true,
         voting_status: 'SELESAI',
         completed_at: nowIso,
-        duration_seconds: typeof durationSeconds === 'number' ? durationSeconds : null,
+        duration_seconds: finalDurationSeconds,
         updated_at: nowIso,
       })
       .eq('nim', cleanNim)
@@ -220,9 +227,11 @@ export async function POST(request: Request) {
     try {
       const numStr = String(num).padStart(2, '0');
       const timeStr = new Date().toLocaleTimeString('id-ID');
+      const durMin = ((finalDurationSeconds || 0) / 60).toFixed(1);
+      const studentName = cleanName || voter?.nama || voter?.name || cleanNim;
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `Pemilih di Bilik ${numStr} telah berhasil menyelesaikan proses voting.`,
+          text: `[${timeStr}] Mahasiswa ${studentName} selesai memilih di Bilik ${numStr} (Durasi: ${durMin} menit)`,
           type: 'done',
           booth_number: num,
           time: timeStr,

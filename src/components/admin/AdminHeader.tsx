@@ -11,6 +11,7 @@ import {
   User,
   ChevronDown,
   LogOut,
+  Menu,
 } from 'lucide-react';
 
 interface AdminHeaderProps {
@@ -24,7 +25,7 @@ export default function AdminHeader({
   subtitle,
   actionButton,
 }: AdminHeaderProps) {
-  const { currentAdmin, logout, isSensorActive, toggleSensor, electionStatus } = useAdmin();
+  const { currentAdmin, logout, isSensorActive, toggleSensor, electionStatus, toggleMobileSidebar } = useAdmin();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -45,9 +46,18 @@ export default function AdminHeader({
   };
 
   return (
-    <header className="h-18 bg-[#FAF9F5]/90 backdrop-blur-md border-b border-[#EBE7DF] px-6 sm:px-8 flex items-center justify-between sticky top-0 z-20 font-sans">
-      {/* Left: Emblem, Title & AKTIF/JEDA/TUTUP Badge */}
-      <div className="flex items-center gap-3">
+    <header className="h-18 bg-[#FAF9F5]/90 backdrop-blur-md border-b border-[#EBE7DF] px-4 sm:px-8 flex items-center justify-between sticky top-0 z-20 font-sans">
+      {/* Left: Mobile Toggle, Emblem, Title & AKTIF/JEDA/TUTUP Badge */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Mobile Hamburger Button */}
+        <button
+          type="button"
+          onClick={toggleMobileSidebar}
+          className="md:hidden p-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 shadow-2xs transition-colors cursor-pointer"
+          aria-label="Buka navigasi menu"
+        >
+          <Menu className="w-5 h-5 text-slate-700" />
+        </button>
         <img
           src="/candidate/image/logo-pemira.png"
           onError={(e) => {

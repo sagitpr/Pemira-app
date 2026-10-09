@@ -194,10 +194,14 @@ export default function AdminRekapPage() {
       const pNameNorm = normalizeText(p.name);
       const pIdNorm = normalizeText(p.id);
 
-      // Cari pemilih dari database yang jurusannya cocok dengan normalisasi
+      // Cari pemilih dari database yang jurusannya cocok secara dinamis
       const matchedVoters = (rawVoters || []).filter((v: any) => {
-        const vProdi = normalizeText(v.prodi || v.prodi_name || v.prodiName);
+        const vProdiRaw = String(v.prodi || v.prodi_name || v.prodiName || '').toLowerCase().trim();
+        const pNameRaw = String(p.name || '').toLowerCase().trim();
+        const vProdi = normalizeText(vProdiRaw);
         return (
+          vProdiRaw.includes(pNameRaw) ||
+          pNameRaw.includes(vProdiRaw) ||
           vProdi === pNameNorm ||
           vProdi.includes(pNameNorm) ||
           pNameNorm.includes(vProdi) ||

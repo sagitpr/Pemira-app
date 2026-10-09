@@ -232,7 +232,7 @@ function VoteContent() {
     };
   }, [isWaitingQueue, showToast]);
 
-  // 2. Verifikasi Identitas Pemilih (NIM & Nama Lengkap wajib cocok 100% dengan DPT)
+  // 2. Verifikasi Identitas Pemilih (NIM & Deteksi Otomatis dari DPT)
   const handleVerifyIdentity = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -245,15 +245,6 @@ function VoteContent() {
       setIsVerified(false);
       setDetectedVoter(null);
       showToast?.('Silakan masukkan NIM Anda.', 'error');
-      return;
-    }
-
-    if (!cleanName) {
-      setVerifyError('Silakan masukkan nama lengkap Anda.');
-      setVerifySuccess(null);
-      setIsVerified(false);
-      setDetectedVoter(null);
-      showToast?.('Silakan masukkan nama lengkap Anda.', 'error');
       return;
     }
 
@@ -282,8 +273,11 @@ function VoteContent() {
 
       setIsVerified(true);
       setDetectedVoter(json.voter);
+      if (json.voter?.name) {
+        setInputName(json.voter.name);
+      }
       setVerifyError(null);
-      setVerifySuccess(json.message || 'Identitas berhasil diverifikasi. Anda dapat melanjutkan ke pemilihan.');
+      setVerifySuccess(json.message || 'Identitas berhasil diverifikasi.');
       showToast?.(json.message || 'Identitas berhasil diverifikasi.', 'success');
     } catch (err: any) {
       setIsVerified(false);
@@ -405,9 +399,37 @@ function VoteContent() {
       return;
     }
 
+    // Cari bilik yang berstatus TERSEDIA via query (ORDER BY booth_number ASC LIMIT 1)
+    let targetBoothNumber = assignedBoothNumber || 1;
+    let targetBoothName = assignedBoothName || `Bilik 0${targetBoothNumber}`;
+
+    try {
+      const supabase = createClient();
+      const { data: availBooths } = await supabase
+        .from('booths')
+        .select('*')
+        .or('status.eq.TERSEDIA,status.eq.KOSONG')
+        .order('booth_number', { ascending: true })
+        .limit(1);
+
+      if (availBooths && availBooths.length > 0) {
+        targetBoothNumber = availBooths[0].booth_number;
+        targetBoothName = availBooths[0].name || `Bilik ${String(targetBoothNumber).padStart(2, '0')}`;
+        setAssignedBoothNumber(targetBoothNumber);
+        setAssignedBoothName(targetBoothName);
+      }
+    } catch (e) {
+      console.warn('Query available booth error:', e);
+    }
+
     const nowIso = new Date().toISOString();
     setStartVoteAt(nowIso);
 
+    const voterName = detectedVoter.name || detectedVoter.nama || 'Mahasiswa';
+    const voterNim = detectedVoter.nim;
+    const voterProdi = detectedVoter.prodi || detectedVoter.prodiName || 'Program Studi';
+
+    // 1. Update voter: voting_status = 'MENGERJAKAN', start_vote_at = NOW()
     try {
       const supabase = createClient();
       await supabase
@@ -416,40 +438,56 @@ function VoteContent() {
           voting_status: 'MENGERJAKAN',
           start_vote_at: nowIso,
         })
-        .eq('nim', detectedVoter?.nim);
+        .eq('nim', voterNim);
     } catch (e) {
       console.warn('Update voting_status MENGERJAKAN note:', e);
     }
 
+    // 2. Update booth: status = 'DIGUNAKAN', voter_name, voter_nim, voter_prodi, started_at = NOW()
     try {
       const supabase = createClient();
       await supabase
         .from('booths')
         .update({
           status: 'DIGUNAKAN',
-          voter_name: detectedVoter?.name,
-          voter_nim: detectedVoter?.nim,
-          voter_prodi: detectedVoter?.prodiName,
-          current_voter_name: detectedVoter?.name,
-          current_voter_nim: detectedVoter?.nim,
-          current_voter_prodi: detectedVoter?.prodiName,
+          voter_name: voterName,
+          voter_nim: voterNim,
+          voter_prodi: voterProdi,
+          current_voter_name: voterName,
+          current_voter_nim: voterNim,
+          current_voter_prodi: voterProdi,
           started_at: nowIso,
           updated_at: nowIso,
         })
-        .eq('booth_number', assignedBoothNumber);
+        .eq('booth_number', targetBoothNumber);
     } catch (bErr) {
       console.warn('Direct booth update note:', bErr);
     }
+
+    // 3. Tambahkan log ke activity_logs: "[HH:mm:ss] Mahasiswa ${voter.nama} (${voter.prodi}) memasuki ${booth.name}"
+    try {
+      const timeStr = new Date().toLocaleTimeString('id-ID');
+      const supabase = createClient();
+      await supabase.from('activity_logs').insert([
+        {
+          text: `[${timeStr}] Mahasiswa ${voterName} (${voterProdi}) memasuki ${targetBoothName}`,
+          type: 'alloc',
+          booth_number: targetBoothNumber,
+          time: timeStr,
+          created_at: nowIso,
+        },
+      ]);
+    } catch {}
 
     try {
       await fetch('/api/vote/presence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          boothNumber: assignedBoothNumber,
-          nim: detectedVoter?.nim,
-          name: detectedVoter?.name,
-          prodi: detectedVoter?.prodiName,
+          boothNumber: targetBoothNumber,
+          nim: voterNim,
+          name: voterName,
+          prodi: voterProdi,
           startedAt: nowIso,
         }),
       });
@@ -457,9 +495,9 @@ function VoteContent() {
 
     try {
       updateBoothStatus?.(
-        `b-0${assignedBoothNumber}`,
+        `b-0${targetBoothNumber}`,
         'Sedang Memilih',
-        { voterNim: detectedVoter?.nim, voterName: detectedVoter?.name, prodiName: detectedVoter?.prodiName }
+        { voterNim, voterName, prodiName: voterProdi }
       );
     } catch {}
 
@@ -540,18 +578,19 @@ function VoteContent() {
     ? dbHimaCandidates
     : (himaCandidates && himaCandidates.length > 0 ? himaCandidates : []);
 
-  const voterProdi = (detectedVoter?.prodiName || detectedVoter?.prodi || '').trim().toLowerCase();
+  const currentVoter = detectedVoter;
+  const voterProdiNorm = String(currentVoter?.prodi || currentVoter?.prodiName || '')
+    .toLowerCase()
+    .replace(/\s+/g, '');
 
-  const filteredHimaList = (safeHimaList || []).filter((cand) => {
-    if (cand.type && cand.type !== 'HIMA') return false;
-    const candProdi = (cand.prodi_id || cand.prodiId || (cand as any).prodi || (cand as any).prodi_name || '').trim().toLowerCase();
-    if (!voterProdi) return true;
-    return (
-      candProdi === voterProdi ||
-      candProdi.includes(voterProdi) ||
-      voterProdi.includes(candProdi)
-    );
+  const availableHimaCandidates = (safeHimaList || []).filter((c) => {
+    if (c.type !== 'HIMA') return false;
+    const candProdiNorm = String((c as any).prodi || (c as any).prodi_name || c.prodi_id || c.prodiId || '')
+      .toLowerCase()
+      .replace(/\s+/g, '');
+    return Boolean(voterProdiNorm) && candProdiNorm === voterProdiNorm;
   });
+  const filteredHimaList = availableHimaCandidates;
 
   const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
   const selectedHimaCandidate = filteredHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || filteredHimaList[0] || null;
@@ -865,16 +904,16 @@ function VoteContent() {
                       </div>
                     </div>
 
-                    {/* Input Nama Lengkap */}
+                    {/* Input Nama Lengkap (Opsional) */}
                     <div>
                       <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                        Nama Lengkap (Sesuai DPT)
+                        Nama Lengkap (Opsional / Otomatis Terdeteksi dari DPT)
                       </label>
                       <div className="relative">
                         <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Masukkan nama lengkap sesuai kartu mahasiswa"
+                          placeholder="Otomatis terisi jika mengosongkan field ini"
                           value={inputName}
                           onChange={(e) => handleNameChange(e.target.value)}
                           onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyIdentity(); }}
@@ -888,11 +927,11 @@ function VoteContent() {
                       <button
                         type="button"
                         onClick={() => handleVerifyIdentity()}
-                        disabled={isVerifying || !inputNim.trim() || !inputName.trim()}
+                        disabled={isVerifying || !inputNim.trim()}
                         className={`w-full py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
                           isVerified
                             ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20'
-                            : isVerifying || !inputNim.trim() || !inputName.trim()
+                            : isVerifying || !inputNim.trim()
                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                             : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20'
                         }`}
@@ -920,7 +959,7 @@ function VoteContent() {
                     {isVerifying ? (
                       <div className="flex items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
                         <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin shrink-0" />
-                        <span className="font-medium">Memeriksa kesesuaian NIM dan Nama Lengkap pada sistem DPT...</span>
+                        <span className="font-medium">Memeriksa kesesuaian NIM pada sistem DPT...</span>
                       </div>
                     ) : verifyError ? (
                       <div className="flex items-start gap-2.5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
@@ -931,34 +970,44 @@ function VoteContent() {
                         </div>
                       </div>
                     ) : isVerified && detectedVoter ? (
-                      <div className="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-xs text-emerald-950 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 space-y-3 animate-in fade-in">
+                        <div className="flex items-center justify-between pb-2 border-b border-emerald-200/80">
+                          <div className="flex items-center gap-2 font-bold text-emerald-900">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                            <span>Konfirmasi Identitas Pemilih Terverifikasi</span>
+                          </div>
+                          <span className="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-emerald-800 text-white uppercase">
+                            {detectedVoter.faculty || detectedVoter.facultyId || 'FTB'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
                           <div>
-                            <span className="text-emerald-700 block text-[11px] font-semibold">
-                              {verifySuccess || 'Identitas Terverifikasi DPT'}
-                            </span>
-                            <span className="font-bold text-slate-900 text-sm">
-                              {detectedVoter.name}
-                            </span>
-                            <span className="text-slate-600 block text-[11px]">
-                              NIM: {detectedVoter.nim} • {detectedVoter.prodiName}
-                            </span>
+                            <span className="text-slate-500 block text-[11px]">Nama Lengkap:</span>
+                            <span className="font-bold text-slate-900 text-sm">{detectedVoter.name || detectedVoter.nama}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[11px]">Nomor Induk Mahasiswa (NIM):</span>
+                            <span className="font-bold text-slate-900 text-sm font-mono">{detectedVoter.nim}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[11px]">Program Studi:</span>
+                            <span className="font-bold text-slate-900">{detectedVoter.prodi || detectedVoter.prodiName}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500 block text-[11px]">Fakultas:</span>
+                            <span className="font-bold text-slate-900">{detectedVoter.faculty || detectedVoter.facultyId || 'FTB'}</span>
                           </div>
                         </div>
-                        <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-emerald-800 text-white uppercase">
-                          {detectedVoter.facultyId || 'UBTH'}
-                        </span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200">
                         <Info className="w-4 h-4 shrink-0 text-slate-400" />
-                        <span>Ketikkan NIM dan nama lengkap Anda yang terdaftar pada DPT untuk memverifikasi hak suara.</span>
+                        <span>Ketikkan NIM Anda yang terdaftar pada DPT untuk memverifikasi hak suara.</span>
                       </div>
                     )}
 
                     <div className="text-[11px] text-slate-400 italic">
-                      * Penulisan NIM dan nama harus sesuai dengan database DPT. Hak suara dijamin bersifat rahasia (asas Luber Jurdil).
+                      * Penulisan NIM harus sesuai dengan database DPT. Hak suara dijamin bersifat rahasia (asas Luber Jurdil).
                     </div>
                   </div>
 
@@ -975,13 +1024,13 @@ function VoteContent() {
                       type="button"
                       onClick={handleProceedToStep2}
                       disabled={!isVerified || !detectedVoter || detectedVoter.hasVoted || isVerifying}
-                      className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
+                      className={`px-6 py-3 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
                         !isVerified || !detectedVoter || detectedVoter.hasVoted || isVerifying
                           ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                          : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/15 cursor-pointer'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 cursor-pointer'
                       }`}
                     >
-                      <span>Lanjut ke Pemilihan BEM</span>
+                      <span>Mulai Memilih / Masuk Bilik</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
@@ -1142,10 +1191,10 @@ function VoteContent() {
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-slate-900">
-                          Tidak ada pemilihan HIMA untuk Program Studi {detectedVoter?.prodiName || 'Anda'}
+                          Pemilihan HIMA belum tersedia untuk jurusan ini, silakan lanjutkan pemilihan BEM Universitas.
                         </h4>
                         <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
-                          Anda hanya memberikan suara untuk Pemilihan BEM Universitas. Silakan lanjutkan ke tahap konfirmasi.
+                          Program Studi: {detectedVoter?.prodi || detectedVoter?.prodiName || 'Anda'}. Silakan lanjutkan ke tahap konfirmasi.
                         </p>
                       </div>
                     </div>
