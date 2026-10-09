@@ -34,6 +34,7 @@ export default function AdminPaslonPage() {
   // Persistent candidates state dari Supabase
   const [candidatesList, setCandidatesList] = useState<Candidate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Form states
   const [formNumber, setFormNumber] = useState<number>(1);
@@ -126,6 +127,7 @@ export default function AdminPaslonPage() {
       return;
     }
 
+    setIsSaving(true);
     const paddedNumber = formNumber < 10 ? `0${formNumber}` : `${formNumber}`;
     const missionArray = formMission
       ? formMission.split('\n').map((m) => m.trim()).filter(Boolean)
@@ -153,11 +155,16 @@ export default function AdminPaslonPage() {
     };
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const res = await fetch('/api/admin/paslon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newCandidate),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const json = await res.json();
       if (!res.ok || !json.success) {
@@ -179,7 +186,13 @@ export default function AdminPaslonPage() {
 
       await fetchCandidates();
     } catch (err: any) {
-      showToast(err.message || 'Gagal menghubungi server.', 'error');
+      if (err.name === 'AbortError') {
+        showToast('Waktu permintaan habis (timeout). Periksa koneksi Supabase Anda.', 'error');
+      } else {
+        showToast(err.message || 'Gagal menghubungi server.', 'error');
+      }
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -615,9 +628,17 @@ export default function AdminPaslonPage() {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all cursor-pointer"
+                  disabled={isSaving}
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  Simpan Paslon
+                  {isSaving ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Paslon</span>
+                  )}
                 </button>
               </div>
             </form>

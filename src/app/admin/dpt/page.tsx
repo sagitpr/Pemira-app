@@ -208,6 +208,9 @@ export default function AdminDptPage() {
 
     setIsSubmitting(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const res = await fetch('/api/admin/dpt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -218,12 +221,13 @@ export default function AdminDptPage() {
           prodi_name: newProdi,
           angkatan: newAngkatan,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await res.json();
       if (!res.ok || !data.success) {
         showToast(data.message || 'Gagal menyimpan ke database Supabase.', 'error');
-        setIsSubmitting(false);
         return;
       }
 
@@ -231,9 +235,30 @@ export default function AdminDptPage() {
       setIsAddModalOpen(false);
       setNewNim('');
       setNewName('');
+
+      // Langsung tambahkan ke list lokal agar seketika tampil di tabel DPT
+      if (data.voter) {
+        const addedVoter: Voter = {
+          id: String(data.voter.id || data.voter.nim),
+          nim: data.voter.nim,
+          name: data.voter.name,
+          facultyId: (data.voter.faculty_id || newFaculty) as any,
+          prodiId: 'general',
+          prodiName: data.voter.prodi_name || data.voter.prodi || newProdi,
+          angkatan: data.voter.angkatan || newAngkatan,
+          status: 'belum',
+          voting_status: 'BELUM',
+        };
+        setVoters((prev) => [addedVoter, ...prev.filter((v) => v.nim !== addedVoter.nim)]);
+      }
+
       await fetchSupabaseVoters();
     } catch (err: any) {
-      showToast(err.message || 'Gagal menghubungi server.', 'error');
+      if (err.name === 'AbortError') {
+        showToast('Waktu permintaan habis (timeout). Periksa koneksi Supabase Anda.', 'error');
+      } else {
+        showToast(err.message || 'Gagal menghubungi server.', 'error');
+      }
     } finally {
       setIsSubmitting(false);
     }

@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     }
 
     const nowIso = new Date().toISOString();
-    const newRecord = {
+    const newRecord: any = {
       nim: cleanNim,
       name: cleanName,
       faculty_id: cleanFaculty,
@@ -101,10 +101,46 @@ export async function POST(request: Request) {
       updated_at: nowIso,
     };
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('voters')
       .insert([newRecord])
       .select();
+
+    // Fallback adaptif jika terdapat kolom yang berbeda pada skema tabel database (Error 42703)
+    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      console.warn('[DPT_SCHEMA_FALLBACK] Retrying with compatible columns:', error.message);
+      const fallbackRecord: any = {
+        nim: cleanNim,
+        name: cleanName,
+        has_voted: false,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+
+      if (!error.message?.includes('prodi_name')) {
+        fallbackRecord.prodi_name = cleanProdi;
+      } else {
+        fallbackRecord.prodi = cleanProdi;
+      }
+
+      if (!error.message?.includes('faculty_id')) {
+        fallbackRecord.faculty_id = cleanFaculty;
+      }
+      if (!error.message?.includes('angkatan')) {
+        fallbackRecord.angkatan = cleanAngkatan;
+      }
+      if (!error.message?.includes('voting_status')) {
+        fallbackRecord.voting_status = 'BELUM';
+      }
+
+      const retryResult = await supabaseAdmin
+        .from('voters')
+        .insert([fallbackRecord])
+        .select();
+
+      data = retryResult.data;
+      error = retryResult.error;
+    }
 
     if (error) {
       console.error('Error inserting voter:', error);
@@ -112,6 +148,20 @@ export async function POST(request: Request) {
         { success: false, message: 'Gagal menyimpan ke database Supabase: ' + error.message },
         { status: 500 }
       );
+    }
+
+    // Catat ke activity_logs secara non-blocking
+    try {
+      await supabaseAdmin.from('activity_logs').insert([
+        {
+          text: `Admin KPUM menambahkan pemilih baru: ${cleanName} (${cleanNim}) - ${cleanProdi}.`,
+          type: 'info',
+          time: new Date().toLocaleTimeString('id-ID'),
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch (logErr) {
+      console.warn('Non-fatal: Gagal mencatat activity log DPT:', logErr);
     }
 
     return NextResponse.json({

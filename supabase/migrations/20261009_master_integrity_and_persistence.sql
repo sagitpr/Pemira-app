@@ -148,6 +148,17 @@ ALTER TABLE IF EXISTS booths
 CREATE UNIQUE INDEX IF NOT EXISTS idx_booths_number ON booths (booth_number);
 CREATE INDEX IF NOT EXISTS idx_booths_status ON booths (status);
 
+-- Inisialisasi otomatis 16 bilik jika tabel booths masih kosong
+INSERT INTO booths (booth_number, name, status, ip_address, is_active)
+SELECT 
+  s.num,
+  'Bilik ' || LPAD(s.num::text, 2, '0'),
+  'TERSEDIA',
+  '192.168.1.' || (100 + s.num)::text,
+  TRUE
+FROM generate_series(1, 16) AS s(num)
+ON CONFLICT (booth_number) DO NOTHING;
+
 -- 5. TABEL: activity_logs (Live Audit Log)
 CREATE TABLE IF NOT EXISTS activity_logs (
   id BIGSERIAL PRIMARY KEY,

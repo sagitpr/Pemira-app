@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { useAdmin, BoothStatus } from '@/context/AdminContext';
 import { createClient } from '@/lib/supabase/client';
@@ -26,6 +26,7 @@ import {
   Clock,
   Radio,
   EyeOff,
+  AlertCircle,
 } from 'lucide-react';
 
 interface SupabaseBoothRecord {
@@ -177,7 +178,13 @@ export default function AdminDashboardPage() {
 
   // Dynamic Booths State
   const [booths, setBooths] = useState<BoothItem[]>([]);
+  const [isLoadingBooths, setIsLoadingBooths] = useState<boolean>(true);
+  const [boothsError, setBoothsError] = useState<string | null>(null);
+  const [isSeedingBooths, setIsSeedingBooths] = useState<boolean>(false);
   const [resettingBoothId, setResettingBoothId] = useState<number | null>(null);
+
+  // In-flight guard to prevent piling up polling requests
+  const inFlightRef = useRef(false);
 
   // Traffic Area Chart State
   const [trafficData, setTrafficData] = useState<any[]>([]);
@@ -277,44 +284,20 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 4. Fetch Bilik Langsung dari Supabase (16 Bilik)
+  // 4. Fetch Bilik Suara (Dukungan Server-side API + Direct Supabase + Timeout Guard)
   const fetchBooths = async () => {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('booths')
-        .select('*')
-        .order('booth_number', { ascending: true });
+    setIsLoadingBooths(true);
 
-      if (!error && data && data.length > 0) {
-        setBooths(
-          data.map((d: any) => ({
-            id: d.id,
-            booth_number: d.booth_number,
-            name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
-            status: (d.status || 'TERSEDIA').toUpperCase(),
-            voter_name: d.voter_name || d.current_voter_name || null,
-            voter_nim: d.voter_nim || d.current_voter_nim || null,
-            voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
-            current_voter_name: d.current_voter_name || d.voter_name || null,
-            current_voter_nim: d.current_voter_nim || d.voter_nim || null,
-            current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
-            started_at: d.started_at || null,
-            ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
-            updated_at: d.updated_at,
-          }))
-        );
-        return;
-      }
-    } catch (err) {
-      console.warn('Gagal memuat bilik dari Supabase:', err);
-    }
-
-    // Fallback melalui API service role jika anon RLS terhalang
+    // Prioritas 1: Endpoint API Server-side (dengan timeout controller & auto-seed)
     try {
-      const res = await fetch('/api/admin/booths');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const res = await fetch('/api/admin/booths', { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       const json = await res.json();
-      if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+      if (json?.data && Array.isArray(json.data) && json.data.length > 0) {
         setBooths(
           json.data.map((d: any) => ({
             id: d.id,
@@ -332,12 +315,74 @@ export default function AdminDashboardPage() {
             updated_at: d.updated_at,
           }))
         );
+        setBoothsError(null);
+        setIsLoadingBooths(false);
+        return;
       }
-    } catch (apiErr) {
-      console.warn('API booths fallback error:', apiErr);
+    } catch (apiErr: any) {
+      console.warn('[BOOTHS_API_FETCH_NOTE]', apiErr.message);
+    }
+
+    // Prioritas 2: Client Supabase langsung
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('booths')
+        .select('*')
+        .order('booth_number', { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        if (data.length > 0) {
+          setBooths(
+            data.map((d: any) => ({
+              id: d.id,
+              booth_number: d.booth_number,
+              name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+              status: (d.status || 'TERSEDIA').toUpperCase(),
+              voter_name: d.voter_name || d.current_voter_name || null,
+              voter_nim: d.voter_nim || d.current_voter_nim || null,
+              voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
+              current_voter_name: d.current_voter_name || d.voter_name || null,
+              current_voter_nim: d.current_voter_nim || d.voter_nim || null,
+              current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
+              started_at: d.started_at || null,
+              ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+              updated_at: d.updated_at,
+            }))
+          );
+        } else {
+          setBooths([]);
+        }
+        setBoothsError(null);
+      } else if (error) {
+        setBoothsError(error.message || 'Gagal memuat bilik suara dari database.');
+      }
+    } catch (err: any) {
+      setBoothsError(err.message || 'Koneksi ke database bilik suara terputus.');
+    } finally {
+      setIsLoadingBooths(false);
     }
   };
   const fetchBoothsFromSupabase = fetchBooths;
+
+  // Inisialisasi 16 Bilik Suara jika belum terdaftar
+  const handleSeedBooths = async () => {
+    setIsSeedingBooths(true);
+    try {
+      const res = await fetch('/api/admin/booths', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        showToast?.('16 Bilik Suara berhasil diinisialisasi!', 'success');
+        await fetchBooths();
+      } else {
+        showToast?.(json.message || 'Gagal inisialisasi bilik.', 'error');
+      }
+    } catch (err: any) {
+      showToast?.('Gagal menghubungi server.', 'error');
+    } finally {
+      setIsSeedingBooths(false);
+    }
+  };
 
   useEffect(() => {
     setIsMounted(true);
@@ -346,13 +391,21 @@ export default function AdminDashboardPage() {
     fetchActivityLogs();
     fetchTraffic();
 
-    // Polling interval tiap 15 detik
-    const interval = setInterval(() => {
-      fetchVotersStats();
-      fetchBooths();
-      fetchActivityLogs();
-      fetchTraffic();
-    }, 15000);
+    // Polling interval tiap 20 detik (dengan proteksi inFlight agar request tidak menumpuk)
+    const interval = setInterval(async () => {
+      if (inFlightRef.current) return;
+      inFlightRef.current = true;
+      try {
+        await Promise.allSettled([
+          fetchVotersStats(),
+          fetchBooths(),
+          fetchActivityLogs(),
+          fetchTraffic(),
+        ]);
+      } finally {
+        inFlightRef.current = false;
+      }
+    }, 20000);
 
     return () => clearInterval(interval);
   }, []);
@@ -703,12 +756,65 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* DYNAMIC GRID BOOTHS */}
+          {/* DYNAMIC GRID BOOTHS - 4 UI STATES */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {booths.length === 0 ? (
-              <div className="col-span-full py-10 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
-                <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <span>Memuat status bilik suara terhubung...</span>
+            {isLoadingBooths && booths.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-xs text-slate-500 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
+                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                <span className="font-semibold text-slate-700">Memuat status bilik suara terhubung...</span>
+                <span className="text-[11px] text-slate-400">Menghubungkan ke database dan PostgreSQL Realtime</span>
+              </div>
+            ) : boothsError && booths.length === 0 ? (
+              <div className="col-span-full py-8 px-4 text-center bg-rose-50/50 border border-rose-200 rounded-2xl flex flex-col items-center justify-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-600">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-rose-900">Gagal memuat status bilik suara.</h4>
+                  <p className="text-xs text-rose-600 max-w-md mt-0.5">{boothsError}</p>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    onClick={() => fetchBooths()}
+                    className="px-4 py-2 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Coba Lagi
+                  </button>
+                  <button
+                    onClick={handleSeedBooths}
+                    disabled={isSeedingBooths}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isSeedingBooths ? 'Menginisialisasi...' : 'Inisialisasi 16 Bilik'}
+                  </button>
+                </div>
+              </div>
+            ) : booths.length === 0 ? (
+              <div className="col-span-full py-10 px-4 text-center bg-slate-50/60 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                  <Monitor className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-slate-800">Belum ada bilik suara yang terdaftar.</h4>
+                  <p className="text-xs text-slate-500 max-w-sm mt-0.5">
+                    Database belum memiliki data bilik suara. Klik tombol di bawah untuk menginisialisasi 16 bilik suara resmi.
+                  </p>
+                </div>
+                <button
+                  onClick={handleSeedBooths}
+                  disabled={isSeedingBooths}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {isSeedingBooths ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menginisialisasi...</span>
+                    </>
+                  ) : (
+                    <span>Inisialisasi 16 Bilik Suara</span>
+                  )}
+                </button>
               </div>
             ) : (
               booths.map((booth) => (

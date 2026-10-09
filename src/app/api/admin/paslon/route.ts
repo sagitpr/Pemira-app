@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const candNum = Number(candidate_number || 1);
     const paddedNum = candNum < 10 ? `0${candNum}` : `${candNum}`;
 
-    const record = {
+    const record: any = {
       id: candId,
       candidate_number: candNum,
       number: paddedNum,
@@ -75,10 +75,52 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     };
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('candidates')
       .upsert([record], { onConflict: 'id' })
       .select();
+
+    // Fallback jika database memiliki skema legacy (misal: ERROR 42703 column "type" does not exist)
+    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      console.warn('[CANDIDATE_SCHEMA_FALLBACK] Retrying with adaptive column set:', error.message);
+      
+      const adaptiveRecord: any = {
+        id: candId,
+        candidate_number: candNum,
+        leader_name: leader_name.trim(),
+        vice_leader_name: vice_leader_name.trim(),
+        slogan: slogan?.trim() || '',
+        photo_url: photo_url || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (error.message?.includes('"type"')) {
+        adaptiveRecord.category = type || 'BEM';
+      } else {
+        adaptiveRecord.type = type || 'BEM';
+      }
+
+      if (!error.message?.includes('"vision"')) {
+        adaptiveRecord.vision = record.vision;
+      }
+      if (!error.message?.includes('"visi"')) {
+        adaptiveRecord.visi = record.visi;
+      }
+      if (!error.message?.includes('"mission"')) {
+        adaptiveRecord.mission = record.mission;
+      }
+      if (!error.message?.includes('"misi"')) {
+        adaptiveRecord.misi = record.misi;
+      }
+
+      const retryResult = await supabaseAdmin
+        .from('candidates')
+        .upsert([adaptiveRecord], { onConflict: 'id' })
+        .select();
+
+      data = retryResult.data;
+      error = retryResult.error;
+    }
 
     if (error) {
       console.error('Error saving candidate:', error);
@@ -88,15 +130,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Catat log aktivitas
-    await supabaseAdmin.from('activity_logs').insert([
-      {
-        text: `Admin KPUM mendaftarkan/memperbarui Paslon Nomor ${paddedNum} (${record.leader_name} & ${record.vice_leader_name}) - ${record.type}.`,
-        type: 'info',
-        time: new Date().toLocaleTimeString('id-ID'),
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    // Catat log aktivitas secara non-blocking / safe
+    try {
+      await supabaseAdmin.from('activity_logs').insert([
+        {
+          text: `Admin KPUM mendaftarkan/memperbarui Paslon Nomor ${paddedNum} (${record.leader_name} & ${record.vice_leader_name}) - ${record.type || record.category || 'BEM'}.`,
+          type: 'info',
+          time: new Date().toLocaleTimeString('id-ID'),
+          created_at: new Date().toISOString(),
+        },
+      ]);
+    } catch (logErr) {
+      console.warn('Non-fatal: Gagal mencatat activity log paslon:', logErr);
+    }
 
     return NextResponse.json({
       success: true,
