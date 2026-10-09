@@ -197,14 +197,23 @@ export default function AdminDashboardPage() {
   const fetchVotersStats = async () => {
     try {
       const supabase = createClient();
+      const { count } = await supabase
+        .from('voters')
+        .select('*', { count: 'exact', head: true });
+
+      if (count !== null && count !== undefined) {
+        setTotalDpt(count); // Menghasilkan angka 97
+      }
+
       const { data: votersData, error } = await supabase
         .from('voters')
         .select('id, has_voted, voting_status');
 
       if (!error && Array.isArray(votersData)) {
-        const totalDpt = votersData.length;
+        if (count === null || count === undefined) {
+          setTotalDpt(votersData.length);
+        }
         const sudahMemilih = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
-        setTotalDpt(totalDpt);
         setSuaraMasuk(sudahMemilih);
         setIsStatsLoaded(true);
         return;
@@ -215,7 +224,7 @@ export default function AdminDashboardPage() {
 
     try {
       // Fallback service role API jika client terhalang RLS
-      const res = await fetch('/api/admin/stats');
+      const res = await fetch('/api/admin/stats', { cache: 'no-store' });
       const json = await res.json();
       if (json?.success && json?.stats) {
         setTotalDpt(json.stats.totalDpt);
@@ -284,22 +293,51 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 4. Fetch Bilik Suara (Dukungan Server-side API + Direct Supabase + Timeout Guard)
+  // 4. Fetch Bilik Suara (Dukungan Server-side API + Direct Supabase + Dual Fallback)
   const fetchBooths = async () => {
     setIsLoadingBooths(true);
-
-    // Prioritas 1: Endpoint API Server-side (dengan timeout controller & auto-seed)
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      // 1. Coba ambil lewat internal API route serverless
+      const res = await fetch('/api/admin/booths', { cache: 'no-store' });
+      if (res.ok) {
+        const json = await res.json();
+        const boothItems = json.booths || json.data;
+        if (boothItems && boothItems.length > 0) {
+          setBooths(
+            boothItems.map((d: any) => ({
+              id: d.id,
+              booth_number: d.booth_number,
+              name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+              status: (d.status || 'TERSEDIA').toUpperCase(),
+              voter_name: d.voter_name || d.current_voter_name || null,
+              voter_nim: d.voter_nim || d.current_voter_nim || null,
+              voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
+              current_voter_name: d.current_voter_name || d.voter_name || null,
+              current_voter_nim: d.current_voter_nim || d.voter_nim || null,
+              current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
+              started_at: d.started_at || null,
+              ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+              updated_at: d.updated_at,
+            }))
+          );
+          setBoothsError(null);
+          setIsLoadingBooths(false);
+          return;
+        }
+      }
 
-      const res = await fetch('/api/admin/booths', { signal: controller.signal });
-      clearTimeout(timeoutId);
+      // 2. Fallback: Ambil langsung dari Supabase Client jika API route ada kendala
+      const supabase = createClient();
+      const { data, error: supaErr } = await supabase
+        .from('booths')
+        .select('*')
+        .order('booth_number', { ascending: true });
 
-      const json = await res.json();
-      if (json?.data && Array.isArray(json.data) && json.data.length > 0) {
+      if (supaErr) throw supaErr;
+
+      if (data && data.length > 0) {
         setBooths(
-          json.data.map((d: any) => ({
+          data.map((d: any) => ({
             id: d.id,
             booth_number: d.booth_number,
             name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
@@ -316,49 +354,12 @@ export default function AdminDashboardPage() {
           }))
         );
         setBoothsError(null);
-        setIsLoadingBooths(false);
-        return;
-      }
-    } catch (apiErr: any) {
-      console.warn('[BOOTHS_API_FETCH_NOTE]', apiErr.message);
-    }
-
-    // Prioritas 2: Client Supabase langsung
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('booths')
-        .select('*')
-        .order('booth_number', { ascending: true });
-
-      if (!error && Array.isArray(data)) {
-        if (data.length > 0) {
-          setBooths(
-            data.map((d: any) => ({
-              id: d.id,
-              booth_number: d.booth_number,
-              name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
-              status: (d.status || 'TERSEDIA').toUpperCase(),
-              voter_name: d.voter_name || d.current_voter_name || null,
-              voter_nim: d.voter_nim || d.current_voter_nim || null,
-              voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
-              current_voter_name: d.current_voter_name || d.voter_name || null,
-              current_voter_nim: d.current_voter_nim || d.voter_nim || null,
-              current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
-              started_at: d.started_at || null,
-              ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
-              updated_at: d.updated_at,
-            }))
-          );
-        } else {
-          setBooths([]);
-        }
-        setBoothsError(null);
-      } else if (error) {
-        setBoothsError(error.message || 'Gagal memuat bilik suara dari database.');
+      } else {
+        setBooths([]);
       }
     } catch (err: any) {
-      setBoothsError(err.message || 'Koneksi ke database bilik suara terputus.');
+      console.error('Error fetching booths:', err);
+      setBoothsError(err?.message || 'Gagal memuat status bilik suara');
     } finally {
       setIsLoadingBooths(false);
     }

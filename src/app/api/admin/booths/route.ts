@@ -20,47 +20,11 @@ export async function GET() {
       .select('*')
       .order('booth_number', { ascending: true });
 
-    if (error) {
-      console.warn('[BOOTHS_API_WARN] Gagal membaca tabel booths di Supabase:', error.message);
-      // Kembalikan default 16 bilik dengan flag fallback agar dashboard tidak stuck loading
-      return NextResponse.json({
-        success: true,
-        data: DEFAULT_BOOTHS,
-        isFallback: true,
-        message: 'Menggunakan bilik suara default (Supabase connection note: ' + error.message + ')',
-      });
-    }
+    if (error) throw error;
 
-    // Jika tabel ada tetapi masih kosong (0 baris), inisialisasi 16 bilik secara otomatis ke database
-    if (!data || data.length === 0) {
-      try {
-        const { data: seeded } = await supabaseAdmin
-          .from('booths')
-          .insert(DEFAULT_BOOTHS)
-          .select();
-
-        if (seeded && seeded.length > 0) {
-          return NextResponse.json({
-            success: true,
-            data: seeded,
-            message: 'Inisialisasi 16 bilik suara otomatis berhasil disimpan ke database.',
-          });
-        }
-      } catch (seedErr) {
-        console.warn('[BOOTHS_SEED_NOTE]', seedErr);
-      }
-      return NextResponse.json({ success: true, data: DEFAULT_BOOTHS });
-    }
-
-    return NextResponse.json({ success: true, data: data });
-  } catch (err: any) {
-    console.error('[BOOTHS_API_FATAL]', err);
-    return NextResponse.json({
-      success: true,
-      data: DEFAULT_BOOTHS,
-      isFallback: true,
-      message: err.message || 'Menggunakan data bilik default',
-    });
+    return NextResponse.json({ success: true, booths: data || [], data: data || [] });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
 

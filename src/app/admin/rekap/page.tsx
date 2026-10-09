@@ -62,10 +62,18 @@ export default function AdminRekapPage() {
   const fetchVotersAndStats = async () => {
     try {
       const supabase = createClient();
+      const { count } = await supabase
+        .from('voters')
+        .select('*', { count: 'exact', head: true });
+
+      if (count !== null && count !== undefined) {
+        setTotalDpt(count); // Menghasilkan angka 97
+      }
+
       const { data: votersList, error } = await supabase.from('voters').select('*');
       if (!error && Array.isArray(votersList)) {
         setRawVoters(votersList);
-        const totalDptCount = votersList.length;
+        const totalDptCount = (count !== null && count !== undefined) ? count : votersList.length;
         const sudahMemilihCount = votersList.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
         const belumMemilihCount = Math.max(0, totalDptCount - sudahMemilihCount);
         const part = totalDptCount > 0 ? Number(((sudahMemilihCount / totalDptCount) * 100).toFixed(1)) : 0;
@@ -81,7 +89,7 @@ export default function AdminRekapPage() {
 
     try {
       // Fallback service role API jika anon client terhalang RLS
-      const res = await fetch('/api/admin/stats');
+      const res = await fetch('/api/admin/stats', { cache: 'no-store' });
       const json = await res.json();
       if (json?.success && Array.isArray(json?.voters)) {
         const votersData = json.voters;
