@@ -23,14 +23,14 @@ export async function POST(request: Request) {
         .from('admin_users')
         .select('*')
         .eq('email', cleanEmail)
-        .eq('status', 'Aktif')
         .single();
 
       if (data && !error) {
-        if (data.password === cleanPass) {
+        const matches = data.password === cleanPass || data.password_hash === cleanPass;
+        if (matches) {
           isValid = true;
           userRole = (data.role?.toLowerCase() === 'superadmin' ? 'superadmin' : 'admin');
-          userName = data.name || userName;
+          userName = data.name || data.full_name || userName;
         }
       }
     } catch {

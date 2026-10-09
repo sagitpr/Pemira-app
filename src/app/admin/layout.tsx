@@ -7,9 +7,9 @@ import AdminSidebar from '@/components/admin/AdminSidebar';
 
 function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLoginPage = pathname === '/admin/login';
+  const isAuthPage = pathname === '/admin/login' || pathname === '/admin/register';
 
-  if (isLoginPage) {
+  if (isAuthPage) {
     return <>{children}</>;
   }
 

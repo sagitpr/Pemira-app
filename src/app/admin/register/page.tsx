@@ -4,75 +4,56 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
-import { useAdmin } from '@/context/AdminContext';
-import { Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck, UserPlus } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, User, ShieldCheck, UserPlus, ArrowLeft } from 'lucide-react';
 
-export default function AdminLoginPage() {
+export default function AdminRegisterPage() {
   const router = useRouter();
-  const { login } = useAdmin();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'panitia',
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [imgError, setImgError] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+
+    if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim()) {
+      alert('Semua field wajib diisi!');
+      return;
+    }
+
     setIsLoading(true);
-
     try {
-      const cleanEmail = email.trim().toLowerCase();
+      const cleanEmail = formData.email.trim().toLowerCase();
 
-      const { data: user, error } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('email', cleanEmail)
-        .single();
+      const { data, error } = await supabase.from('admin_users').insert([
+        {
+          name: formData.name.trim(),
+          email: cleanEmail,
+          password: formData.password,
+          role: formData.role || 'panitia',
+        },
+      ]);
 
-      if (error || !user) {
-        console.warn('Login error:', error);
-        alert('Email atau akun tidak ditemukan di database!');
-        setErrorMessage('Email atau akun tidak ditemukan di database!');
-        return;
+      if (error) {
+        console.error('Supabase registration error:', error);
+        throw new Error(error.message);
       }
 
-      // Cek kata sandi (cocokkan dengan kolom 'password' atau fallback 'password_hash')
-      const validPassword = user.password === password || user.password_hash === password;
-      if (!validPassword) {
-        alert('Kata sandi salah!');
-        setErrorMessage('Kata sandi salah!');
-        return;
-      }
-
-      // Simpan sesi login lokal/cookie
-      const sessionData = {
-        id: user.id,
-        name: user.name || user.full_name || 'Admin',
-        email: user.email,
-        role: user.role || 'admin',
-      };
-
-      localStorage.setItem('pemira_admin_session', JSON.stringify(sessionData));
-      document.cookie = `pemira_admin_session=${encodeURIComponent(JSON.stringify(sessionData))}; path=/; max-age=28800; SameSite=Lax`;
-
-      // Coba panggil login API untuk menetapkan JWT cookie jika memungkinkan (non-blocking)
-      try {
-        await fetch('/api/admin/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password }),
-        });
-      } catch {}
-
-      alert(`Selamat datang, ${user.name || user.full_name || 'Admin'}!`);
-      window.location.href = '/admin/dashboard';
+      alert('Akun berhasil dibuat! Silakan masuk.');
+      router.push('/admin/login');
     } catch (err: any) {
-      console.error('Error saat login:', err);
-      alert('Terjadi kesalahan: ' + (err.message || 'Gagal masuk.'));
-      setErrorMessage(err.message || 'Gagal masuk.');
+      console.error('Error saat pendaftaran:', err);
+      const msg = err?.message || 'Terjadi kesalahan saat membuat akun.';
+      setErrorMessage(msg);
+      alert('Gagal membuat akun: ' + msg);
     } finally {
       setIsLoading(false);
     }
@@ -81,7 +62,7 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen w-full bg-gradient-to-b from-slate-100 via-white to-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 font-sans">
       <div className="w-full max-w-md">
-        {/* Identitas & Logo Resmi UBTH + Badge Tegas */}
+        {/* Identitas & Logo Resmi UBTH */}
         <div className="text-center mb-6 flex flex-col items-center">
           <div className="flex items-center justify-center gap-3 mb-2">
             <div className="w-16 h-16 shrink-0 flex items-center justify-center drop-shadow-sm">
@@ -112,35 +93,53 @@ export default function AdminLoginPage() {
             </div>
           </div>
           <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight mt-1">
-            Panel Administrator &amp; Saksi
+            Daftar Akun Panitia / Saksi
           </h1>
           <p className="text-xs text-slate-500 mt-1 max-w-xs">
-            Masuk untuk mengakses rekapitulasi suara, manajemen DPT, dan bilik suara digital.
+            Registrasi akun operasional pemilihan untuk panitia KPUM atau saksi pasangan calon.
           </p>
         </div>
 
         {/* Card Container Putih Solid */}
         <div className="bg-white border border-slate-200/80 shadow-lg shadow-slate-200/50 rounded-3xl p-8 max-w-md w-full">
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {errorMessage && (
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
                 {errorMessage}
               </div>
             )}
 
+            {/* Nama Lengkap Input */}
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                Nama Lengkap
+              </label>
+              <div className="relative">
+                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Contoh: Muhammad Ihsan"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-colors"
+                />
+              </div>
+            </div>
+
             {/* Email / Username Input */}
             <div>
               <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                Email / Username Admin
+                Email / Username
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@pemira2026.ac.id"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="panitia@pemira2026.ac.id"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-colors"
                 />
               </div>
@@ -156,8 +155,8 @@ export default function AdminLoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   placeholder="••••••••••••"
                   className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-medium text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-colors"
                 />
@@ -172,36 +171,52 @@ export default function AdminLoginPage() {
               </div>
             </div>
 
-            {/* Tombol Masuk: Deep Navy Solid */}
+            {/* Peran / Role Select */}
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                Peran / Role
+              </label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-medium text-slate-900 bg-white focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-colors cursor-pointer"
+              >
+                <option value="panitia">Panitia (KPUM)</option>
+                <option value="saksi">Saksi Paslon</option>
+                <option value="admin">Administrator Sistem</option>
+              </select>
+            </div>
+
+            {/* Tombol Daftar */}
             <button
               type="submit"
               disabled={isLoading}
               className="w-full mt-2 bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl transition-all shadow-md shadow-slate-900/15 flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer disabled:opacity-70"
             >
               {isLoading ? (
-                <span>Memverifikasi Akun...</span>
+                <span>Menyimpan Akun...</span>
               ) : (
                 <>
-                  <span>Masuk ke Dashboard</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <span>Daftarkan Akun</span>
+                  <UserPlus className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Tautan Pendaftaran Akun */}
+          {/* Link kembali ke Login */}
           <div className="mt-5 pt-4 border-t border-slate-100 text-center">
             <Link
-              href="/admin/register"
+              href="/admin/login"
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors"
             >
-              <UserPlus className="w-3.5 h-3.5 text-slate-500" />
-              <span>Belum punya akun panitia atau saksi? Daftar di sini</span>
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Sudah punya akun? Masuk di sini</span>
             </Link>
           </div>
         </div>
 
-        {/* Footer Info Keamanan Sesi (Tanpa Emoji) */}
+        {/* Footer Info */}
         <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5 font-medium">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
           <span>Sesi terenkripsi dan terlindungi sistem resmi KPR UBTH 2026</span>
