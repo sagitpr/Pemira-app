@@ -14,9 +14,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen bg-[#FAF9F5] overflow-hidden font-sans text-slate-900 w-full">
+    <div className="min-h-screen bg-[#FAF9F5] font-sans text-slate-900 w-full relative">
       <AdminSidebar />
-      <div className="flex-1 w-full flex flex-col min-w-0 overflow-y-auto bg-[#FAF9F5]">
+      <div className="pl-0 md:pl-64 w-full flex flex-col min-h-screen min-w-0 bg-[#FAF9F5]">
         {children}
       </div>
     </div>

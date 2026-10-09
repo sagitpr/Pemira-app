@@ -287,75 +287,53 @@ export default function AdminDptPage() {
 
     setIsImporting(true);
     try {
-      // 1. Parsing fleksibel: tangani header nama/name dan delimiter CSV
-      const lines = csvText.trim().split('\n');
-      const payloadVoters: any[] = [];
+      // Parsing teks CSV menjadi array objek
+      const lines = csvText.split('\n').filter((line) => line.trim() !== '');
       let startIdx = 0;
-
-      if (lines.length > 0) {
-        const first = lines[0].toLowerCase();
-        if (first.includes('nim') || first.includes('nama') || first.includes('name')) {
-          startIdx = 1;
-        }
+      if (lines.length > 0 && (lines[0].toLowerCase().includes('nim') || lines[0].toLowerCase().includes('nama'))) {
+        startIdx = 1;
       }
 
-      for (let i = startIdx; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
+      const parsedVoters = lines.slice(startIdx).map((line) => {
         let sep = ',';
         if (line.includes(';') && !line.includes(',')) sep = ';';
         else if (line.includes('\t')) sep = '\t';
+        const [nim, nama, prodi, faculty] = line.split(sep).map((s) => s?.replace(/["']/g, '')?.trim());
+        return {
+          nim: nim ? String(nim).trim() : '',
+          nama: nama ? String(nama).trim() : '',
+          name: nama ? String(nama).trim() : '',
+          prodi: prodi ? String(prodi).trim() : '',
+          faculty: faculty ? String(faculty).trim() : 'FTB',
+        };
+      }).filter((v) => v.nim && v.nama);
 
-        const cols = line.split(sep).map((c) => c.replace(/["']/g, '').trim());
-        if (cols.length >= 2) {
-          const cleanProdi = String(cols[2] || '').trim();
-          if (!cleanProdi) {
-            console.warn(`Baris NIM ${cols[0]} tidak memiliki keterangan Program Studi.`);
-          }
-
-          const item = {
-            nim: String(cols[0]).trim(),
-            name: String(cols[1] || '').trim(),
-            nama: String(cols[1] || '').trim(),
-            prodi: cleanProdi, // Murni dari data inputan pengguna
-            faculty: cols[3] || 'FTB',
-            has_voted: false,
-            voting_status: 'BELUM' as const,
-          };
-
-          if (item.nim && (item.nama || item.name)) {
-            payloadVoters.push(item);
-          }
-        }
-      }
-
-      if (payloadVoters.length === 0) {
-        alert('Gagal mengimpor: Format data CSV tidak valid atau tidak memiliki baris data.');
+      if (parsedVoters.length === 0) {
+        alert('Format data CSV tidak valid. Pastikan format: NIM,Nama,Prodi');
+        setIsImporting(false);
         return;
       }
 
-      // 2. Alihkan proses penyimpanan ke API server /api/admin/dpt/import menggunakan supabaseAdmin
-      const res = await fetch('/api/admin/dpt/import', {
+      const response = await fetch('/api/admin/dpt/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: payloadVoters, csvText }),
+        body: JSON.stringify({ voters: parsedVoters }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        alert('Gagal mengimpor: ' + (data.error || data.message || 'Kesalahan saat menyimpan'));
-        return;
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Gagal menyimpan ke server');
       }
 
-      alert('Berhasil mengimpor data pemilih!');
+      alert(`Sukses! ${result.count || parsedVoters.length} data DPT berhasil diimpor.`);
       setIsImportModalOpen(false);
       setCsvText('');
-      await fetchSupabaseVoters();
+      await fetchSupabaseVoters(); // Muat ulang tabel DPT
     } catch (err: any) {
-      alert('Gagal mengimpor: ' + (err?.message || 'Terjadi kesalahan sistem'));
+      console.error('Gagal import:', err);
+      alert('Gagal mengimpor: ' + err.message);
     } finally {
-      // Pastikan tombol "Mengimpor..." mengembalikan state ke semula
       setIsImporting(false);
     }
   };

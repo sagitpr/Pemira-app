@@ -118,10 +118,13 @@ interface AdminContextType {
   electionStatus: 'AKTIF' | 'JEDA' | 'TUTUP';
   setElectionStatus: (status: 'AKTIF' | 'JEDA' | 'TUTUP') => void;
 
-  // Mobile Sidebar
+  // Mobile Sidebar & Menu
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
   toggleMobileSidebar: () => void;
+  isMobileMenuOpen: boolean;
+  setIsMobileMenuOpen: (open: boolean) => void;
+  toggleMobileMenu: () => void;
 }
 
 export const MOCK_VOTERS: Voter[] = [];
@@ -459,6 +462,9 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         isMobileSidebarOpen,
         setIsMobileSidebarOpen,
         toggleMobileSidebar,
+        isMobileMenuOpen: isMobileSidebarOpen,
+        setIsMobileMenuOpen: setIsMobileSidebarOpen,
+        toggleMobileMenu: toggleMobileSidebar,
       }}
     >
       {children}

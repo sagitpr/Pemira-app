@@ -1,122 +1,59 @@
-export const dynamic = 'force-dynamic';
-
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 
-export async function POST(request: Request) {
+export const dynamic = 'force-dynamic';
+
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
-    const { items, csvText } = body;
+    const body = await req.json();
+    let voters = body.voters || body.items || [];
 
-    let rawList: any[] = [];
-
-    if (Array.isArray(items) && items.length > 0) {
-      rawList = items;
-    } else if (typeof csvText === 'string' && csvText.trim()) {
-      const lines = csvText.trim().split('\n');
+    // Jika input berupa raw csvText
+    if ((!Array.isArray(voters) || voters.length === 0) && typeof body.csvText === 'string') {
+      const lines = body.csvText.split('\n').filter((l: string) => l.trim() !== '');
       let startIdx = 0;
-      if (lines.length > 0) {
-        const first = lines[0].toLowerCase();
-        if (first.includes('nim') || first.includes('nama') || first.includes('name')) {
-          startIdx = 1;
-        }
+      if (lines.length > 0 && (lines[0].toLowerCase().includes('nim') || lines[0].toLowerCase().includes('nama'))) {
+        startIdx = 1;
       }
-
-      for (let i = startIdx; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-
+      voters = lines.slice(startIdx).map((l: string) => {
         let sep = ',';
-        if (line.includes(';') && !line.includes(',')) sep = ';';
-        else if (line.includes('\t')) sep = '\t';
-
-        const cols = line.split(sep).map((c) => c.replace(/["']/g, '').trim());
-        if (cols.length >= 2) {
-          const cleanProdi = String(cols[2] || '').trim();
-          rawList.push({
-            nim: String(cols[0]).trim(),
-            name: String(cols[1] || '').trim(),
-            nama: String(cols[1] || '').trim(),
-            prodi: cleanProdi,
-            faculty: cols[3] || 'FTB',
-            has_voted: false,
-            voting_status: 'BELUM',
-          });
-        }
-      }
+        if (l.includes(';') && !l.includes(',')) sep = ';';
+        else if (l.includes('\t')) sep = '\t';
+        const cols = l.split(sep).map((s: string) => s.replace(/["']/g, '').trim());
+        return { nim: cols[0], nama: cols[1], prodi: cols[2] };
+      }).filter((v: any) => v.nim && v.nama);
     }
 
-    if (rawList.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Tidak ada data pemilih yang valid untuk diimpor.', message: 'Data CSV kosong atau tidak valid.' },
-        { status: 400 }
-      );
+    if (!Array.isArray(voters) || voters.length === 0) {
+      return NextResponse.json({ success: false, message: 'Data pemilih kosong atau tidak valid.' }, { status: 400 });
     }
 
-    // Bangun payload terstruktur sesuai schema voters
-    const payloadVoters: any[] = [];
-    for (const item of rawList) {
-      const cleanNim = String(item.nim || '').trim();
-      const cleanName = String(item.nama || item.name || '').trim();
-      const cleanProdi = String(item.prodi || item.program_studi || item.jurusan || item.prodi_name || '').trim();
+    // Normalisasi struktur data pemilih
+    const normalizedData = voters.map((v: any) => ({
+      nim: String(v.nim).trim(),
+      name: String(v.nama || v.name).trim(),
+      nama: String(v.nama || v.name).trim(),
+      prodi: String(v.prodi || '').trim(),
+      faculty: String(v.faculty || 'FTB').trim(),
+      has_voted: false,
+      voting_status: 'BELUM',
+    })).filter((v: any) => v.nim && (v.name || v.nama));
 
-      if (!cleanProdi) {
-        console.warn(`Baris NIM ${cleanNim} tidak memiliki keterangan Program Studi.`);
-      }
-
-      if (cleanNim && cleanName) {
-        payloadVoters.push({
-          nim: cleanNim,
-          name: cleanName,
-          nama: cleanName,
-          prodi: cleanProdi,
-          prodi_name: cleanProdi,
-          faculty: item.faculty || item.fakultas || 'FTB',
-          has_voted: Boolean(item.has_voted),
-          voting_status: item.voting_status || 'BELUM',
-          updated_at: new Date().toISOString(),
-        });
-      }
+    if (normalizedData.length === 0) {
+      return NextResponse.json({ success: false, message: 'Format data pemilih tidak valid.' }, { status: 400 });
     }
 
-    if (payloadVoters.length === 0) {
-      return NextResponse.json(
-        { success: false, error: 'Semua baris data tidak memuat NIM atau Nama yang valid.', message: 'Format data tidak valid.' },
-        { status: 400 }
-      );
-    }
-
-    // Eksekusi batch upsert (250 rows per chunk) untuk skalabilitas 2.748 DPT
-    const CHUNK_SIZE = 250;
-    for (let i = 0; i < payloadVoters.length; i += CHUNK_SIZE) {
-      const chunk = payloadVoters.slice(i, i + CHUNK_SIZE);
-      let { error: chunkErr } = await supabaseAdmin
+    // Simpan dalam batch 100 baris agar tidak membebani memori server
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < normalizedData.length; i += CHUNK_SIZE) {
+      const chunk = normalizedData.slice(i, i + CHUNK_SIZE);
+      const { error } = await supabaseAdmin
         .from('voters')
         .upsert(chunk, { onConflict: 'nim' });
 
-      // Fallback adaptif kolom jika schema voters menggunakan kolom prodi saja
-      if (chunkErr && (chunkErr.code === '42703' || chunkErr.message?.includes('does not exist'))) {
-        console.warn('[DPT_IMPORT_SCHEMA_ADAPTIVE] Retrying chunk with compatible columns:', chunkErr.message);
-        const fallbackChunk = chunk.map((v: any) => ({
-          nim: v.nim,
-          name: v.name,
-          nama: v.nama,
-          prodi: v.prodi,
-          faculty: v.faculty || 'FTB',
-          has_voted: v.has_voted,
-          voting_status: v.voting_status,
-          updated_at: v.updated_at,
-        }));
-
-        const retryRes = await supabaseAdmin
-          .from('voters')
-          .upsert(fallbackChunk, { onConflict: 'nim' });
-
-        if (retryRes.error) {
-          throw retryRes.error;
-        }
-      } else if (chunkErr) {
-        throw chunkErr;
+      if (error) {
+        console.error('Database upsert error:', error);
+        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
       }
     }
 
@@ -124,7 +61,7 @@ export async function POST(request: Request) {
     try {
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `Admin KPUM berhasil mengimpor ${payloadVoters.length} pemilih DPT ke database.`,
+          text: `Admin KPUM berhasil mengimpor ${normalizedData.length} pemilih DPT ke database.`,
           type: 'info',
           time: new Date().toLocaleTimeString('id-ID'),
           created_at: new Date().toISOString(),
@@ -134,14 +71,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Berhasil mengimpor data pemilih!',
-      total: payloadVoters.length,
+      message: `Berhasil mengimpor ${normalizedData.length} pemilih.`,
+      count: normalizedData.length,
     });
-  } catch (err: any) {
-    console.error('Import CSV fatal error:', err);
-    return NextResponse.json(
-      { success: false, error: err?.message || 'Terjadi kesalahan sistem', message: err?.message || 'Terjadi kesalahan sistem' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error('Import route error:', error);
+    return NextResponse.json({ success: false, message: error.message || 'Terjadi kesalahan server' }, { status: 500 });
   }
 }

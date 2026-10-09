@@ -153,8 +153,8 @@ export default function AdminSidebar() {
 
   return (
     <>
-      {/* Desktop Sidebar (hidden on mobile, sticky on desktop) */}
-      <aside className="hidden md:flex md:w-64 bg-[#F8F6F0]/80 border-r border-[#EBE7DF] flex-col justify-between shrink-0 h-screen sticky top-0 z-30 select-none font-sans">
+      {/* Desktop Sidebar (hidden on mobile, fixed on desktop) */}
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#F8F6F0]/80 border-r border-[#EBE7DF] justify-between h-screen z-30 select-none font-sans">
         {renderNavContent(false)}
       </aside>
 
@@ -163,7 +163,7 @@ export default function AdminSidebar() {
         <div className="fixed inset-0 z-50 md:hidden flex select-none font-sans">
           {/* Overlay Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in"
+            className="fixed inset-0 bg-black/50 transition-opacity animate-in fade-in"
             onClick={() => setIsMobileSidebarOpen(false)}
             aria-hidden="true"
           />
