@@ -169,7 +169,9 @@ export async function POST(request: Request) {
     const { error: bemVoteErr } = await supabaseAdmin.from('votes').insert([
       {
         candidate_id: String(bemCandidateId),
+        bem_candidate_id: String(bemCandidateId),
         category: 'BEM',
+        type: 'BEM',
         created_at: nowIso,
       },
     ]);
@@ -193,7 +195,9 @@ export async function POST(request: Request) {
       const { error: himaVoteErr } = await supabaseAdmin.from('votes').insert([
         {
           candidate_id: String(himaCandidateId),
+          hima_candidate_id: String(himaCandidateId),
           category: 'HIMA',
+          type: 'HIMA',
           created_at: nowIso,
         },
       ]);
@@ -226,15 +230,14 @@ export async function POST(request: Request) {
     // f. Catat aktivitas ke activity_logs
     try {
       const numStr = String(num).padStart(2, '0');
-      const timeStr = new Date().toLocaleTimeString('id-ID');
       const durMin = ((finalDurationSeconds || 0) / 60).toFixed(1);
       const studentName = cleanName || voter?.nama || voter?.name || cleanNim;
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `[${timeStr}] Mahasiswa ${studentName} selesai memilih di Bilik ${numStr} (Durasi: ${durMin} menit)`,
-          type: 'done',
           booth_number: num,
-          time: timeStr,
+          message: `Mahasiswa ${studentName} selesai memilih di Bilik ${numStr} (Durasi: ${durMin} menit)`,
+          description: `Selesai memilih di Bilik ${numStr}`,
+          event_type: 'VOTE_COMPLETED',
           created_at: nowIso,
         },
       ]);

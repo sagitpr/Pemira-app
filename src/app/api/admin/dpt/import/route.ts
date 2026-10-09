@@ -24,46 +24,41 @@ export async function POST(req: Request) {
       }).filter((v: any) => v.nim && v.nama);
     }
 
-    if (!Array.isArray(voters) || voters.length === 0) {
-      return NextResponse.json({ success: false, message: 'Data pemilih kosong atau tidak valid.' }, { status: 400 });
+    if (!voters || !Array.isArray(voters)) {
+      return NextResponse.json({ success: false, message: 'Data tidak valid' }, { status: 400 });
     }
 
-    // Normalisasi struktur data pemilih
-    const normalizedData = voters.map((v: any) => ({
-      nim: String(v.nim).trim(),
-      name: String(v.nama || v.name).trim(),
-      nama: String(v.nama || v.name).trim(),
-      prodi: String(v.prodi || '').trim(),
-      faculty: String(v.faculty || 'FTB').trim(),
-      has_voted: false,
-      voting_status: 'BELUM',
-    })).filter((v: any) => v.nim && (v.name || v.nama));
+    const payload = voters
+      .map((v: any) => ({
+        nim: String(v.nim).trim(),
+        name: String(v.nama || v.name).trim(),
+        nama: String(v.nama || v.name).trim(),
+        prodi: String(v.prodi || v.jurusan || '').trim(),
+        faculty: v.faculty || 'FTB',
+        has_voted: false,
+        voting_status: 'BELUM',
+      }))
+      .filter((v: any) => v.nim && (v.name || v.nama));
 
-    if (normalizedData.length === 0) {
-      return NextResponse.json({ success: false, message: 'Format data pemilih tidak valid.' }, { status: 400 });
+    if (payload.length === 0) {
+      return NextResponse.json({ success: false, message: 'Data pemilih kosong atau format tidak valid.' }, { status: 400 });
     }
 
-    // Simpan dalam batch 100 baris agar tidak membebani memori server
-    const CHUNK_SIZE = 100;
-    for (let i = 0; i < normalizedData.length; i += CHUNK_SIZE) {
-      const chunk = normalizedData.slice(i, i + CHUNK_SIZE);
-      const { error } = await supabaseAdmin
-        .from('voters')
-        .upsert(chunk, { onConflict: 'nim' });
-
-      if (error) {
-        console.error('Database upsert error:', error);
-        return NextResponse.json({ success: false, message: error.message }, { status: 500 });
-      }
+    // Upsert dalam chunk 200 baris agar tidak memicu Vercel timeout
+    const CHUNK = 200;
+    for (let i = 0; i < payload.length; i += CHUNK) {
+      const chunk = payload.slice(i, i + CHUNK);
+      const { error } = await supabaseAdmin.from('voters').upsert(chunk, { onConflict: 'nim' });
+      if (error) throw error;
     }
 
-    // Catat log aktivitas secara non-blocking
+    // Catat ke activity_logs (non-blocking)
     try {
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `Admin KPUM berhasil mengimpor ${normalizedData.length} pemilih DPT ke database.`,
-          type: 'info',
-          time: new Date().toLocaleTimeString('id-ID'),
+          message: `Admin KPUM berhasil mengimpor ${payload.length} pemilih DPT ke database.`,
+          description: `Import batch CSV DPT sebanyak ${payload.length} data.`,
+          event_type: 'IMPORT_DPT',
           created_at: new Date().toISOString(),
         },
       ]);
@@ -71,11 +66,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Berhasil mengimpor ${normalizedData.length} pemilih.`,
-      count: normalizedData.length,
+      count: payload.length,
+      message: `Berhasil mengimpor ${payload.length} data DPT.`,
     });
-  } catch (error: any) {
-    console.error('Import route error:', error);
-    return NextResponse.json({ success: false, message: error.message || 'Terjadi kesalahan server' }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }

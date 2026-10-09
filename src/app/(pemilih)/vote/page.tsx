@@ -168,12 +168,10 @@ function VoteContent() {
             .select('*');
 
           if (dbErr) {
-            // Pisahkan kondisi error jaringan/tabel dengan kondisi data belum tersedia
             console.warn('[CANDIDATES_QUERY_WARN] Menggunakan fallback kandidat:', dbErr);
           } else if (Array.isArray(dbData)) {
-            // Query berhasil! Jika dbData === [], ini kondisi paslon belum diinput (empty state), BUKAN exception
-            const bem = dbData.filter((c: any) => c.type === 'BEM');
-            const hima = dbData.filter((c: any) => c.type === 'HIMA');
+            const bem = dbData.filter((c: any) => c.type === 'BEM' || c.category === 'BEM');
+            const hima = dbData.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA');
             setDbBemCandidates(bem);
             setDbHimaCandidates(hima);
             setDbCandidatesLoaded(true);
@@ -470,10 +468,10 @@ function VoteContent() {
       const supabase = createClient();
       await supabase.from('activity_logs').insert([
         {
-          text: `[${timeStr}] Mahasiswa ${voterName} (${voterProdi}) memasuki ${targetBoothName}`,
-          type: 'alloc',
           booth_number: targetBoothNumber,
-          time: timeStr,
+          message: `Mahasiswa ${voterName} (${voterProdi}) memasuki ${targetBoothName}`,
+          description: `Mahasiswa memulai proses pemilihan`,
+          event_type: 'ENTER_BOOTH',
           created_at: nowIso,
         },
       ]);
@@ -579,18 +577,10 @@ function VoteContent() {
     : (himaCandidates && himaCandidates.length > 0 ? himaCandidates : []);
 
   const currentVoter = detectedVoter;
-  const voterProdiNorm = String(currentVoter?.prodi || currentVoter?.prodiName || '')
-    .toLowerCase()
-    .replace(/\s+/g, '');
-
-  const availableHimaCandidates = (safeHimaList || []).filter((c) => {
-    if (c.type !== 'HIMA') return false;
-    const candProdiNorm = String((c as any).prodi || (c as any).prodi_name || c.prodi_id || c.prodiId || '')
-      .toLowerCase()
-      .replace(/\s+/g, '');
-    return Boolean(voterProdiNorm) && candProdiNorm === voterProdiNorm;
-  });
-  const filteredHimaList = availableHimaCandidates;
+  const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '');
+  const filteredHimaList = (safeHimaList || []).filter((c: any) => 
+    (c.category === 'HIMA' || c.type === 'HIMA') && norm(c.prodi) === norm(currentVoter?.prodi || currentVoter?.prodiName)
+  );
 
   const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
   const selectedHimaCandidate = filteredHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || filteredHimaList[0] || null;

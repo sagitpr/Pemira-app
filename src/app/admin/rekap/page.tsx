@@ -114,8 +114,8 @@ export default function AdminRekapPage() {
       const supabase = createClient();
       const { data: candsData } = await supabase.from('candidates').select('*');
       if (candsData && candsData.length > 0) {
-        setBemList(candsData.filter((c: any) => c.type === 'BEM'));
-        setHimaList(candsData.filter((c: any) => c.type === 'HIMA'));
+        setBemList(candsData.filter((c: any) => c.type === 'BEM' || c.category === 'BEM'));
+        setHimaList(candsData.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA'));
       }
 
       const { data: votesData } = await supabase.from('votes').select('candidate_id');

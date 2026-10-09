@@ -55,78 +55,40 @@ export async function POST(request: Request) {
     }
 
     const candId = id || `${(type || 'BEM').toLowerCase()}-${Date.now()}`;
-    const candNum = Number(candidate_number || 1);
-    const paddedNum = candNum < 10 ? `0${candNum}` : `${candNum}`;
-    const candType = (type || body.category || 'BEM').toUpperCase();
-    const prodiVal = prodi_id || body.prodi || null;
-    const facultyVal = faculty_id || body.faculty || null;
+    const candNum = String(candidate_number || body.nomorUrut || '1');
+    const candType = (type || body.category || body.kategori || 'BEM').toUpperCase();
+    const prodiVal = candType === 'HIMA' ? (prodi_id || body.prodi || null) : null;
+    const facultyVal = faculty_id || body.faculty || 'FTB';
+    const missionText = typeof mission === 'string' ? mission : (Array.isArray(mission) ? mission.join('\n') : (body.misi || ''));
+    const visionText = vision || body.visi || '';
 
-    const record: any = {
-      id: candId,
+    const payload: any = {
       candidate_number: candNum,
-      number: paddedNum,
-      type: candType,
-      faculty_id: facultyVal,
-      prodi_id: prodiVal,
-      faculty_name: faculty_name || (facultyVal ? `Fakultas ${facultyVal}` : null),
+      number: candNum,
+      name: `${leader} & ${vice}`,
       leader_name: leader,
+      chairman_name: leader,
       vice_leader_name: vice,
-      slogan: slogan?.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
-      tagline: slogan?.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
-      vision: vision?.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
-      visi: vision?.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
-      mission: Array.isArray(mission) ? mission : (mission ? String(mission).split('\n').filter(Boolean) : []),
-      misi: Array.isArray(mission) ? mission : (mission ? String(mission).split('\n').filter(Boolean) : []),
-      photo_url: photo_url || null,
-      updated_at: new Date().toISOString(),
+      vice_chairman_name: vice,
+      vice_name: vice,
+      category: candType,
+      type: candType,
+      prodi: prodiVal,
+      faculty: facultyVal,
+      vision: visionText,
+      visi: visionText,
+      mission: missionText,
+      misi: missionText,
+      photo_url: photo_url || body.photo || null,
     };
 
-    let { data, error } = await supabaseAdmin
-      .from('candidates')
-      .upsert([record], { onConflict: 'id' })
-      .select();
-
-    // Fallback jika database memiliki skema legacy (misal: ERROR 42703 column "type" does not exist)
-    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
-      console.warn('[CANDIDATE_SCHEMA_FALLBACK] Retrying with adaptive column set:', error.message);
-      
-      const adaptiveRecord: any = {
-        id: candId,
-        candidate_number: candNum,
-        leader_name: leader_name.trim(),
-        vice_leader_name: vice_leader_name.trim(),
-        slogan: slogan?.trim() || '',
-        photo_url: photo_url || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (error.message?.includes('"type"')) {
-        adaptiveRecord.category = type || 'BEM';
-      } else {
-        adaptiveRecord.type = type || 'BEM';
-      }
-
-      if (!error.message?.includes('"vision"')) {
-        adaptiveRecord.vision = record.vision;
-      }
-      if (!error.message?.includes('"visi"')) {
-        adaptiveRecord.visi = record.visi;
-      }
-      if (!error.message?.includes('"mission"')) {
-        adaptiveRecord.mission = record.mission;
-      }
-      if (!error.message?.includes('"misi"')) {
-        adaptiveRecord.misi = record.misi;
-      }
-
-      const retryResult = await supabaseAdmin
-        .from('candidates')
-        .upsert([adaptiveRecord], { onConflict: 'id' })
-        .select();
-
-      data = retryResult.data;
-      error = retryResult.error;
+    if (id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+      payload.id = id;
     }
+
+    let { data, error } = payload.id
+      ? await supabaseAdmin.from('candidates').upsert([payload], { onConflict: 'id' }).select()
+      : await supabaseAdmin.from('candidates').insert([payload]).select();
 
     if (error) {
       console.error('Error saving candidate:', error);
@@ -136,13 +98,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Catat log aktivitas secara non-blocking / safe
+    // Catat log aktivitas secara non-blocking
     try {
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `Admin KPUM mendaftarkan/memperbarui Paslon Nomor ${paddedNum} (${record.leader_name} & ${record.vice_leader_name}) - ${record.type || record.category || 'BEM'}.`,
-          type: 'info',
-          time: new Date().toLocaleTimeString('id-ID'),
+          booth_number: null,
+          message: `Admin KPUM mendaftarkan/memperbarui Paslon Nomor ${candNum} (${leader} & ${vice}) - ${candType}.`,
+          description: `Pendaftaran Paslon Nomor ${candNum} (${leader} & ${vice})`,
+          event_type: 'PASLON_UPDATE',
           created_at: new Date().toISOString(),
         },
       ]);
@@ -152,8 +115,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Paslon ${paddedNum} (${record.leader_name} & ${record.vice_leader_name}) berhasil disimpan ke database.`,
-      candidate: data?.[0] || record,
+      message: `Paslon ${candNum} (${leader} & ${vice}) berhasil disimpan ke database.`,
+      candidate: data?.[0] || payload,
     });
   } catch (err: any) {
     return NextResponse.json(

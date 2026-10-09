@@ -101,10 +101,10 @@ export async function POST(request: Request) {
 
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: logText,
-          type: 'status',
           booth_number: actualBoothNumber,
-          time: timeStr,
+          message: logText,
+          description: `Reset status Bilik ${numStr}`,
+          event_type: 'RESET_BOOTH',
           created_at: new Date().toISOString(),
         },
       ]);

@@ -84,9 +84,10 @@ export async function POST(request: Request) {
 
     await supabaseAdmin.from('activity_logs').insert([
       {
-        text: logText,
-        type: 'status',
-        time: timeStr,
+        booth_number: null,
+        message: logText,
+        description: `Reset pemilihan target: ${target}`,
+        event_type: 'RESET_ELECTION',
         created_at: nowIso,
       },
     ]);

@@ -154,9 +154,10 @@ export async function POST(request: Request) {
     try {
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `Admin KPUM menambahkan pemilih baru: ${cleanName} (${cleanNim}) - ${cleanProdi}.`,
-          type: 'info',
-          time: new Date().toLocaleTimeString('id-ID'),
+          booth_number: null,
+          message: `Admin KPUM menambahkan pemilih baru: ${cleanName} (${cleanNim}) - ${cleanProdi}.`,
+          description: `Penambahan manual DPT: ${cleanName}`,
+          event_type: 'ADD_VOTER',
           created_at: new Date().toISOString(),
         },
       ]);
@@ -202,9 +203,10 @@ export async function DELETE(request: Request) {
       // Catat ke activity_logs
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: 'Admin KPUM mengosongkan seluruh data DPT dari database.',
-          type: 'status',
-          time: new Date().toLocaleTimeString('id-ID'),
+          booth_number: null,
+          message: 'Admin KPUM mengosongkan seluruh data DPT dari database.',
+          description: 'Pengosongan data DPT',
+          event_type: 'CLEAR_DPT',
           created_at: new Date().toISOString(),
         },
       ]);

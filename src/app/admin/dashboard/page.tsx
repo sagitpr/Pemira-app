@@ -193,46 +193,39 @@ export default function AdminDashboardPage() {
   // Live Activity Log Stream (Murni dari Database Supabase)
   const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([]);
 
-  // 1. Fetch real-time voters count & stats from Supabase / API (TOTAL DPT 97)
+  // 1. Fetch real-time voters count & stats from Supabase / API
   const fetchVotersStats = async () => {
     try {
       const supabase = createClient();
-      const { count } = await supabase
+      const { count: totalCount } = await supabase
         .from('voters')
         .select('*', { count: 'exact', head: true });
 
-      if (count !== null && count !== undefined) {
-        setTotalDpt(count); // Menghasilkan angka 97
-      }
-
-      const { data: votersData, error } = await supabase
+      const { count: votedCount } = await supabase
         .from('voters')
-        .select('id, has_voted, voting_status');
+        .select('*', { count: 'exact', head: true })
+        .eq('has_voted', true);
 
-      if (!error && Array.isArray(votersData)) {
-        if (count === null || count === undefined) {
-          setTotalDpt(votersData.length);
-        }
-        const sudahMemilih = votersData.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
-        setSuaraMasuk(sudahMemilih);
-        setIsStatsLoaded(true);
-        return;
+      if (totalCount !== null && totalCount !== undefined) {
+        setTotalDpt(totalCount);
       }
+      if (votedCount !== null && votedCount !== undefined) {
+        setSuaraMasuk(votedCount);
+      }
+      setIsStatsLoaded(true);
     } catch (e) {
-      // Fallback
-    }
-
-    try {
-      // Fallback service role API jika client terhalang RLS
-      const res = await fetch('/api/admin/stats', { cache: 'no-store' });
-      const json = await res.json();
-      if (json?.success && json?.stats) {
-        setTotalDpt(json.stats.totalDpt);
-        setSuaraMasuk(json.stats.suaraMasuk);
-        setIsStatsLoaded(true);
+      try {
+        // Fallback service role API jika client terhalang RLS
+        const res = await fetch('/api/admin/stats', { cache: 'no-store' });
+        const json = await res.json();
+        if (json?.success && json?.stats) {
+          setTotalDpt(json.stats.totalDpt);
+          setSuaraMasuk(json.stats.suaraMasuk);
+          setIsStatsLoaded(true);
+        }
+      } catch (err) {
+        console.warn('Fetch voters stats note:', err);
       }
-    } catch (err) {
-      console.warn('Fetch voters stats note:', err);
     }
   };
   const fetchVotersAndStats = fetchVotersStats;
@@ -265,9 +258,9 @@ export default function AdminDashboardPage() {
         setActivityLogs(
           logsData.map((l: any) => ({
             id: String(l.id),
-            time: l.time || (l.created_at ? new Date(l.created_at).toLocaleTimeString('id-ID') : new Date().toLocaleTimeString('id-ID')),
-            text: l.text,
-            type: l.type || 'info',
+            time: l.created_at ? new Date(l.created_at).toLocaleTimeString('id-ID') : (l.time || new Date().toLocaleTimeString('id-ID')),
+            text: l.message || l.description || l.text || 'Aktivitas sistem',
+            type: l.event_type?.toLowerCase() || l.type || 'info',
           }))
         );
         return;
@@ -445,18 +438,29 @@ export default function AdminDashboardPage() {
     const supabase = createClient();
 
     const channel = supabase
-      .channel('pemira_live_dashboard')
+      .channel('admin_realtime_stream')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
-        // Perbarui state bilik secara instan tanpa reload browser
+        // Perbarui status bilik seketika
         fetchBooths();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
         // Perbarui statistik kehadiran DPT seketika
-        fetchStats();
+        fetchVotersStats();
         fetchTraffic();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_logs' }, () => {
-        fetchActivityLogs();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (p: any) => {
+        if (p?.new) {
+          const item = p.new;
+          const mapped: ActivityLogItem = {
+            id: String(item.id || Date.now()),
+            time: item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID') : new Date().toLocaleTimeString('id-ID'),
+            text: item.message || item.description || item.text || 'Aktivitas bilik suara',
+            type: (item.event_type?.toLowerCase() || item.type || 'info') as any,
+          };
+          setActivityLogs((prev) => [mapped, ...prev.slice(0, 9)]);
+        } else {
+          fetchActivityLogs();
+        }
       })
       .subscribe();
 
@@ -789,7 +793,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* DYNAMIC GRID BOOTHS - 4 UI STATES */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {isLoadingBooths && booths.length === 0 ? (
               <div className="col-span-full py-12 text-center text-xs text-slate-500 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
                 <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />

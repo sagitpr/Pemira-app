@@ -24,17 +24,19 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { text, type, booth_number } = body;
-    const timeStr = new Date().toLocaleTimeString('id-ID');
+    const { text, message, description, type, event_type, booth_number } = body;
+    const msg = message || text || 'Aktivitas sistem';
+    const desc = description || msg;
+    const evType = event_type || type || 'INFO';
 
     const { data, error } = await supabaseAdmin
       .from('activity_logs')
       .insert([
         {
-          text,
-          type: type || 'info',
-          booth_number: booth_number || null,
-          time: timeStr,
+          booth_number: booth_number ? Number(booth_number) : null,
+          message: msg,
+          description: desc,
+          event_type: evType,
           created_at: new Date().toISOString(),
         },
       ])

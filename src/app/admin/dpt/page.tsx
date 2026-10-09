@@ -315,15 +315,8 @@ export default function AdminDptPage() {
         return;
       }
 
-      // Coba simpan langsung via Supabase Client (Lebih cepat dan stabil)
-      const supabase = createClient();
-      const { error: directError } = await supabase
-        .from('voters')
-        .upsert(parsedData, { onConflict: 'nim' });
-
-      if (directError) {
-        console.warn('Direct client upsert encountered issue, falling back to server route:', directError.message);
-        // Fallback jika direct client ditolak: panggil API route serverless
+      // 1. Panggil API route serverless dengan chunking 200
+      try {
         const res = await fetch('/api/admin/dpt/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -331,7 +324,19 @@ export default function AdminDptPage() {
         });
         const resJson = await res.json();
         if (!res.ok || !resJson.success) {
-          throw new Error(resJson.message || directError.message);
+          throw new Error(resJson.message || 'Gagal menyimpan via server API');
+        }
+      } catch (apiErr: any) {
+        console.warn('API import failed, executing direct Supabase client fallback:', apiErr.message);
+        // 2. Fallback direct client upsert dalam chunk 200
+        const supabase = createClient();
+        const CHUNK = 200;
+        for (let i = 0; i < parsedData.length; i += CHUNK) {
+          const chunk = parsedData.slice(i, i + CHUNK);
+          const { error: directError } = await supabase
+            .from('voters')
+            .upsert(chunk, { onConflict: 'nim' });
+          if (directError) throw directError;
         }
       }
 

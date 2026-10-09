@@ -128,33 +128,27 @@ export default function AdminPaslonPage() {
     }
 
     setIsSaving(true);
-    const paddedNumber = formNumber < 10 ? `0${formNumber}` : `${formNumber}`;
-    const missionArray = formMission
-      ? formMission.split('\n').map((m) => m.trim()).filter(Boolean)
-      : ['Membangun sinergi aktif seluruh mahasiswa.', 'Mendorong transparansi dan karya nyata.'];
+    const missionText = formMission.trim() || 'Membangun sinergi aktif seluruh mahasiswa.\nMendorong transparansi dan karya nyata.';
+    const visionText = formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.';
 
-    const payloadCandidate = {
-      id: `${formType.toLowerCase()}-${Date.now()}`,
-      candidate_number: Number(formNumber || 1),
-      number: String(formNumber || 1),
-      category: formType,
-      type: formType,
+    const payloadCandidate: any = {
+      candidate_number: String(formNumber || '1'),
+      number: String(formNumber || '1'),
       name: `${formLeader.trim()} & ${formVice.trim()}`,
-      chairman_name: formLeader.trim(),
       leader_name: formLeader.trim(),
-      vice_chairman_name: formVice.trim(),
+      chairman_name: formLeader.trim(),
       vice_leader_name: formVice.trim(),
+      vice_chairman_name: formVice.trim(),
       vice_name: formVice.trim(),
+      category: formType || 'BEM',
+      type: formType || 'BEM',
       prodi: formType === 'HIMA' ? formProdi : null,
       faculty: 'FTB',
-      faculty_id: formType === 'HIMA' ? formFaculty : 'FTB',
-      prodi_id: formType === 'HIMA' ? formProdi : null,
-      vision: formVision.trim() || '',
-      visi: formVision.trim() || '',
-      mission: missionArray,
-      misi: missionArray,
-      slogan: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
-      photo_url: formPhotoUrl.trim() || undefined,
+      vision: visionText,
+      visi: visionText,
+      mission: missionText,
+      misi: missionText,
+      photo_url: formPhotoUrl.trim() || null,
     };
 
     try {

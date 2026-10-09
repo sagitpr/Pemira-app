@@ -36,10 +36,10 @@ export async function POST(request: Request) {
           const timeStr = new Date().toLocaleTimeString('id-ID');
           await supabaseAdmin.from('activity_logs').insert([
             {
-              text: `Mahasiswa ${name || nim || 'Pemilih'} (${prodi || 'Program Studi'}) memasuki Bilik ${numStr}.`,
-              type: 'alloc',
               booth_number: num,
-              time: timeStr,
+              message: `Mahasiswa ${name || nim || 'Pemilih'} (${prodi || 'Program Studi'}) memasuki Bilik ${numStr}.`,
+              description: `Alokasi Bilik ${numStr}`,
+              event_type: 'ENTER_BOOTH',
               created_at: nowIso,
             },
           ]);
