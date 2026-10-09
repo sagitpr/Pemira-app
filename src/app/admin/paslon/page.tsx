@@ -133,50 +133,55 @@ export default function AdminPaslonPage() {
       ? formMission.split('\n').map((m) => m.trim()).filter(Boolean)
       : ['Membangun sinergi aktif seluruh mahasiswa.', 'Mendorong transparansi dan karya nyata.'];
 
-    const newCandidate = {
+    const payloadCandidate = {
       id: `${formType.toLowerCase()}-${Date.now()}`,
-      candidate_number: Number(formNumber),
-      number: paddedNumber,
+      candidate_number: Number(formNumber || 1),
+      number: String(formNumber || 1),
+      category: formType,
       type: formType,
+      name: `${formLeader.trim()} & ${formVice.trim()}`,
+      chairman_name: formLeader.trim(),
       leader_name: formLeader.trim(),
+      vice_chairman_name: formVice.trim(),
       vice_leader_name: formVice.trim(),
       vice_name: formVice.trim(),
-      prodi: formType === 'HIMA' ? formProdi : 'Universitas',
-      faculty: formType === 'HIMA' ? formFaculty : 'Universitas',
+      prodi: formType === 'HIMA' ? formProdi : null,
+      faculty: 'FTB',
       faculty_id: formType === 'HIMA' ? formFaculty : 'FTB',
-      prodi_id: formType === 'HIMA' ? formProdi : 'general',
-      faculty_name: formType === 'HIMA' ? `Fakultas ${formFaculty}` : 'Universitas Bakti Tunas Husada',
-      slogan: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
-      tagline: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
-      vision: formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
-      visi: formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',
+      prodi_id: formType === 'HIMA' ? formProdi : null,
+      vision: formVision.trim() || '',
+      visi: formVision.trim() || '',
       mission: missionArray,
       misi: missionArray,
-      programs: ['Program Sinergi Mahasiswa', 'Advokasi Terbuka Terpadu'],
+      slogan: formSlogan.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
       photo_url: formPhotoUrl.trim() || undefined,
-      avatar_gradient: 'from-sky-700 to-indigo-900',
     };
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const supabase = createClient();
 
-      const res = await fetch('/api/admin/paslon', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCandidate),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+      // 1. Coba simpan langsung via Supabase Client
+      const { error: directError } = await supabase
+        .from('candidates')
+        .insert([payloadCandidate]);
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        showToast(json.message || 'Gagal menyimpan calon ke database.', 'error');
-        return;
+      if (directError) {
+        console.warn('Direct insert candidates error, falling back to API:', directError.message);
+        // 2. Fallback via API route serverless
+        const res = await fetch('/api/admin/paslon', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadCandidate),
+        });
+        const resJson = await res.json();
+        if (!res.ok || !resJson.success) {
+          throw new Error(resJson.message || directError.message);
+        }
       }
 
-      showToast(json.message, 'success');
-      addCandidate(newCandidate as any);
+      alert('Paslon berhasil disimpan!');
+      showToast('Paslon berhasil disimpan!', 'success');
+      addCandidate(payloadCandidate as any);
       setIsAddModalOpen(false);
 
       // Reset Form
@@ -189,11 +194,8 @@ export default function AdminPaslonPage() {
 
       await fetchCandidates();
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        showToast('Waktu permintaan habis (timeout). Periksa koneksi Supabase Anda.', 'error');
-      } else {
-        showToast(err.message || 'Gagal menghubungi server.', 'error');
-      }
+      alert('Gagal menyimpan paslon: ' + (err?.message || 'Kesalahan sistem'));
+      showToast(err?.message || 'Gagal menyimpan calon ke database.', 'error');
     } finally {
       setIsSaving(false);
     }

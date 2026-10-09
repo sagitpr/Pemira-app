@@ -287,51 +287,59 @@ export default function AdminDptPage() {
 
     setIsImporting(true);
     try {
-      // Parsing teks CSV menjadi array objek
-      const lines = csvText.split('\n').filter((line) => line.trim() !== '');
+      const lines = csvText.split('\n').filter((l) => l.trim() !== '');
       let startIdx = 0;
       if (lines.length > 0 && (lines[0].toLowerCase().includes('nim') || lines[0].toLowerCase().includes('nama'))) {
         startIdx = 1;
       }
 
-      const parsedVoters = lines.slice(startIdx).map((line) => {
+      const parsedData = lines.slice(startIdx).map((line) => {
         let sep = ',';
         if (line.includes(';') && !line.includes(',')) sep = ';';
         else if (line.includes('\t')) sep = '\t';
         const [nim, nama, prodi, faculty] = line.split(sep).map((s) => s?.replace(/["']/g, '')?.trim());
         return {
-          nim: nim ? String(nim).trim() : '',
-          nama: nama ? String(nama).trim() : '',
-          name: nama ? String(nama).trim() : '',
-          prodi: prodi ? String(prodi).trim() : '',
+          nim: String(nim || '').trim(),
+          name: String(nama || '').trim(),
+          nama: String(nama || '').trim(),
+          prodi: String(prodi || '').trim(),
           faculty: faculty ? String(faculty).trim() : 'FTB',
+          has_voted: false,
+          voting_status: 'BELUM' as const,
         };
       }).filter((v) => v.nim && v.nama);
 
-      if (parsedVoters.length === 0) {
-        alert('Format data CSV tidak valid. Pastikan format: NIM,Nama,Prodi');
+      if (parsedData.length === 0) {
+        alert('Data CSV tidak valid. Format: NIM,Nama,Prodi');
         setIsImporting(false);
         return;
       }
 
-      const response = await fetch('/api/admin/dpt/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ voters: parsedVoters }),
-      });
+      // Coba simpan langsung via Supabase Client (Lebih cepat dan stabil)
+      const supabase = createClient();
+      const { error: directError } = await supabase
+        .from('voters')
+        .upsert(parsedData, { onConflict: 'nim' });
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Gagal menyimpan ke server');
+      if (directError) {
+        console.warn('Direct client upsert encountered issue, falling back to server route:', directError.message);
+        // Fallback jika direct client ditolak: panggil API route serverless
+        const res = await fetch('/api/admin/dpt/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voters: parsedData }),
+        });
+        const resJson = await res.json();
+        if (!res.ok || !resJson.success) {
+          throw new Error(resJson.message || directError.message);
+        }
       }
 
-      alert(`Sukses! ${result.count || parsedVoters.length} data DPT berhasil diimpor.`);
+      alert(`Berhasil menyimpan ${parsedData.length} data DPT!`);
       setIsImportModalOpen(false);
       setCsvText('');
-      await fetchSupabaseVoters(); // Muat ulang tabel DPT
+      await fetchSupabaseVoters();
     } catch (err: any) {
-      console.error('Gagal import:', err);
       alert('Gagal mengimpor: ' + err.message);
     } finally {
       setIsImporting(false);

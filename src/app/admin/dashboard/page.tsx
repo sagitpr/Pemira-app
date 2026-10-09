@@ -789,7 +789,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* DYNAMIC GRID BOOTHS - 4 UI STATES */}
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
             {isLoadingBooths && booths.length === 0 ? (
               <div className="col-span-full py-12 text-center text-xs text-slate-500 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
                 <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
