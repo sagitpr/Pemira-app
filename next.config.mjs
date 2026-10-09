@@ -8,9 +8,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: "default-src 'self' 'unsafe-inline' 'unsafe-eval' * data: blob:; connect-src 'self' https://ckcaqprcakvuaisdhybx.supabase.co wss://ckcaqprcakvuaisdhybx.supabase.co; img-src 'self' blob: data: https:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:;"
-              .replace(/\s{2,}/g, ' ')
-              .trim(),
+            value: "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https:; connect-src 'self' https://ckcaqprcakvuaisdhybx.supabase.co wss://ckcaqprcakvuaisdhybx.supabase.co https://*.supabase.co wss://*.supabase.co https: wss:; font-src 'self' data: https:;",
           },
         ],
       },
