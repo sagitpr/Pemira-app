@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAdmin, AdminAccount } from '@/context/AdminContext';
 import AdminHeader from '@/components/admin/AdminHeader';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, supabase } from '@/lib/supabase/client';
 import {
   Users,
   Monitor,
@@ -115,11 +115,19 @@ export default function AdminPengaturanPage() {
           current_voter_name: null,
           current_voter_prodi: null,
           started_at: null,
+          current_token: null,
           updated_at: new Date().toISOString(),
         })
         .neq('booth_number', 0);
 
       if (error) throw error;
+
+      // Pulihkan pemilih yang sedang berada di bilik (MENGERJAKAN) ke BELUM
+      await supabase
+        .from('voters')
+        .update({ voting_status: 'BELUM', start_vote_at: null })
+        .eq('voting_status', 'MENGERJAKAN');
+
       alert('Semua bilik berhasil di-reset menjadi TERSEDIA!');
       showToast('Semua bilik berhasil di-reset menjadi TERSEDIA!', 'success');
     } catch (err: any) {
@@ -133,64 +141,50 @@ export default function AdminPengaturanPage() {
     if (e) e.preventDefault();
     setSaving(true);
     try {
-      const targetCount = Number(totalBooths);
-      if (isNaN(targetCount) || targetCount < 1) {
+      const target = Number(totalBooths);
+      if (!target || target < 1) {
         alert('Jumlah bilik minimal 1');
         return;
       }
 
-      const supabase = createClient();
-
-      // 1. Ambil bilik yang ada saat ini dari Supabase
-      const { data: existingBooths, error: fetchErr } = await supabase
-        .from('booths')
-        .select('booth_number')
-        .order('booth_number', { ascending: true });
-
+      const { data: existing, error: fetchErr } = await supabase.from('booths').select('booth_number');
       if (fetchErr) throw fetchErr;
+      const current = existing?.length || 0;
 
-      const currentCount = existingBooths?.length || 0;
-
-      // 2. Jika target lebih banyak, tambahkan baris baru
-      if (targetCount > currentCount) {
-        const newBooths = [];
-        for (let i = currentCount + 1; i <= targetCount; i++) {
-          newBooths.push({
+      if (target > current) {
+        const added = [];
+        for (let i = current + 1; i <= target; i++) {
+          added.push({
             booth_number: i,
             name: `Bilik ${String(i).padStart(2, '0')}`,
             status: 'TERSEDIA',
-            is_active: true
+            is_active: true,
           });
         }
-        const { error: insertErr } = await supabase.from('booths').insert(newBooths);
-        if (insertErr) throw insertErr;
-      }
-
-      // 3. Jika target lebih sedikit, hapus bilik yang berlebih
-      if (targetCount < currentCount) {
-        const { error: delErr } = await supabase
-          .from('booths')
-          .delete()
-          .gt('booth_number', targetCount);
+        const { error: insErr } = await supabase.from('booths').insert(added);
+        if (insErr) throw insErr;
+      } else if (target < current) {
+        const { error: delErr } = await supabase.from('booths').delete().gt('booth_number', target);
         if (delErr) throw delErr;
       }
 
-      // 4. Update tabel system_config
+      // Update system_config
       await supabase
         .from('system_config')
-        .upsert({ id: 'primary', total_booths: targetCount, updated_at: new Date().toISOString() });
+        .upsert({ id: 'primary', total_booths: target, updated_at: new Date().toISOString() });
 
       localStorage.setItem('pemira_booth_timeout', String(sessionTimeout));
       updateConfig({
-        totalBooths: targetCount,
+        totalBooths: target,
         sessionTimeoutSeconds: Number(sessionTimeout),
       });
 
-      alert(`Berhasil memperbarui konfigurasi! Total bilik sekarang: ${targetCount}`);
-      showToast(`Konfigurasi tersimpan: ${targetCount} bilik aktif.`, 'success');
+      alert(`Konfigurasi bilik berhasil disimpan! Total bilik: ${target}`);
+      showToast(`Konfigurasi bilik berhasil disimpan! Total bilik: ${target}`, 'success');
     } catch (err: any) {
       console.error('Error simpan bilik:', err);
-      alert('Gagal menyimpan konfigurasi bilik: ' + (err.message || 'Terjadi kesalahan'));
+      alert('Gagal menyimpan bilik: ' + (err.message || 'Terjadi kesalahan'));
+      showToast('Gagal menyimpan bilik: ' + (err.message || 'Error'), 'error');
     } finally {
       setSaving(false);
     }

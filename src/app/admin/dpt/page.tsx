@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAdmin, Voter } from '@/context/AdminContext';
 import AdminHeader from '@/components/admin/AdminHeader';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, supabase } from '@/lib/supabase/client';
 import {
   Users,
   Search,
@@ -281,72 +281,72 @@ export default function AdminDptPage() {
     reader.readAsText(file);
   };
 
-  const handleProcessImport = async () => {
-    if (!csvText.trim()) {
-      alert('Pilih file CSV atau tempel teks data CSV terlebih dahulu.');
+  const handleImportCsv = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!csvText || csvText.trim() === '') {
+      alert('Teks CSV pemilih masih kosong!');
       return;
     }
 
     setIsImporting(true);
     try {
-      const lines = csvText.split('\n').filter((l) => l.trim() !== '');
-      let startIdx = 0;
-      if (lines.length > 0 && (lines[0].toLowerCase().includes('nim') || lines[0].toLowerCase().includes('nama'))) {
-        startIdx = 1;
+      // 1. Parsing teks CSV (NIM, Nama, Prodi)
+      const lines = csvText.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
+      const parsedList: any[] = [];
+
+      for (const line of lines) {
+        // Lewati header jika ada
+        if (line.toLowerCase().startsWith('nim')) continue;
+
+        const parts = line.split(/[,;\t]/).map((p) => p.replace(/["']/g, '').trim());
+        if (parts.length >= 2 && parts[0] && parts[1]) {
+          parsedList.push({
+            nim: parts[0],
+            name: parts[1],
+            nama: parts[1],
+            prodi: parts[2] || '',
+            faculty: 'FTB',
+            has_voted: false,
+            voting_status: 'BELUM',
+          });
+        }
       }
 
-      const parsedData = lines.slice(startIdx).map((line) => {
-        let sep = ',';
-        if (line.includes(';') && !line.includes(',')) sep = ';';
-        else if (line.includes('\t')) sep = '\t';
-        const [nim, nama, prodi, faculty] = line.split(sep).map((s) => s?.replace(/["']/g, '')?.trim());
-        return {
-          nim: String(nim || '').trim(),
-          nama: String(nama || '').trim(),
-          name: String(nama || '').trim(),
-          prodi: String(prodi || '').trim(),
-          faculty: faculty ? String(faculty).trim() : 'FTB',
-        };
-      }).filter((v) => v.nim && v.nama);
-
-      if (parsedData.length === 0) {
-        alert('Data CSV tidak valid. Format: NIM,Nama,Prodi');
+      if (parsedList.length === 0) {
+        alert('Format CSV tidak terbaca. Pastikan format: NIM,Nama,Prodi');
         setIsImporting(false);
         return;
       }
 
-      const payloadVoters = parsedData.map(item => ({
-        nim: String(item.nim).trim(),
-        name: String(item.nama || item.name).trim(),
-        nama: String(item.nama || item.name).trim(),
-        prodi: String(item.prodi || '').trim(),
-        faculty: 'FTB',
-        has_voted: false,
-        voting_status: 'BELUM'
-      }));
+      // 2. Simpan langsung ke Supabase per chunk 100 baris
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < parsedList.length; i += CHUNK_SIZE) {
+        const chunk = parsedList.slice(i, i + CHUNK_SIZE);
+        const { error: upsertErr } = await supabase
+          .from('voters')
+          .upsert(chunk, { onConflict: 'nim' });
 
-      const supabase = createClient();
-      const CHUNK = 150;
-      for (let i = 0; i < payloadVoters.length; i += CHUNK) {
-        const chunk = payloadVoters.slice(i, i + CHUNK);
-        const { error } = await supabase.from('voters').upsert(chunk, { onConflict: 'nim' });
-        if (error) {
-          alert('Gagal menyimpan DPT: ' + error.message);
-          throw error;
+        if (upsertErr) {
+          throw new Error(upsertErr.message);
         }
       }
 
-      alert(`Berhasil mengimpor ${payloadVoters.length} pemilih ke database!`);
-      showToast(`Berhasil mengimpor ${payloadVoters.length} pemilih ke database!`, 'success');
+      alert(`Berhasil menyimpan ${parsedList.length} DPT ke database!`);
+      showToast(`Berhasil menyimpan ${parsedList.length} DPT ke database!`, 'success');
       setIsImportModalOpen(false);
       setCsvText('');
-      await fetchSupabaseVoters();
+      await fetchSupabaseVoters(); // Refresh data tabel DPT
     } catch (err: any) {
-      console.error('Import error:', err);
+      console.error('Error simpan DPT:', err);
+      alert('Gagal menyimpan DPT: ' + (err.message || 'Terjadi kesalahan jaringan'));
+      showToast('Gagal menyimpan DPT: ' + (err.message || 'Error'), 'error');
     } finally {
       setIsImporting(false);
     }
   };
+
+  const handleProcessImport = handleImportCsv;
 
   const totalDpt = voters.length;
   const sudahMemilih = voters.filter((v) => v.status === 'selesai').length;

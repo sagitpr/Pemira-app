@@ -265,6 +265,7 @@ CREATE TABLE booths (
   current_voter_nim   TEXT,
   current_voter_prodi TEXT,
   started_at          TIMESTAMPTZ,
+  current_token       TEXT,
   ip_address          TEXT,                       -- biarkan NULL sampai panitia isi fisik
   is_active           BOOLEAN DEFAULT TRUE,
   created_at          TIMESTAMPTZ DEFAULT NOW(),

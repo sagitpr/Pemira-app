@@ -190,6 +190,8 @@ export default function AdminPaslonPage() {
       await fetchCandidates();
     } catch (err: any) {
       console.error('Gagal menyimpan paslon:', err);
+      alert('Gagal menyimpan paslon: ' + (err?.message || 'Terjadi kesalahan sistem'));
+      showToast('Gagal menyimpan paslon: ' + (err?.message || 'Error'), 'error');
     } finally {
       setIsSaving(false);
     }
