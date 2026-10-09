@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AdminHeader from '@/components/admin/AdminHeader';
 import { useAdmin, BoothStatus } from '@/context/AdminContext';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, supabase } from '@/lib/supabase/client';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -365,9 +365,8 @@ export default function AdminDashboardPage() {
     fetchActivityLogs();
     fetchTraffic();
 
-    const supabase = createClient();
     const channel = supabase
-      .channel('dashboard_realtime_channel')
+      .channel('dashboard_live_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
         fetchBooths();
       })

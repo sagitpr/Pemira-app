@@ -246,7 +246,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
           voterName: d.voter_name || d.current_voter_name || undefined,
           prodiName: d.voter_prodi || d.current_voter_prodi || undefined,
           startedAt: d.started_at || undefined,
-          ipAddress: d.ip_address || '127.0.0.1',
+          ipAddress: d.ip_address || undefined,
         }));
         setBooths(mapped);
       }

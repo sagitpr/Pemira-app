@@ -100,10 +100,9 @@ export default function AdminPengaturanPage() {
   };
 
   const handleResetAllBooths = async () => {
-    if (!confirm('Yakin ingin mereset seluruh bilik ke status TERSEDIA?')) return;
+    if (!confirm('Yakin ingin mereset seluruh bilik?')) return;
     setSaving(true);
     try {
-      const supabase = createClient();
       const { error } = await supabase
         .from('booths')
         .update({
@@ -111,9 +110,6 @@ export default function AdminPengaturanPage() {
           voter_nim: null,
           voter_name: null,
           voter_prodi: null,
-          current_voter_nim: null,
-          current_voter_name: null,
-          current_voter_prodi: null,
           started_at: null,
           current_token: null,
           updated_at: new Date().toISOString(),
@@ -128,10 +124,10 @@ export default function AdminPengaturanPage() {
         .update({ voting_status: 'BELUM', start_vote_at: null })
         .eq('voting_status', 'MENGERJAKAN');
 
-      alert('Semua bilik berhasil di-reset menjadi TERSEDIA!');
-      showToast('Semua bilik berhasil di-reset menjadi TERSEDIA!', 'success');
+      alert('Seluruh bilik berhasil di-reset!');
+      showToast('Seluruh bilik berhasil di-reset!', 'success');
     } catch (err: any) {
-      alert('Gagal mereset bilik: ' + err.message);
+      alert('Gagal reset: ' + err.message);
     } finally {
       setSaving(false);
     }
@@ -147,10 +143,16 @@ export default function AdminPengaturanPage() {
         return;
       }
 
-      const { data: existing, error: fetchErr } = await supabase.from('booths').select('booth_number');
+      // 1. Ambil bilik saat ini
+      const { data: existing, error: fetchErr } = await supabase
+        .from('booths')
+        .select('booth_number')
+        .order('booth_number', { ascending: true });
+
       if (fetchErr) throw fetchErr;
       const current = existing?.length || 0;
 
+      // 2. Jika target lebih banyak, tambah baris
       if (target > current) {
         const added = [];
         for (let i = current + 1; i <= target; i++) {
@@ -163,7 +165,9 @@ export default function AdminPengaturanPage() {
         }
         const { error: insErr } = await supabase.from('booths').insert(added);
         if (insErr) throw insErr;
-      } else if (target < current) {
+      } 
+      // 3. Jika target lebih sedikit, hapus baris lebihnya
+      else if (target < current) {
         const { error: delErr } = await supabase.from('booths').delete().gt('booth_number', target);
         if (delErr) throw delErr;
       }
@@ -179,12 +183,11 @@ export default function AdminPengaturanPage() {
         sessionTimeoutSeconds: Number(sessionTimeout),
       });
 
-      alert(`Konfigurasi bilik berhasil disimpan! Total bilik: ${target}`);
-      showToast(`Konfigurasi bilik berhasil disimpan! Total bilik: ${target}`, 'success');
+      alert(`Konfigurasi tersimpan di database! Total bilik sekarang: ${target}`);
+      showToast(`Konfigurasi tersimpan di database! Total bilik sekarang: ${target}`, 'success');
     } catch (err: any) {
-      console.error('Error simpan bilik:', err);
-      alert('Gagal menyimpan bilik: ' + (err.message || 'Terjadi kesalahan'));
-      showToast('Gagal menyimpan bilik: ' + (err.message || 'Error'), 'error');
+      console.error('Save booth error:', err);
+      alert('Gagal menyimpan bilik: ' + (err.message || 'Error koneksi'));
     } finally {
       setSaving(false);
     }
