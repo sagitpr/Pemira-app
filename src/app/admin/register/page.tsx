@@ -32,29 +32,23 @@ export default function AdminRegisterPage() {
 
     setIsLoading(true);
     try {
-      const cleanEmail = formData.email.trim().toLowerCase();
+      const res = await fetch('/api/admin/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name.trim(),
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password,
+          role: formData.role || 'panitia',
+        }),
+      });
 
-      // Simpan LANGSUNG ke tabel admin_users via Supabase client browser (tanpa API perantara)
-      const { data, error: insertError } = await supabase
-        .from('admin_users')
-        .insert([
-          {
-            name: formData.name.trim(),
-            email: cleanEmail,
-            password: formData.password,
-            role: formData.role || 'panitia',
-          },
-        ])
-        .select();
-
-      if (insertError) {
-        console.error('Supabase insert error:', insertError);
-        setErrorMessage(insertError.message);
-        alert('Gagal membuat akun: ' + insertError.message);
-        return;
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Gagal mendaftarkan akun');
       }
 
-      alert('Akun berhasil didaftarkan! Silakan masuk.');
+      alert('Akun berhasil dibuat! Silakan masuk.');
       window.location.href = '/admin/login';
     } catch (err: any) {
       console.error('Submit error:', err);
