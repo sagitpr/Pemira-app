@@ -44,7 +44,10 @@ export async function POST(request: Request) {
       photo_url,
     } = body;
 
-    if (!leader_name || !vice_leader_name) {
+    const leader = (leader_name || body.leader || '').trim();
+    const vice = (vice_leader_name || body.vice_name || body.vice || '').trim();
+
+    if (!leader || !vice) {
       return NextResponse.json(
         { success: false, message: 'Nama Calon Ketua dan Wakil Ketua wajib diisi.' },
         { status: 400 }
@@ -54,17 +57,20 @@ export async function POST(request: Request) {
     const candId = id || `${(type || 'BEM').toLowerCase()}-${Date.now()}`;
     const candNum = Number(candidate_number || 1);
     const paddedNum = candNum < 10 ? `0${candNum}` : `${candNum}`;
+    const candType = (type || body.category || 'BEM').toUpperCase();
+    const prodiVal = prodi_id || body.prodi || null;
+    const facultyVal = faculty_id || body.faculty || null;
 
     const record: any = {
       id: candId,
       candidate_number: candNum,
       number: paddedNum,
-      type: type || 'BEM',
-      faculty_id: faculty_id || null,
-      prodi_id: prodi_id || null,
-      faculty_name: faculty_name || null,
-      leader_name: leader_name.trim(),
-      vice_leader_name: vice_leader_name.trim(),
+      type: candType,
+      faculty_id: facultyVal,
+      prodi_id: prodiVal,
+      faculty_name: faculty_name || (facultyVal ? `Fakultas ${facultyVal}` : null),
+      leader_name: leader,
+      vice_leader_name: vice,
       slogan: slogan?.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
       tagline: slogan?.trim() || 'Bersinergi Membangun UBTH yang Inovatif dan Berintegritas',
       vision: vision?.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.',

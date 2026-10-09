@@ -281,32 +281,75 @@ export default function AdminDptPage() {
 
   const handleProcessImport = async () => {
     if (!csvText.trim()) {
-      showToast('Pilih file CSV atau tempel teks data CSV terlebih dahulu.', 'error');
+      alert('Pilih file CSV atau tempel teks data CSV terlebih dahulu.');
       return;
     }
 
     setIsImporting(true);
     try {
+      // 1. Parsing fleksibel: tangani header nama/name dan delimiter CSV
+      const lines = csvText.trim().split('\n');
+      const payloadVoters: any[] = [];
+      let startIdx = 0;
+
+      if (lines.length > 0) {
+        const first = lines[0].toLowerCase();
+        if (first.includes('nim') || first.includes('nama') || first.includes('name')) {
+          startIdx = 1;
+        }
+      }
+
+      for (let i = startIdx; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        let sep = ',';
+        if (line.includes(';') && !line.includes(',')) sep = ';';
+        else if (line.includes('\t')) sep = '\t';
+
+        const cols = line.split(sep).map((c) => c.replace(/["']/g, '').trim());
+        if (cols.length >= 2) {
+          const item = {
+            nim: cols[0],
+            name: cols[1],
+            nama: cols[1],
+            prodi: cols[2] || 'Kewirausahaan',
+            has_voted: false,
+            voting_status: 'BELUM' as const,
+          };
+
+          if (item.nim && (item.nama || item.name)) {
+            payloadVoters.push(item);
+          }
+        }
+      }
+
+      if (payloadVoters.length === 0) {
+        alert('Gagal mengimpor: Format data CSV tidak valid atau tidak memiliki baris data.');
+        return;
+      }
+
+      // 2. Alihkan proses penyimpanan ke API server /api/admin/dpt/import menggunakan supabaseAdmin
       const res = await fetch('/api/admin/dpt/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvText }),
+        body: JSON.stringify({ items: payloadVoters, csvText }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        showToast(data.message || 'Gagal memproses import CSV.', 'error');
-        setIsImporting(false);
+        alert('Gagal mengimpor: ' + (data.error || data.message || 'Kesalahan saat menyimpan'));
         return;
       }
 
-      showToast(data.message, 'success');
+      alert('Berhasil mengimpor data pemilih!');
       setIsImportModalOpen(false);
       setCsvText('');
       await fetchSupabaseVoters();
     } catch (err: any) {
-      showToast(err.message || 'Terjadi kesalahan saat mengunggah file CSV.', 'error');
+      alert('Gagal mengimpor: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
+      // Pastikan tombol "Mengimpor..." mengembalikan state ke semula
       setIsImporting(false);
     }
   };

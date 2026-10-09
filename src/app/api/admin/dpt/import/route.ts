@@ -10,171 +10,128 @@ export async function POST(request: Request) {
 
     let rawList: any[] = [];
 
-    // Jika dikirim berupa csvText langsung
-    if (typeof csvText === 'string' && csvText.trim()) {
+    if (Array.isArray(items) && items.length > 0) {
+      rawList = items;
+    } else if (typeof csvText === 'string' && csvText.trim()) {
       const lines = csvText.trim().split('\n');
-      for (let i = 0; i < lines.length; i++) {
+      let startIdx = 0;
+      if (lines.length > 0) {
+        const first = lines[0].toLowerCase();
+        if (first.includes('nim') || first.includes('nama') || first.includes('name')) {
+          startIdx = 1;
+        }
+      }
+
+      for (let i = startIdx; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
-        // Lewati header jika baris pertama memuat 'nim' atau 'nama'
-        if (i === 0 && (line.toLowerCase().includes('nim') || line.toLowerCase().includes('nama'))) {
-          continue;
+        let sep = ',';
+        if (line.includes(';') && !line.includes(',')) sep = ';';
+        else if (line.includes('\t')) sep = '\t';
+
+        const cols = line.split(sep).map((c) => c.replace(/["']/g, '').trim());
+        if (cols.length >= 2) {
+          rawList.push({
+            nim: cols[0],
+            name: cols[1],
+            nama: cols[1],
+            prodi: cols[2] || 'Kewirausahaan',
+            has_voted: false,
+            voting_status: 'BELUM',
+          });
         }
-
-        let separator = ',';
-        if (line.includes(';') && !line.includes(',')) separator = ';';
-        else if (line.includes('\t')) separator = '\t';
-
-        const cols = line.split(separator).map((c) => c.replace(/["']/g, '').trim());
-        if (cols.length < 2) continue;
-
-        rawList.push({
-          nim: cols[0],
-          name: cols[1],
-          prodi: cols[2] || 'S1 Farmasi',
-          faculty: cols[3] || 'FARMASI',
-          angkatan: cols[4] || '2024',
-        });
       }
-    } else if (Array.isArray(items)) {
-      rawList = items;
     }
 
     if (rawList.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Tidak ada data pemilih yang ditemukan dalam payload.' },
+        { success: false, error: 'Tidak ada data pemilih yang valid untuk diimpor.', message: 'Data CSV kosong atau tidak valid.' },
         { status: 400 }
       );
     }
 
-    // 1. Sanitasi & Validasi Baris Data
-    const validRows: any[] = [];
-    let invalidCount = 0;
-    const seenNimsInFile = new Set<string>();
-    let duplicateInFileCount = 0;
-
+    // Bangun payload terstruktur sesuai schema voters
+    const payloadVoters: any[] = [];
     for (const item of rawList) {
-      const rawNim = String(item.nim || '').trim();
-      const rawName = String(item.name || '').trim();
+      const cleanNim = String(item.nim || '').trim();
+      const cleanName = String(item.nama || item.name || '').trim();
+      const cleanProdi = String(item.prodi || item.prodi_name || 'Kewirausahaan').trim();
 
-      // Abaikan jika NIM kosong, bukan digit, atau teks footer ("TOTAL", "JUMLAH")
-      if (!rawNim || !/^\d+$/.test(rawNim)) {
-        invalidCount++;
-        continue;
+      if (cleanNim && cleanName) {
+        payloadVoters.push({
+          nim: cleanNim,
+          name: cleanName,
+          prodi_name: cleanProdi,
+          has_voted: Boolean(item.has_voted),
+          voting_status: item.voting_status || 'BELUM',
+          updated_at: new Date().toISOString(),
+        });
       }
-
-      // Abaikan jika Nama kurang dari 2 karakter atau merupakan footer rekap
-      const lowerName = rawName.toLowerCase();
-      if (
-        !rawName ||
-        rawName.length < 2 ||
-        lowerName.includes('total mahasiswa') ||
-        lowerName.includes('jumlah') ||
-        lowerName.includes('rekapitulasi')
-      ) {
-        invalidCount++;
-        continue;
-      }
-
-      // Deteksi duplikasi di dalam file yang sama
-      if (seenNimsInFile.has(rawNim)) {
-        duplicateInFileCount++;
-        continue;
-      }
-      seenNimsInFile.add(rawNim);
-
-      validRows.push({
-        nim: rawNim,
-        name: rawName,
-        prodi_name: (item.prodi || item.prodi_name || 'Program Studi').trim(),
-        faculty_id: (item.faculty || item.faculty_id || 'FTB').trim().toUpperCase(),
-        angkatan: String(item.angkatan || '2024').trim(),
-        has_voted: false,
-        voting_status: 'BELUM',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
     }
 
-    if (validRows.length === 0) {
+    if (payloadVoters.length === 0) {
       return NextResponse.json(
-        {
-          success: false,
-          message: 'Seluruh baris CSV tidak valid atau hanya berisi header/footer.',
-          summary: { totalProcessed: rawList.length, invalidCount, insertedCount: 0, duplicateCount: 0 },
-        },
+        { success: false, error: 'Semua baris data tidak memuat NIM atau Nama yang valid.', message: 'Format data tidak valid.' },
         { status: 400 }
       );
     }
 
-    // 2. Ambil NIM yang sudah ada di database Supabase untuk mencegah duplikasi
-    const allValidNims = validRows.map((r) => r.nim);
-    const { data: existingRows, error: checkErr } = await supabaseAdmin
+    // Eksekusi upsert atomic pada kolom nim menggunakan supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('voters')
-      .select('nim')
-      .in('nim', allValidNims);
+      .upsert(payloadVoters, { onConflict: 'nim' });
 
-    if (checkErr) {
-      console.warn('Check existing voters note:', checkErr);
-    }
+    // Fallback adaptive jika kolom di database bernama prodi (Error 42703)
+    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      console.warn('[DPT_IMPORT_SCHEMA_ADAPTIVE] Retrying with compatible columns:', error.message);
+      const fallbackVoters = payloadVoters.map((v: any) => ({
+        nim: v.nim,
+        name: v.name,
+        prodi: v.prodi_name,
+        has_voted: v.has_voted,
+        voting_status: v.voting_status,
+        updated_at: v.updated_at,
+      }));
 
-    const existingNimsSet = new Set((existingRows || []).map((r: any) => String(r.nim)));
-    const rowsToInsert = validRows.filter((r) => !existingNimsSet.has(r.nim));
-    const duplicateInDbCount = validRows.length - rowsToInsert.length;
-    const totalDuplicateCount = duplicateInFileCount + duplicateInDbCount;
-
-    // 3. Batch insert ke tabel voters (Ukuran batch: 50 baris per transaksi)
-    const BATCH_SIZE = 50;
-    let successfullyInserted = 0;
-    const errors: string[] = [];
-
-    for (let i = 0; i < rowsToInsert.length; i += BATCH_SIZE) {
-      const batch = rowsToInsert.slice(i, i + BATCH_SIZE);
-      const { error: insertErr } = await supabaseAdmin
+      const retryResult = await supabaseAdmin
         .from('voters')
-        .insert(batch);
+        .upsert(fallbackVoters, { onConflict: 'nim' });
 
-      if (insertErr) {
-        console.error(`Batch insert error at chunk ${i}:`, insertErr);
-        errors.push(`Chunk ${i / BATCH_SIZE + 1}: ${insertErr.message}`);
-      } else {
-        successfullyInserted += batch.length;
-      }
+      data = retryResult.data;
+      error = retryResult.error;
     }
 
-    // 4. Catat aktivitas jika ada baris yang berhasil diimpor
-    if (successfullyInserted > 0) {
+    if (error) {
+      console.error('Gagal mengimpor ke Supabase:', error);
+      return NextResponse.json(
+        { success: false, error: error.message, message: 'Gagal mengimpor: ' + error.message },
+        { status: 500 }
+      );
+    }
+
+    // Catat log aktivitas secara non-blocking
+    try {
       await supabaseAdmin.from('activity_logs').insert([
         {
-          text: `Admin KPUM berhasil mengimpor ${successfullyInserted} data DPT baru via CSV (${totalDuplicateCount} duplikat dilewati).`,
+          text: `Admin KPUM berhasil mengimpor ${payloadVoters.length} pemilih DPT ke database.`,
           type: 'info',
           time: new Date().toLocaleTimeString('id-ID'),
           created_at: new Date().toISOString(),
         },
       ]);
-    }
-
-    const isPartial = errors.length > 0 && successfullyInserted > 0;
-    const isFailed = errors.length > 0 && successfullyInserted === 0;
+    } catch {}
 
     return NextResponse.json({
-      success: !isFailed,
-      message: isFailed
-        ? `Gagal mengimpor data DPT: ${errors.join(', ')}`
-        : `Berhasil mengimpor ${successfullyInserted} pemilih baru ke DPT (${totalDuplicateCount} duplikat dilewati, ${invalidCount} baris tidak valid).`,
-      summary: {
-        totalProcessed: rawList.length,
-        insertedCount: successfullyInserted,
-        duplicateCount: totalDuplicateCount,
-        invalidCount,
-        errors: errors.length > 0 ? errors : undefined,
-      },
+      success: true,
+      message: 'Berhasil mengimpor data pemilih!',
+      total: payloadVoters.length,
+      data,
     });
   } catch (err: any) {
     console.error('Import CSV fatal error:', err);
     return NextResponse.json(
-      { success: false, message: err.message || 'Terjadi kesalahan sistem saat memproses CSV' },
+      { success: false, error: err?.message || 'Terjadi kesalahan sistem', message: err?.message || 'Terjadi kesalahan sistem' },
       { status: 500 }
     );
   }

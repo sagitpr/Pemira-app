@@ -293,51 +293,54 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // 4. Fetch Bilik Suara (Dukungan Server-side API + Direct Supabase + Dual Fallback)
+  // 4. Fetch Bilik Suara (Dukungan Server-side API + Direct Supabase + Timeout Guard 4 Detik)
   const fetchBooths = async () => {
     setIsLoadingBooths(true);
+    let boothList: BoothItem[] = [];
+
+    // Helper batas waktu maksimal 4 detik
+    const withTimeout = <T,>(p: Promise<T>, ms = 4000): Promise<T> => {
+      let t: any;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        t = setTimeout(() => reject(new Error('Timeout 4s')), ms);
+      });
+      return Promise.race([p, timeoutPromise]).finally(() => clearTimeout(t));
+    };
+
     try {
-      // 1. Coba ambil lewat internal API route serverless
-      const res = await fetch('/api/admin/booths', { cache: 'no-store' });
-      if (res.ok) {
+      // 1. Ambil data langsung dari Supabase (maksimal 4 detik)
+      const supabase = createClient();
+      const { data, error }: any = await withTimeout<any>(
+        supabase
+          .from('booths')
+          .select('*')
+          .order('booth_number', { ascending: true }) as any,
+        4000
+      );
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        boothList = data.map((d: any) => ({
+          id: d.id,
+          booth_number: d.booth_number,
+          name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+          status: (d.status || 'TERSEDIA').toUpperCase(),
+          voter_name: d.voter_name || d.current_voter_name || null,
+          voter_nim: d.voter_nim || d.current_voter_nim || null,
+          voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
+          current_voter_name: d.current_voter_name || d.voter_name || null,
+          current_voter_nim: d.current_voter_nim || d.voter_nim || null,
+          current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
+          started_at: d.started_at || null,
+          ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+          updated_at: d.updated_at,
+        }));
+      } else {
+        // Fallback: panggil internal API route
+        const res = await withTimeout<Response>(fetch('/api/admin/booths', { cache: 'no-store' }), 4000);
         const json = await res.json();
         const boothItems = json.booths || json.data;
         if (boothItems && boothItems.length > 0) {
-          setBooths(
-            boothItems.map((d: any) => ({
-              id: d.id,
-              booth_number: d.booth_number,
-              name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
-              status: (d.status || 'TERSEDIA').toUpperCase(),
-              voter_name: d.voter_name || d.current_voter_name || null,
-              voter_nim: d.voter_nim || d.current_voter_nim || null,
-              voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
-              current_voter_name: d.current_voter_name || d.voter_name || null,
-              current_voter_nim: d.current_voter_nim || d.voter_nim || null,
-              current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
-              started_at: d.started_at || null,
-              ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
-              updated_at: d.updated_at,
-            }))
-          );
-          setBoothsError(null);
-          setIsLoadingBooths(false);
-          return;
-        }
-      }
-
-      // 2. Fallback: Ambil langsung dari Supabase Client jika API route ada kendala
-      const supabase = createClient();
-      const { data, error: supaErr } = await supabase
-        .from('booths')
-        .select('*')
-        .order('booth_number', { ascending: true });
-
-      if (supaErr) throw supaErr;
-
-      if (data && data.length > 0) {
-        setBooths(
-          data.map((d: any) => ({
+          boothList = boothItems.map((d: any) => ({
             id: d.id,
             booth_number: d.booth_number,
             name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
@@ -351,16 +354,41 @@ export default function AdminDashboardPage() {
             started_at: d.started_at || null,
             ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
             updated_at: d.updated_at,
-          }))
-        );
-        setBoothsError(null);
-      } else {
-        setBooths([]);
+          }));
+        }
       }
     } catch (err: any) {
-      console.error('Error fetching booths:', err);
-      setBoothsError(err?.message || 'Gagal memuat status bilik suara');
+      console.warn('Gagal mengambil bilik via Supabase, mencoba API fallback:', err?.message);
+      try {
+        const res = await fetch('/api/admin/booths', { cache: 'no-store' });
+        const json = await res.json();
+        const boothItems = json.booths || json.data;
+        if (boothItems && boothItems.length > 0) {
+          boothList = boothItems.map((d: any) => ({
+            id: d.id,
+            booth_number: d.booth_number,
+            name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+            status: (d.status || 'TERSEDIA').toUpperCase(),
+            voter_name: d.voter_name || d.current_voter_name || null,
+            voter_nim: d.voter_nim || d.current_voter_nim || null,
+            voter_prodi: d.voter_prodi || d.current_voter_prodi || null,
+            current_voter_name: d.current_voter_name || d.voter_name || null,
+            current_voter_nim: d.current_voter_nim || d.voter_nim || null,
+            current_voter_prodi: d.current_voter_prodi || d.voter_prodi || null,
+            started_at: d.started_at || null,
+            ip_address: d.ip_address || `192.168.1.${100 + d.booth_number}`,
+            updated_at: d.updated_at,
+          }));
+        }
+      } catch (fallbackErr: any) {
+        setBoothsError(fallbackErr?.message || 'Gagal memuat status bilik suara');
+      }
     } finally {
+      if (boothList.length > 0) {
+        setBooths(boothList);
+        setBoothsError(null);
+      }
+      // Pastikan loading SELALU dimatikan apapun yang terjadi
       setIsLoadingBooths(false);
     }
   };
