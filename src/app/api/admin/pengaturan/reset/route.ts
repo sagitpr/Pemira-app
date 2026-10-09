@@ -6,11 +6,11 @@ import { supabaseAdmin } from '@/lib/supabase/admin';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { target } = body; // 'voters_status' | 'votes' | 'all'
+    const { target } = body; // 'voters_status' | 'votes' | 'all' | 'booths'
 
-    if (!target || !['voters_status', 'votes', 'all'].includes(target)) {
+    if (!target || !['voters_status', 'votes', 'all', 'booths'].includes(target)) {
       return NextResponse.json(
-        { success: false, message: 'Target reset tidak valid. Pilihan: voters_status, votes, all' },
+        { success: false, message: 'Target reset tidak valid. Pilihan: voters_status, votes, all, booths' },
         { status: 400 }
       );
     }
@@ -34,24 +34,26 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Jika target adalah voters_status, votes, atau all: Reset status voter dan lepaskan bilik
-    if (target === 'voters_status' || target === 'votes' || target === 'all') {
+    // 2. Jika target adalah booths, voters_status, votes, atau all: Lepaskan bilik
+    if (target === 'booths' || target === 'voters_status' || target === 'votes' || target === 'all') {
       try {
-        // Reset status seluruh voters
-        const { error: votersResetErr } = await supabaseAdmin
-          .from('voters')
-          .update({
-            has_voted: false,
-            voting_status: 'BELUM',
-            start_vote_at: null,
-            completed_at: null,
-            duration_seconds: null,
-            updated_at: nowIso,
-          })
-          .neq('nim', 'GUARD_NIM_99999');
+        if (target !== 'booths') {
+          // Reset status seluruh voters
+          const { error: votersResetErr } = await supabaseAdmin
+            .from('voters')
+            .update({
+              has_voted: false,
+              voting_status: 'BELUM',
+              start_vote_at: null,
+              completed_at: null,
+              duration_seconds: null,
+              updated_at: nowIso,
+            })
+            .neq('nim', 'GUARD_NIM_99999');
 
-        if (votersResetErr) {
-          console.warn('Reset voters status note:', votersResetErr);
+          if (votersResetErr) {
+            console.warn('Reset voters status note:', votersResetErr);
+          }
         }
 
         // Reset semua bilik ke TERSEDIA
@@ -80,6 +82,8 @@ export async function POST(request: Request) {
         ? 'Admin KPUM menolkan seluruh perolehan suara sah dan mereset status pemilih.'
         : target === 'voters_status'
         ? 'Admin KPUM mereset seluruh status kehadiran DPT menjadi Belum Memilih.'
+        : target === 'booths'
+        ? 'Admin KPUM mereset seluruh bilik suara fisik ke status TERSEDIA.'
         : 'Admin KPUM melakukan reset total pemilihan (suara dinolkan & status pemilih direset).';
 
     await supabaseAdmin.from('activity_logs').insert([

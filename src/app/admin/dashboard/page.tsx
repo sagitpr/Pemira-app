@@ -387,21 +387,31 @@ export default function AdminDashboardPage() {
     }
   };
   const fetchBoothsFromSupabase = fetchBooths;
+  const fetchStatsFromSupabase = fetchVotersStats;
 
-  // Inisialisasi 16 Bilik Suara jika belum terdaftar
   const handleSeedBooths = async () => {
     setIsSeedingBooths(true);
     try {
-      const res = await fetch('/api/admin/booths', { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        showToast?.('16 Bilik Suara berhasil diinisialisasi!', 'success');
-        await fetchBooths();
-      } else {
-        showToast?.(json.message || 'Gagal inisialisasi bilik.', 'error');
+      const supabase = createClient();
+      const newRows = [];
+      for (let i = 1; i <= 16; i++) {
+        newRows.push({
+          booth_number: i,
+          name: `Bilik ${String(i).padStart(2, '0')}`,
+          status: 'TERSEDIA',
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        });
       }
+      const { error } = await supabase.from('booths').upsert(newRows, { onConflict: 'booth_number' });
+      if (error) {
+        console.warn('Direct seed error, trying API route:', error.message);
+        await fetch('/api/admin/booths', { method: 'POST' });
+      }
+      showToast?.('16 Bilik Suara berhasil diinisialisasi!', 'success');
+      await fetchBoothsFromSupabase();
     } catch (err: any) {
-      showToast?.('Gagal menghubungi server.', 'error');
+      showToast?.('Gagal inisialisasi bilik.', 'error');
     } finally {
       setIsSeedingBooths(false);
     }
@@ -409,19 +419,18 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    fetchVotersStats();
-    fetchBooths();
+    fetchStatsFromSupabase();
+    fetchBoothsFromSupabase();
     fetchActivityLogs();
     fetchTraffic();
 
-    // Polling interval tiap 20 detik (dengan proteksi inFlight agar request tidak menumpuk)
     const interval = setInterval(async () => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
       try {
         await Promise.allSettled([
-          fetchVotersStats(),
-          fetchBooths(),
+          fetchStatsFromSupabase(),
+          fetchBoothsFromSupabase(),
           fetchActivityLogs(),
           fetchTraffic(),
         ]);
@@ -433,24 +442,22 @@ export default function AdminDashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Supabase Realtime Channels
+  // Supabase Realtime Channels (Single Source of Truth)
   useEffect(() => {
     const supabase = createClient();
 
     const channel = supabase
-      .channel('admin_realtime_stream')
+      .channel('dashboard_realtime_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
-        // Perbarui status bilik seketika
-        fetchBooths();
+        fetchBoothsFromSupabase();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        // Perbarui statistik kehadiran DPT seketika
-        fetchVotersStats();
+        fetchStatsFromSupabase();
         fetchTraffic();
       })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (p: any) => {
-        if (p?.new) {
-          const item = p.new;
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_logs' }, (payload: any) => {
+        if (payload?.new) {
+          const item = payload.new;
           const mapped: ActivityLogItem = {
             id: String(item.id || Date.now()),
             time: item.created_at ? new Date(item.created_at).toLocaleTimeString('id-ID') : new Date().toLocaleTimeString('id-ID'),

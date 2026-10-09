@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { BEM_CANDIDATES, HIMA_CANDIDATES, FACULTIES_DATA, Candidate } from '@/data/voteMockData';
+import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
 import { createClient } from '@/lib/supabase/client';
 import {
   GLOBAL_REKAP_SUMMARY,
@@ -228,10 +228,38 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Muat data awal + realtime saat ada perubahan di tabel voters/candidates
+  const fetchBoothsFromDb = async () => {
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('booths')
+        .select('*')
+        .order('booth_number', { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        const mapped: BoothStatus[] = data.map((d: any) => ({
+          id: String(d.id || d.booth_number),
+          name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
+          status: (d.status === 'DIGUNAKAN' ? 'Sedang Memilih' : d.status === 'SELESAI' ? 'Selesai' : d.is_active === false ? 'Offline' : 'Tersedia') as any,
+          voterNim: d.voter_nim || d.current_voter_nim || undefined,
+          voterName: d.voter_name || d.current_voter_name || undefined,
+          prodiName: d.voter_prodi || d.current_voter_prodi || undefined,
+          startedAt: d.started_at || undefined,
+          ipAddress: d.ip_address || '127.0.0.1',
+        }));
+        setBooths(mapped);
+      }
+    } catch (e) {
+      console.warn('AdminContext fetch booths note:', e);
+    }
+  };
+
+  // Muat data awal + realtime saat ada perubahan di tabel voters/candidates/booths
   useEffect(() => {
     fetchVotersFromDb();
     fetchCandidatesFromDb();
+    fetchBoothsFromDb();
 
     const supabase = createClient();
     const channel = supabase
@@ -242,12 +270,16 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
         fetchCandidatesFromDb();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
+        fetchBoothsFromDb();
+      })
       .subscribe();
 
     const pollInterval = setInterval(() => {
       fetchVotersFromDb();
       fetchCandidatesFromDb();
-    }, 30000);
+      fetchBoothsFromDb();
+    }, 20000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -257,6 +289,13 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const setElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
     setElectionStatusState(newStatus);
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+      await supabase.from('system_config').upsert({ id: 'primary', election_status: newStatus });
+    } catch (e) {
+      console.warn('Update system_config error:', e);
+    }
     try {
       await fetch('/api/admin/election-status', {
         method: 'POST',
@@ -495,13 +534,65 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateBoothStatus = (id: string, status: BoothStatus['status'], voterInfo?: Partial<BoothStatus>) => {
+  const updateBoothStatus = async (id: string, status: BoothStatus['status'], voterInfo?: Partial<BoothStatus>) => {
+    try {
+      const supabase = createClient();
+      const dbStatus = status === 'Sedang Memilih' ? 'DIGUNAKAN' : status === 'Selesai' ? 'SELESAI' : 'TERSEDIA';
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      let q = supabase.from('booths').update({
+        status: dbStatus,
+        voter_nim: voterInfo?.voterNim || null,
+        voter_name: voterInfo?.voterName || null,
+        voter_prodi: voterInfo?.prodiName || null,
+        current_voter_nim: voterInfo?.voterNim || null,
+        current_voter_name: voterInfo?.voterName || null,
+        current_voter_prodi: voterInfo?.prodiName || null,
+        started_at: voterInfo?.startedAt || (dbStatus === 'DIGUNAKAN' ? new Date().toISOString() : null),
+        updated_at: new Date().toISOString(),
+      });
+      if (isUuid) {
+        await q.eq('id', id);
+      } else {
+        const num = parseInt(id, 10);
+        if (!isNaN(num)) {
+          await q.eq('booth_number', num);
+        }
+      }
+    } catch (err) {
+      console.warn('updateBoothStatus db note:', err);
+    }
     setBooths((prev) =>
       prev.map((b) => (b.id === id ? { ...b, status, ...voterInfo } : b))
     );
   };
 
-  const resetBooth = (id: string) => {
+  const resetBooth = async (id: string) => {
+    try {
+      const supabase = createClient();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      let q = supabase.from('booths').update({
+        status: 'TERSEDIA',
+        voter_nim: null,
+        voter_name: null,
+        voter_prodi: null,
+        current_voter_nim: null,
+        current_voter_name: null,
+        current_voter_prodi: null,
+        started_at: null,
+        updated_at: new Date().toISOString(),
+      });
+      if (isUuid) {
+        await q.eq('id', id);
+      } else {
+        const num = parseInt(id, 10);
+        if (!isNaN(num)) {
+          await q.eq('booth_number', num);
+        }
+      }
+      await fetchBoothsFromDb();
+    } catch (err) {
+      console.warn('resetBooth Supabase error:', err);
+    }
     setBooths((prev) =>
       prev.map((b) =>
         b.id === id

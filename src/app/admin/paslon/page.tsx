@@ -51,25 +51,28 @@ export default function AdminPaslonPage() {
   const fetchCandidates = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/paslon');
-      const json = await res.json();
-      if (json?.success && Array.isArray(json?.candidates)) {
-        setCandidatesList(json.candidates);
-        return;
-      }
-    } catch (e) {
-      console.warn('Fetch paslon note:', e);
-    } finally {
-      setIsLoading(false);
-    }
-
-    try {
       const supabase = createClient();
-      const { data } = await supabase.from('candidates').select('*').order('candidate_number', { ascending: true });
+      const { data, error } = await supabase
+        .from('candidates')
+        .select('*')
+        .order('candidate_number', { ascending: true });
+
+      if (error) throw error;
       if (Array.isArray(data)) {
         setCandidatesList(data);
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn('Fetch candidates direct Supabase fallback note:', err?.message);
+      try {
+        const res = await fetch('/api/admin/paslon');
+        const json = await res.json();
+        if (json?.success && Array.isArray(json?.candidates)) {
+          setCandidatesList(json.candidates);
+        }
+      } catch {}
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -88,8 +91,8 @@ export default function AdminPaslonPage() {
     };
   }, []);
 
-  const bemCandidatesList = candidatesList.filter((c) => c.type === 'BEM');
-  const himaCandidatesList = candidatesList.filter((c) => c.type === 'HIMA');
+  const bemCandidatesList = candidatesList.filter((c) => c.type === 'BEM' || (c as any).category === 'BEM');
+  const himaCandidatesList = candidatesList.filter((c) => c.type === 'HIMA' || (c as any).category === 'HIMA');
   const currentCandidates = activeTab === 'BEM' ? bemCandidatesList : himaCandidatesList;
 
   const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,79 +106,71 @@ export default function AdminPaslonPage() {
     }
   };
 
-  const handleDelete = async (id: string | number) => {
+  const handleDelete = async (candidateId: string | number) => {
     if (!confirm('Yakin ingin menghapus data pasangan calon ini dari database Supabase?')) return;
     try {
-      const res = await fetch(`/api/admin/paslon?id=${encodeURIComponent(String(id))}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        showToast(json.message || 'Gagal menghapus calon dari database.', 'error');
-        return;
+      const supabase = createClient();
+      const { error } = await supabase.from('candidates').delete().eq('id', String(candidateId));
+      if (error) {
+        alert('Gagal menghapus paslon: ' + error.message);
+        throw error;
       }
-      showToast(json.message, 'info');
-      deleteCandidate(String(id));
+      alert('Paslon berhasil dihapus dari database!');
+      showToast('Paslon berhasil dihapus dari database.', 'info');
       await fetchCandidates();
     } catch (err: any) {
-      showToast(err.message || 'Gagal menghubungi server.', 'error');
+      alert('Gagal menghapus paslon: ' + (err?.message || 'Terjadi kesalahan'));
     }
   };
 
   const handleSaveCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formLeader.trim() || !formVice.trim()) {
-      showToast('Nama Calon Ketua dan Wakil Ketua wajib diisi.', 'error');
+      alert('Nama Calon Ketua dan Wakil Ketua wajib diisi.');
       return;
     }
 
     setIsSaving(true);
-    const missionText = formMission.trim() || 'Membangun sinergi aktif seluruh mahasiswa.\nMendorong transparansi dan karya nyata.';
-    const visionText = formVision.trim() || 'Terwujudnya kepengurusan mahasiswa yang aspiratif, berintegritas, dan inovatif.';
-
-    const payloadCandidate: any = {
-      candidate_number: String(formNumber || '1'),
-      number: String(formNumber || '1'),
-      name: `${formLeader.trim()} & ${formVice.trim()}`,
-      leader_name: formLeader.trim(),
-      chairman_name: formLeader.trim(),
-      vice_leader_name: formVice.trim(),
-      vice_chairman_name: formVice.trim(),
-      vice_name: formVice.trim(),
-      category: formType || 'BEM',
-      type: formType || 'BEM',
-      prodi: formType === 'HIMA' ? formProdi : null,
-      faculty: 'FTB',
-      vision: visionText,
-      visi: visionText,
-      mission: missionText,
-      misi: missionText,
+    const formData = {
+      nomorUrut: formNumber,
+      number: formNumber,
+      ketua: formLeader.trim(),
+      wakil: formVice.trim(),
+      kategori: formType,
+      prodi: formProdi,
+      visi: formVision.trim(),
+      misi: formMission.trim(),
       photo_url: formPhotoUrl.trim() || null,
     };
 
     try {
       const supabase = createClient();
+      const candId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${formType.toLowerCase()}-${Date.now()}`;
+      const { data, error } = await supabase.from('candidates').insert([{
+        id: candId,
+        candidate_number: Number(formData.nomorUrut || formData.number) || 1,
+        number: String(formData.nomorUrut || formData.number),
+        name: `${formData.ketua} & ${formData.wakil}`,
+        leader_name: formData.ketua,
+        chairman_name: formData.ketua,
+        vice_leader_name: formData.wakil,
+        vice_chairman_name: formData.wakil,
+        category: formData.kategori, // 'BEM' atau 'HIMA'
+        type: formData.kategori,
+        prodi: formData.kategori === 'HIMA' ? formData.prodi : null,
+        faculty: 'FTB',
+        vision: formData.visi || '',
+        mission: formData.misi || '',
+        photo_url: formData.photo_url || null,
+      }]);
 
-      // 1. Coba simpan langsung via Supabase Client
-      const { error: directError } = await supabase
-        .from('candidates')
-        .insert([payloadCandidate]);
-
-      if (directError) {
-        console.warn('Direct insert candidates error, falling back to API:', directError.message);
-        // 2. Fallback via API route serverless
-        const res = await fetch('/api/admin/paslon', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payloadCandidate),
-        });
-        const resJson = await res.json();
-        if (!res.ok || !resJson.success) {
-          throw new Error(resJson.message || directError.message);
-        }
+      if (error) {
+        alert('Gagal menyimpan paslon: ' + error.message);
+        throw error;
       }
 
-      alert('Paslon berhasil disimpan!');
-      showToast('Paslon berhasil disimpan!', 'success');
-      addCandidate(payloadCandidate as any);
+      alert('Paslon berhasil disimpan ke database!');
+      showToast('Paslon berhasil disimpan ke database!', 'success');
       setIsAddModalOpen(false);
 
       // Reset Form
@@ -188,8 +183,7 @@ export default function AdminPaslonPage() {
 
       await fetchCandidates();
     } catch (err: any) {
-      alert('Gagal menyimpan paslon: ' + (err?.message || 'Kesalahan sistem'));
-      showToast(err?.message || 'Gagal menyimpan calon ke database.', 'error');
+      console.error('Gagal menyimpan paslon:', err);
     } finally {
       setIsSaving(false);
     }

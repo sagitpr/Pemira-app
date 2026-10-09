@@ -27,24 +27,41 @@ export default function AdminPengaturanPage() {
     resetAllVotes,
     resetAllVoters,
     showToast,
+    electionStatus,
+    setElectionStatus,
   } = useAdmin();
 
-  const [totalBooths, setTotalBooths] = useState(config.totalBooths || 10);
+  const [totalBooths, setTotalBooths] = useState(config.totalBooths || 16);
   const [sessionTimeout, setSessionTimeout] = useState(config.sessionTimeoutSeconds || 180);
   const [saving, setSaving] = useState(false);
+  const [currentElectionStatus, setCurrentElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>(electionStatus || 'AKTIF');
 
-  // Load jumlah bilik aktual dari Supabase saat pertama kali dibuka
+  // Load jumlah bilik dan status pemilihan aktual dari Supabase saat pertama kali dibuka
   useEffect(() => {
     async function loadCurrentBoothCount() {
       try {
         const supabase = createClient();
-        const { data, count } = await supabase.from('booths').select('*', { count: 'exact' });
+        const { count } = await supabase.from('booths').select('*', { count: 'exact', head: true });
         if (count && count > 0) {
           setTotalBooths(count);
           updateConfig({ totalBooths: count });
         }
+
+        const { data: configData } = await supabase
+          .from('system_config')
+          .select('election_status, total_booths')
+          .limit(1)
+          .maybeSingle();
+
+        if (configData?.election_status) {
+          const st = configData.election_status.toUpperCase();
+          if (st === 'JEDA' || st === 'AKTIF' || st === 'TUTUP') {
+            setCurrentElectionStatus(st as any);
+            setElectionStatus(st as any);
+          }
+        }
       } catch (err) {
-        console.warn('Gagal memuat jumlah bilik:', err);
+        console.warn('Gagal memuat status & bilik Supabase:', err);
       }
     }
     loadCurrentBoothCount();
@@ -63,6 +80,60 @@ export default function AdminPengaturanPage() {
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
 
+  const handleChangeElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('system_config')
+        .upsert({ id: 'primary', election_status: newStatus });
+
+      if (error) {
+        console.warn('Supabase system_config upsert warning:', error.message);
+      }
+
+      setCurrentElectionStatus(newStatus);
+      setElectionStatus(newStatus);
+      showToast(`Status pemilihan diperbarui menjadi: ${newStatus}`, newStatus === 'AKTIF' ? 'success' : newStatus === 'JEDA' ? 'warning' : 'error');
+    } catch (err: any) {
+      showToast('Gagal mengubah status: ' + (err?.message || 'Kesalahan sistem'), 'error');
+    }
+  };
+
+  const handleResetBooths = async () => {
+    if (!confirm('Apakah Anda yakin ingin mereset seluruh bilik suara menjadi TERSEDIA dan mengosongkan pemilih yang sedang berada di bilik?')) return;
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('booths')
+        .update({
+          status: 'TERSEDIA',
+          voter_nim: null,
+          voter_name: null,
+          voter_prodi: null,
+          current_voter_nim: null,
+          current_voter_name: null,
+          current_voter_prodi: null,
+          started_at: null,
+          updated_at: new Date().toISOString(),
+        })
+        .neq('booth_number', 0);
+
+      if (error) throw error;
+
+      fetch('/api/admin/pengaturan/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target: 'booths' }),
+      }).catch(() => {});
+
+      alert('Seluruh bilik suara berhasil direset ke status TERSEDIA!');
+      showToast('Seluruh bilik suara berhasil direset ke status TERSEDIA.', 'success');
+    } catch (err: any) {
+      alert('Gagal mereset bilik: ' + (err?.message || 'Terjadi kesalahan'));
+      showToast('Gagal mereset bilik: ' + err.message, 'error');
+    }
+  };
+
   const handleSaveBoothConfig = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const count = parseInt(String(totalBooths), 10);
@@ -75,49 +146,62 @@ export default function AdminPengaturanPage() {
     try {
       const supabase = createClient();
 
-      // Panggil RPC Supabase untuk menambah/mengurangi bilik di database
-      const { data, error } = await supabase.rpc('set_total_booths', {
-        target_count: count,
-      });
+      // 1. Mutasi langsung ke tabel 'booths' di Supabase
+      const { data: existingBooths, error: selectErr } = await supabase
+        .from('booths')
+        .select('id, booth_number')
+        .order('booth_number', { ascending: true });
 
-      if (error) {
-        // Fallback 1: Jika RPC belum terpasang, coba via API admin route
-        const res = await fetch('/api/admin/booths/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ totalBooths: count }),
-        });
-        const resJson = await res.json().catch(() => null);
+      if (selectErr) throw selectErr;
 
-        if (!resJson?.success) {
-          // Fallback 2: Insert / sync manual ke tabel booths
-          const { data: existingBooths } = await supabase.from('booths').select('booth_number');
-          const currentTotal = existingBooths?.length || 0;
+      const currentTotal = existingBooths?.length || 0;
 
-          if (count > currentTotal) {
-            const newRows = [];
-            for (let i = currentTotal + 1; i <= count; i++) {
-              newRows.push({
-                booth_number: i,
-                name: `Bilik ${String(i).padStart(2, '0')}`,
-                status: 'TERSEDIA',
-              });
-            }
-            await supabase.from('booths').insert(newRows);
-          } else if (count < currentTotal) {
-            await supabase.from('booths').delete().gt('booth_number', count);
+      if (count > currentTotal) {
+        // Jika jumlah bilik ditambah: Jalankan INSERT baris bilik baru ke tabel 'booths'
+        const existingNumbers = new Set((existingBooths || []).map((b: any) => b.booth_number));
+        const newRows = [];
+        for (let i = 1; i <= count; i++) {
+          if (!existingNumbers.has(i)) {
+            newRows.push({
+              booth_number: i,
+              name: `Bilik ${String(i).padStart(2, '0')}`,
+              status: 'TERSEDIA',
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            });
           }
         }
-      } else {
-        // Panggil juga API route sebagai sinkronisasi tambahan
-        fetch('/api/admin/booths/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ totalBooths: count }),
-        }).catch(() => {});
+        if (newRows.length > 0) {
+          const { error: insertErr } = await supabase.from('booths').insert(newRows);
+          if (insertErr) throw insertErr;
+        }
+      } else if (count < currentTotal) {
+        // Hapus bilik dengan booth_number lebih dari count
+        const { error: deleteErr } = await supabase
+          .from('booths')
+          .delete()
+          .gt('booth_number', count);
+        if (deleteErr) throw deleteErr;
       }
 
-      // Simpan juga setting batas waktu jika ada
+      // Pastikan status bilik 1..count aktif
+      await supabase
+        .from('booths')
+        .update({ is_active: true, updated_at: new Date().toISOString() })
+        .lte('booth_number', count);
+
+      // Simpan total_booths ke tabel system_config di Supabase
+      await supabase
+        .from('system_config')
+        .upsert({ id: 'primary', total_booths: count });
+
+      // Sinkronkan ke API route
+      fetch('/api/admin/booths/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totalBooths: count }),
+      }).catch(() => {});
+
       localStorage.setItem('pemira_booth_timeout', String(sessionTimeout));
       updateConfig({
         totalBooths: count,
@@ -377,6 +461,73 @@ export default function AdminPengaturanPage() {
           </form>
         </section>
 
+        {/* CARD BARU: STATUS SISTEM PEMILIHAN */}
+        <section className="bg-white/90 rounded-2xl p-6 sm:p-7 border border-[#EBE7DF] shadow-2xs">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-5">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Status Pemilihan (Supabase Realtime)</h3>
+                <p className="text-[11px] text-slate-500">
+                  Kontrol status global pemungutan suara di tabel system_config Supabase
+                </p>
+              </div>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+              currentElectionStatus === 'AKTIF'
+                ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
+                : currentElectionStatus === 'JEDA'
+                ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                : 'bg-rose-100 text-rose-700 border border-rose-300'
+            }`}>
+              Status: {currentElectionStatus}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <button
+              type="button"
+              onClick={() => handleChangeElectionStatus('AKTIF')}
+              className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                currentElectionStatus === 'AKTIF'
+                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-md ring-2 ring-emerald-300'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:text-emerald-700'
+              }`}
+            >
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-pulse" />
+              <span>AKTIF (Dibuka)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleChangeElectionStatus('JEDA')}
+              className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                currentElectionStatus === 'JEDA'
+                  ? 'bg-amber-500 text-white border-amber-600 shadow-md ring-2 ring-amber-300'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:text-amber-700'
+              }`}
+            >
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-200" />
+              <span>JEDA (Istirahat)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleChangeElectionStatus('TUTUP')}
+              className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                currentElectionStatus === 'TUTUP'
+                  ? 'bg-rose-600 text-white border-rose-700 shadow-md ring-2 ring-rose-300'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
+              }`}
+            >
+              <div className="w-2.5 h-2.5 rounded-full bg-rose-200" />
+              <span>TUTUP (Selesai)</span>
+            </button>
+          </div>
+        </section>
+
         {/* CARD 3: AREA KONTROL SISTEM & RESET */}
         <section className="bg-white/90 rounded-2xl p-6 sm:p-7 border border-[#EBE7DF] shadow-2xs">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100 mb-5">
@@ -386,12 +537,28 @@ export default function AdminPengaturanPage() {
             <div>
               <h3 className="text-sm font-bold text-slate-900">Area Kontrol &amp; Reset Data</h3>
               <p className="text-[11px] text-slate-500">
-                Aksi administratif kritis untuk pengelolaan simulasi dan reset data pemungutan suara
+                Aksi administratif kritis untuk pengelolaan simulasi dan reset data pemungutan suara di Supabase
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/30 flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-blue-900 mb-1">Reset Seluruh Bilik Suara</h4>
+                <p className="text-[11px] text-slate-600 mb-3">
+                  Kembalikan status semua bilik di tabel booths menjadi &quot;TERSEDIA&quot; dan kosongkan sesi pemilih.
+                </p>
+              </div>
+              <button
+                onClick={handleResetBooths}
+                className="w-full py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Status Bilik</span>
+              </button>
+            </div>
+
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col justify-between">
               <div>
                 <h4 className="text-xs font-bold text-slate-900 mb-1">Reset Status DPT</h4>

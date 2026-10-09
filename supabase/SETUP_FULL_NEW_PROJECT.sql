@@ -126,23 +126,28 @@ FOR EACH ROW EXECUTE FUNCTION sync_voter_aliases();
 -- 4. TABLE: candidates (Pasangan Calon)
 -- =========================================================
 CREATE TABLE candidates (
-  id                TEXT PRIMARY KEY,
+  id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
   type              TEXT NOT NULL DEFAULT 'BEM',   -- 'BEM' | 'HIMA'
   category          TEXT,                            -- mirror type (kompatibilitas kode lama)
   candidate_number  INT NOT NULL,
-  number            TEXT,
-  faculty_id        TEXT,
-  prodi_id          TEXT,
-  faculty_name      TEXT,
-  prodi_name        TEXT,
+  number            TEXT,                            -- alias candidate_number sebagai string
+  name              TEXT,                            -- 'Ketua & Wakil'
   leader_name       TEXT NOT NULL,
+  chairman_name     TEXT,                            -- alias leader_name
   vice_leader_name  TEXT,
+  vice_chairman_name TEXT,                           -- alias vice_leader_name
+  faculty_id        TEXT,
+  faculty_name      TEXT,
+  faculty           TEXT,                            -- alias fakultas
+  prodi_id          TEXT,
+  prodi_name        TEXT,
+  prodi             TEXT,                            -- alias program studi
   slogan            TEXT,
   tagline           TEXT,
   vision            TEXT,
   visi              TEXT,
-  mission           JSONB,
-  misi              JSONB,
+  mission           TEXT,                            -- teks visi misi multi-baris
+  misi              TEXT,
   programs          JSONB,
   photo_url         TEXT,
   avatar_gradient   TEXT,
@@ -153,18 +158,73 @@ CREATE TABLE candidates (
 CREATE INDEX idx_candidates_type   ON candidates (type);
 CREATE INDEX idx_candidates_number ON candidates (candidate_number);
 
--- Mirror type -> category agar filter kode lama (c.category === 'BEM') tetap jalan
+-- Mirror type <-> category & alias nama/prodi/fakultas
 CREATE OR REPLACE FUNCTION sync_candidate_mirror()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+  -- Sinkronisasi tipe/kategori
   IF NEW.type IS NOT NULL THEN
     NEW.category := NEW.type;
   END IF;
   IF NEW.category IS NOT NULL AND NEW.type IS NULL THEN
     NEW.type := NEW.category;
   END IF;
+
+  -- Sinkronisasi nomor
+  IF NEW.number IS NULL AND NEW.candidate_number IS NOT NULL THEN
+    NEW.number := NEW.candidate_number::text;
+  END IF;
+  IF NEW.candidate_number IS NULL AND NEW.number IS NOT NULL THEN
+    NEW.candidate_number := (regexp_replace(NEW.number, '\D', '', 'g'))::int;
+  END IF;
+
+  -- Sinkronisasi nama
+  IF NEW.chairman_name IS NOT NULL AND (NEW.leader_name IS NULL OR NEW.leader_name = '') THEN
+    NEW.leader_name := NEW.chairman_name;
+  END IF;
+  IF NEW.leader_name IS NOT NULL AND (NEW.chairman_name IS NULL OR NEW.chairman_name = '') THEN
+    NEW.chairman_name := NEW.leader_name;
+  END IF;
+  IF NEW.vice_chairman_name IS NOT NULL AND (NEW.vice_leader_name IS NULL OR NEW.vice_leader_name = '') THEN
+    NEW.vice_leader_name := NEW.vice_chairman_name;
+  END IF;
+  IF NEW.vice_leader_name IS NOT NULL AND (NEW.vice_chairman_name IS NULL OR NEW.vice_chairman_name = '') THEN
+    NEW.vice_chairman_name := NEW.vice_leader_name;
+  END IF;
+  IF NEW.name IS NULL OR NEW.name = '' THEN
+    NEW.name := NEW.leader_name || CASE WHEN NEW.vice_leader_name IS NOT NULL AND NEW.vice_leader_name <> '' THEN ' & ' || NEW.vice_leader_name ELSE '' END;
+  END IF;
+
+  -- Sinkronisasi prodi & fakultas
+  IF NEW.prodi IS NOT NULL AND (NEW.prodi_name IS NULL OR NEW.prodi_name = '') THEN
+    NEW.prodi_name := NEW.prodi;
+  END IF;
+  IF NEW.prodi_name IS NOT NULL AND (NEW.prodi IS NULL OR NEW.prodi = '') THEN
+    NEW.prodi := NEW.prodi_name;
+  END IF;
+  IF NEW.faculty IS NOT NULL AND (NEW.faculty_name IS NULL OR NEW.faculty_name = '') THEN
+    NEW.faculty_name := NEW.faculty;
+  END IF;
+  IF NEW.faculty_name IS NOT NULL AND (NEW.faculty IS NULL OR NEW.faculty = '') THEN
+    NEW.faculty := NEW.faculty_name;
+  END IF;
+
+  -- Sinkronisasi visi & misi
+  IF NEW.visi IS NOT NULL AND (NEW.vision IS NULL OR NEW.vision = '') THEN
+    NEW.vision := NEW.visi;
+  END IF;
+  IF NEW.vision IS NOT NULL AND (NEW.visi IS NULL OR NEW.visi = '') THEN
+    NEW.visi := NEW.vision;
+  END IF;
+  IF NEW.misi IS NOT NULL AND (NEW.mission IS NULL OR NEW.mission = '') THEN
+    NEW.mission := NEW.misi;
+  END IF;
+  IF NEW.mission IS NOT NULL AND (NEW.misi IS NULL OR NEW.misi = '') THEN
+    NEW.misi := NEW.mission;
+  END IF;
+
   RETURN NEW;
 END;
 $$;
@@ -563,14 +623,14 @@ ALTER TABLE system_config  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_users    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE study_program  ENABLE ROW LEVEL SECURITY;
 
--- Public SELECT: semua tabel kecuali admin_users
-CREATE POLICY "Public select voters"        ON voters        FOR SELECT USING (true);
-CREATE POLICY "Public select candidates"    ON candidates    FOR SELECT USING (true);
-CREATE POLICY "Public select votes"         ON votes         FOR SELECT USING (true);
-CREATE POLICY "Public select booths"        ON booths        FOR SELECT USING (true);
-CREATE POLICY "Public select activity_logs" ON activity_logs FOR SELECT USING (true);
-CREATE POLICY "Public select system_config" ON system_config FOR SELECT USING (true);
-CREATE POLICY "Public select study_program" ON study_program FOR SELECT USING (true);
+-- Public CRUD policies: mengizinkan sinkronisasi langsung dari client admin
+CREATE POLICY "Public manage voters"        ON voters        FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public manage candidates"    ON candidates    FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public manage votes"         ON votes         FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public manage booths"        ON booths        FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public manage activity_logs" ON activity_logs FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public manage system_config" ON system_config FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public manage study_program" ON study_program FOR ALL USING (true) WITH CHECK (true);
 -- admin_users: TIDAK ADA policy = tidak terbaca dari client (hanya service role)
 
 -- =========================================================
