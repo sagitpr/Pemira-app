@@ -4,12 +4,10 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
-import { useAdmin } from '@/context/AdminContext';
 import { Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck, UserPlus } from 'lucide-react';
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const { login } = useAdmin();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +18,7 @@ export default function AdminLoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setErrorMessage('');
     setIsLoading(true);
 
@@ -30,16 +29,19 @@ export default function AdminLoginPage() {
         .from('admin_users')
         .select('*')
         .eq('email', cleanEmail)
-        .single();
+        .maybeSingle();
 
-      if (error || !user) {
-        console.warn('Login error:', error);
+      if (error) {
+        console.error('Supabase query error:', error);
+      }
+
+      if (!user) {
         alert('Email atau akun tidak ditemukan di database!');
         setErrorMessage('Email atau akun tidak ditemukan di database!');
         return;
       }
 
-      // Cek kata sandi (cocokkan dengan kolom 'password' atau fallback 'password_hash')
+      // Validasi kata sandi dengan memeriksa kolom 'password' maupun 'password_hash'
       const validPassword = user.password === password || user.password_hash === password;
       if (!validPassword) {
         alert('Kata sandi salah!');
@@ -47,25 +49,8 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Simpan sesi login lokal/cookie
-      const sessionData = {
-        id: user.id,
-        name: user.name || user.full_name || 'Admin',
-        email: user.email,
-        role: user.role || 'admin',
-      };
-
-      localStorage.setItem('pemira_admin_session', JSON.stringify(sessionData));
-      document.cookie = `pemira_admin_session=${encodeURIComponent(JSON.stringify(sessionData))}; path=/; max-age=28800; SameSite=Lax`;
-
-      // Coba panggil login API untuk menetapkan JWT cookie jika memungkinkan (non-blocking)
-      try {
-        await fetch('/api/admin/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: cleanEmail, password }),
-        });
-      } catch {}
+      localStorage.setItem('pemira_admin_session', JSON.stringify(user));
+      document.cookie = `pemira_admin_session=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=28800; SameSite=Lax`;
 
       alert(`Selamat datang, ${user.name || user.full_name || 'Admin'}!`);
       window.location.href = '/admin/dashboard';

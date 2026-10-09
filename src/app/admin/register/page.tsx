@@ -22,6 +22,7 @@ export default function AdminRegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setErrorMessage('');
 
     if (!formData.name.trim() || !formData.email.trim() || !formData.password.trim()) {
@@ -33,27 +34,33 @@ export default function AdminRegisterPage() {
     try {
       const cleanEmail = formData.email.trim().toLowerCase();
 
-      const { data, error } = await supabase.from('admin_users').insert([
-        {
-          name: formData.name.trim(),
-          email: cleanEmail,
-          password: formData.password,
-          role: formData.role || 'panitia',
-        },
-      ]);
+      // Simpan LANGSUNG ke tabel admin_users via Supabase client browser (tanpa API perantara)
+      const { data, error: insertError } = await supabase
+        .from('admin_users')
+        .insert([
+          {
+            name: formData.name.trim(),
+            email: cleanEmail,
+            password: formData.password,
+            role: formData.role || 'panitia',
+          },
+        ])
+        .select();
 
-      if (error) {
-        console.error('Supabase registration error:', error);
-        throw new Error(error.message);
+      if (insertError) {
+        console.error('Supabase insert error:', insertError);
+        setErrorMessage(insertError.message);
+        alert('Gagal membuat akun: ' + insertError.message);
+        return;
       }
 
-      alert('Akun berhasil dibuat! Silakan masuk.');
-      router.push('/admin/login');
+      alert('Akun berhasil didaftarkan! Silakan masuk.');
+      window.location.href = '/admin/login';
     } catch (err: any) {
-      console.error('Error saat pendaftaran:', err);
-      const msg = err?.message || 'Terjadi kesalahan saat membuat akun.';
+      console.error('Submit error:', err);
+      const msg = err?.message || 'Terjadi kesalahan jaringan';
       setErrorMessage(msg);
-      alert('Gagal membuat akun: ' + msg);
+      alert('Gagal: ' + msg);
     } finally {
       setIsLoading(false);
     }

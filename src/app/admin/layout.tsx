@@ -6,13 +6,6 @@ import { AdminProvider, useAdmin } from '@/context/AdminContext';
 import AdminSidebar from '@/components/admin/AdminSidebar';
 
 function AdminLayoutInner({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const isAuthPage = pathname === '/admin/login' || pathname === '/admin/register';
-
-  if (isAuthPage) {
-    return <>{children}</>;
-  }
-
   return (
     <div className="min-h-screen bg-[#FAF9F5] font-sans text-slate-900 w-full relative">
       <AdminSidebar />
@@ -24,6 +17,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 }
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAuthPage = pathname === '/admin/login' || pathname === '/admin/register';
+
+  if (isAuthPage) {
+    return <>{children}</>;
+  }
+
   return (
     <AdminProvider>
       <AdminLayoutInner>{children}</AdminLayoutInner>
