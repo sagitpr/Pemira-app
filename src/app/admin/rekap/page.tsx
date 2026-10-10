@@ -33,6 +33,48 @@ import {
 
 const LINE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 
+// Daftar Master 14 Program Studi UBTH & Fakultas
+const MASTER_PRODI_MATRIX = [
+  { no: 1, name: 'Bisnis Digital', faculty: 'FTB', matchKeys: ['bisnis digital', 'bid'] },
+  { no: 2, name: 'Sistem Informasi', faculty: 'FTB', matchKeys: ['sistem informasi', 'si', 'ti'] },
+  { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', matchKeys: ['teknologi pangan', 'pangan', 'tp'] },
+  { no: 4, name: 'Kewirausahaan', faculty: 'FTB', matchKeys: ['kewirausahaan', 'kwu'] },
+  { no: 5, name: 'S1 Administrasi Rumah Sakit (ARS)', faculty: 'FIKES', matchKeys: ['administrasi rumah sakit', 'ars'] },
+  { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', matchKeys: ['s1 keperawatan', 'keperawatan s1'] },
+  { no: 7, name: 'S1 Gizi', faculty: 'FIKES', matchKeys: ['gizi'] },
+  { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', matchKeys: ['d3 keperawatan', 'keperawatan d3'] },
+  { no: 9, name: 'D3 Refraksi Optisi (RO)', faculty: 'FIKES', matchKeys: ['refraksi optisi', 'ro', 'optometri'] },
+  { no: 10, name: 'D3 Teknologi Laboratorium Medis (TLM)', faculty: 'FIKES', matchKeys: ['teknologi laboratorium medis', 'tlm', 'analis kesehatan'] },
+  { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', matchKeys: ['s1 farmasi', 'farmasi s1'] },
+  { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', matchKeys: ['rekayasa kosmetik', 'kosmetik', 'rekos'] },
+  { no: 13, name: 'Pendidikan Profesi Apoteker', faculty: 'FARMASI', matchKeys: ['apoteker', 'profesi apoteker'] },
+  { no: 14, name: 'Pendidikan Profesi Ners', faculty: 'FIKES', matchKeys: ['ners', 'profesi ners'] }
+];
+
+// Fungsi Agregasi Matriks Per Prodi
+const calculateProdiMatrix = (voters: any[]) => {
+  return MASTER_PRODI_MATRIX.map(item => {
+    // Cari pemilih yang prodinya cocok dengan salah satu matchKeys
+    const matchingVoters = (voters || []).filter(v => {
+      const vp = (v.prodi || '').toLowerCase();
+      return item.matchKeys.some(key => vp.includes(key));
+    });
+
+    const totalDpt = matchingVoters.length;
+    const suaraMasuk = matchingVoters.filter(v => v.has_voted === true).length;
+    const sisaBelum = totalDpt - suaraMasuk;
+    const partisipasi = totalDpt > 0 ? ((suaraMasuk / totalDpt) * 100).toFixed(1) + '%' : '0.0%';
+
+    return {
+      ...item,
+      totalDpt,
+      suaraMasuk,
+      sisaBelum,
+      partisipasi
+    };
+  });
+};
+
 export default function AdminRekapPage() {
   const {
     isSensorActive,
@@ -74,7 +116,7 @@ export default function AdminRekapPage() {
       const supabase = createClient();
       const { data: votersData, error } = await supabase
         .from('voters')
-        .select('id, has_voted, voting_status, prodi, prodi_name, prodiName');
+        .select('id, prodi, has_voted');
 
       if (!error && votersData) {
         const total = votersData.length;
@@ -95,6 +137,8 @@ export default function AdminRekapPage() {
       console.error('Fetch metric data error in rekap:', e);
     }
   };
+
+  const fetchVotersAndRefreshMatrix = fetchMetricData;
 
   // 2. Fetch Candidates & Realtime Rekap Votes
   const fetchRekapVotes = async () => {
@@ -309,6 +353,14 @@ export default function AdminRekapPage() {
       })
       .subscribe();
 
+    // E. Realtime Supabase Listener untuk Matriks Voters
+    const matrixChannel = supabase
+      .channel('matrix-voters-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        fetchVotersAndRefreshMatrix(); // Refresh matriks secara instan saat data DPT berubah
+      })
+      .subscribe();
+
     const interval = setInterval(() => {
       fetchMetricData();
       fetchRekapVotes();
@@ -316,6 +368,7 @@ export default function AdminRekapPage() {
 
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(matrixChannel);
       clearInterval(interval);
     };
   }, []);
@@ -421,55 +474,18 @@ export default function AdminRekapPage() {
   // Normalisasi string pencarian
   const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // Matriks 14 Program Studi
-  const allProdisDetailed = useMemo(() => {
-    return FACULTIES_DATA.flatMap((fac) =>
-      fac.prodis.map((p) => {
-        const pNameNorm = normalizeText(p.name);
-        const pIdNorm = normalizeText(p.id);
-
-        const matchedVoters = (rawVoters || []).filter((v: any) => {
-          const vProdiRaw = String(v.prodi || v.prodi_name || v.prodiName || '').toLowerCase().trim();
-          const pNameRaw = String(p.name || '').toLowerCase().trim();
-          const vProdi = normalizeText(vProdiRaw);
-          return (
-            vProdiRaw.includes(pNameRaw) ||
-            pNameRaw.includes(vProdiRaw) ||
-            vProdi === pNameNorm ||
-            vProdi.includes(pNameNorm) ||
-            pNameNorm.includes(vProdi) ||
-            (pIdNorm && vProdi === pIdNorm)
-          );
-        });
-
-        const pTotalDpt = matchedVoters.length;
-        const pSuaraMasuk = matchedVoters.filter(
-          (v: any) => v.has_voted === true || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI'
-        ).length;
-        const pBelum = Math.max(0, pTotalDpt - pSuaraMasuk);
-        const pPartisipasi = pTotalDpt > 0 ? Number(((pSuaraMasuk / pTotalDpt) * 100).toFixed(1)) : 0;
-
-        return {
-          id: p.id,
-          name: p.name,
-          facultyId: p.facultyId,
-          facultyName: p.facultyName,
-          totalDpt: pTotalDpt,
-          suaraMasuk: pSuaraMasuk,
-          belumMemilih: pBelum,
-          partisipasi: pPartisipasi,
-        };
-      })
-    );
+  // Matriks 14 Program Studi Realtime
+  const prodiMatrix = useMemo(() => {
+    return calculateProdiMatrix(rawVoters);
   }, [rawVoters]);
 
   const filteredProdis = useMemo(() => {
-    return allProdisDetailed.filter((p) => {
-      const matchFaculty = activeFacultyFilter === 'ALL' || p.facultyId === activeFacultyFilter;
+    return prodiMatrix.filter((p) => {
+      const matchFaculty = activeFacultyFilter === 'ALL' || p.faculty === activeFacultyFilter;
       const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchFaculty && matchSearch;
     });
-  }, [allProdisDetailed, activeFacultyFilter, searchQuery]);
+  }, [prodiMatrix, activeFacultyFilter, searchQuery]);
 
   // Kunci kandidat pada grafik
   const candidateKeys = useMemo(() => {
@@ -1097,16 +1113,16 @@ export default function AdminRekapPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredProdis.map((pr, idx) => (
-                  <tr key={pr.id} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={pr.no || idx} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-3.5 px-4 text-center font-mono text-slate-400">
-                      {idx + 1}
+                      {pr.no}
                     </td>
                     <td className="py-3.5 px-4 font-bold text-slate-900">
                       {pr.name}
                     </td>
                     <td className="py-3.5 px-3 text-center">
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        {pr.facultyId}
+                        {pr.faculty}
                       </span>
                     </td>
                     <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-800">
@@ -1116,11 +1132,11 @@ export default function AdminRekapPage() {
                       {isSensorActive ? '***' : pr.suaraMasuk}
                     </td>
                     <td className="py-3.5 px-3 text-right font-mono text-slate-500">
-                      {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.belumMemilih) : '-'}
+                      {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.sisaBelum) : '-'}
                     </td>
                     <td className="py-3.5 px-3 text-center">
                       <span className="font-mono font-bold text-blue-600">
-                        {pr.totalDpt > 0 ? (isSensorActive ? '***%' : `${pr.partisipasi}%`) : '-'}
+                        {pr.totalDpt > 0 ? (isSensorActive ? '***%' : pr.partisipasi) : '-'}
                       </span>
                     </td>
                   </tr>

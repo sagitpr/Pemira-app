@@ -960,31 +960,38 @@ function VoteContent() {
   // SCREEN: AKSES DICABUT / DIBATALKAN OLEH ADMIN (KILL-SWITCH ACCESS_REVOKED)
   if (isAccessRevoked) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center">
-        <div className="max-w-md w-full bg-slate-900 border border-rose-500/30 rounded-3xl p-8 shadow-2xl">
-          <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-5">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-            </svg>
+      <div className="min-h-screen bg-slate-950 flex flex-col justify-between text-white text-center">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-slate-900 border border-rose-500/30 rounded-3xl p-8 shadow-2xl">
+            <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-5">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-rose-400 mb-2">
+              Akses Sesi Bilik Dibatalkan
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed mb-6">
+              Sesi pemilihan untuk bilik ini telah dibatalkan atau ditarik oleh Panitia KPUM. Anda tidak dapat lagi mengisi identitas ataupun memberikan suara.
+            </p>
+            <div className="p-3 bg-slate-800/80 rounded-xl text-xs text-amber-300 border border-amber-500/20 mb-6">
+              Silakan keluar dari bilik dan hubungi petugas di meja registrasi jika terjadi kesalahan teknis.
+            </div>
+            <button
+              onClick={() => {
+                window.location.href = 'about:blank';
+              }}
+              className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl transition text-xs cursor-pointer"
+            >
+              Tutup Halaman
+            </button>
           </div>
-          <h2 className="text-xl font-bold text-rose-400 mb-2">
-            Akses Sesi Bilik Dibatalkan
-          </h2>
-          <p className="text-slate-400 text-sm leading-relaxed mb-6">
-            Sesi pemilihan untuk bilik ini telah dibatalkan atau ditarik oleh Panitia KPUM. Anda tidak dapat lagi mengisi identitas ataupun memberikan suara.
-          </p>
-          <div className="p-3 bg-slate-800/80 rounded-xl text-xs text-amber-300 border border-amber-500/20 mb-6">
-            Silakan keluar dari bilik dan hubungi petugas di meja registrasi jika terjadi kesalahan teknis.
-          </div>
-          <button
-            onClick={() => {
-              window.location.href = 'about:blank';
-            }}
-            className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl transition text-xs cursor-pointer"
-          >
-            Tutup Halaman
-          </button>
         </div>
+        <footer className="w-full py-4 mt-auto text-center border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+          <p className="text-[11px] text-slate-500 font-medium tracking-wide">
+            KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          </p>
+        </footer>
       </div>
     );
   }
@@ -992,36 +999,43 @@ function VoteContent() {
   // SCREEN: SESI BILIK HABIS (DEAD-END SCREEN PERMANEN DI HP PEMILIH)
   if (isSessionExpired) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-center select-none font-sans">
-        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 border border-red-500/30 shadow-2xl animate-in fade-in zoom-in-95">
-          <div className="w-20 h-20 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+      <div className="min-h-screen bg-slate-900 flex flex-col justify-between text-white text-center select-none font-sans">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 border border-red-500/30 shadow-2xl animate-in fade-in zoom-in-95">
+            <div className="w-20 h-20 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+
+            <h2 className="text-2xl font-extrabold text-red-400 mb-3">
+              Waktu Sesi Bilik Telah Habis
+            </h2>
+
+            <p className="text-slate-300 text-sm leading-relaxed mb-6">
+              Batas waktu sesi Anda di Bilik {assignedBoothNumber || ''} telah berakhir demi menjaga kelancaran antrean pemilihan. Akses bilik ini telah ditutup dan sistem bilik telah dikosongkan.
+            </p>
+
+            <div className="bg-slate-900/60 rounded-xl p-4 text-xs text-amber-300 border border-amber-500/20 mb-6">
+              Silakan tinggalkan bilik suara dan hubungi petugas KPUM di meja registrasi jika membutuhkan verifikasi ulang.
+            </div>
+
+            <button
+              onClick={() => {
+                window.close();
+                window.location.href = 'about:blank';
+              }}
+              className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition text-sm cursor-pointer"
+            >
+              Keluar dari Sistem Pemira
+            </button>
           </div>
-
-          <h2 className="text-2xl font-extrabold text-red-400 mb-3">
-            Waktu Sesi Bilik Telah Habis
-          </h2>
-
-          <p className="text-slate-300 text-sm leading-relaxed mb-6">
-            Batas waktu sesi Anda di Bilik {assignedBoothNumber || ''} telah berakhir demi menjaga kelancaran antrean pemilihan. Akses bilik ini telah ditutup dan sistem bilik telah dikosongkan.
-          </p>
-
-          <div className="bg-slate-900/60 rounded-xl p-4 text-xs text-amber-300 border border-amber-500/20 mb-6">
-            Silakan tinggalkan bilik suara dan hubungi petugas KPUM di meja registrasi jika membutuhkan verifikasi ulang.
-          </div>
-
-          <button
-            onClick={() => {
-              window.close();
-              window.location.href = 'about:blank';
-            }}
-            className="w-full py-3.5 bg-slate-700 hover:bg-slate-600 text-white font-semibold rounded-xl transition text-sm cursor-pointer"
-          >
-            Keluar dari Sistem Pemira
-          </button>
         </div>
+        <footer className="w-full py-4 mt-auto text-center border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+          <p className="text-[11px] text-slate-500 font-medium tracking-wide">
+            KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          </p>
+        </footer>
       </div>
     );
   }
@@ -1029,27 +1043,34 @@ function VoteContent() {
   // SCREEN: AKSES DITOLAK (DIBUKA TANPA TOKEN RESMI)
   if (isAccessDenied) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-white text-center select-none font-sans">
-        <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 border border-amber-500/30 shadow-2xl space-y-5 animate-in fade-in">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/30">
-            <Lock className="w-8 h-8" />
+      <div className="min-h-screen bg-slate-900 flex flex-col justify-between text-white text-center select-none font-sans">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 border border-amber-500/30 shadow-2xl space-y-5 animate-in fade-in">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/30">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-black text-amber-400">
+              Akses Pemilihan Ditolak
+            </h2>
+            <p className="text-slate-300 text-xs leading-relaxed">
+              Sesi pemilihan bilik suara memerlukan otentikasi token sah. Silakan lakukan scan QR di gerbang registrasi bilik suara untuk memulai.
+            </p>
+            <button
+              onClick={() => {
+                window.close();
+                window.location.href = 'about:blank';
+              }}
+              className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition text-xs cursor-pointer"
+            >
+              Keluar
+            </button>
           </div>
-          <h2 className="text-xl font-black text-amber-400">
-            Akses Pemilihan Ditolak
-          </h2>
-          <p className="text-slate-300 text-xs leading-relaxed">
-            Sesi pemilihan bilik suara memerlukan otentikasi token sah. Silakan lakukan scan QR di gerbang registrasi bilik suara untuk memulai.
-          </p>
-          <button
-            onClick={() => {
-              window.close();
-              window.location.href = 'about:blank';
-            }}
-            className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl transition text-xs cursor-pointer"
-          >
-            Keluar
-          </button>
         </div>
+        <footer className="w-full py-4 mt-auto text-center border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+          <p className="text-[11px] text-slate-500 font-medium tracking-wide">
+            KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          </p>
+        </footer>
       </div>
     );
   }
@@ -1057,30 +1078,37 @@ function VoteContent() {
   // SCREEN: ANTREAN BILIK PENUH
   if (isWaitingQueue) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 select-none font-sans">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-blue-200 shadow-xl text-center space-y-5 animate-in fade-in">
-          <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center border border-blue-200 shadow-xs relative">
-            <Monitor className="w-8 h-8" />
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 animate-ping" />
-          </div>
-          <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Semua Bilik Suara Sedang Terisi
-            </h2>
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
-              Mohon menunggu sejenak di area tunggu. Layar ini akan otomatis mengarahkan Anda begitu bilik kosong tersedia.
+      <div className="min-h-screen bg-slate-50 flex flex-col justify-between p-4 select-none font-sans">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-blue-200 shadow-xl text-center space-y-5 animate-in fade-in">
+            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center border border-blue-200 shadow-xs relative">
+              <Monitor className="w-8 h-8" />
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 animate-ping" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                Semua Bilik Suara Sedang Terisi
+              </h2>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
+                Mohon menunggu sejenak di area tunggu. Layar ini akan otomatis mengarahkan Anda begitu bilik kosong tersedia.
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce" />
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
+              <span className="text-xs font-bold text-slate-700 ml-1">Menunggu bilik kosong...</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Sistem secara otomatis tersinkronisasi via Supabase Realtime
             </p>
           </div>
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce" />
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
-            <span className="text-xs font-bold text-slate-700 ml-1">Menunggu bilik kosong...</span>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Sistem secara otomatis tersinkronisasi via Supabase Realtime
-          </p>
         </div>
+        <footer className="w-full py-4 mt-auto text-center border-t border-slate-100 bg-white/50 backdrop-blur-sm">
+          <p className="text-[11px] text-slate-400 font-medium tracking-wide">
+            KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          </p>
+        </footer>
       </div>
     );
   }
@@ -1088,16 +1116,23 @@ function VoteContent() {
   // SCREEN: PEMILIHAN DITUTUP
   if (step !== 'SUCCESS' && electionStatus === 'TUTUP') {
     return (
-      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans select-none">
-        <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200">
-            <Lock className="w-8 h-8" />
+      <div className="flex flex-col justify-between min-h-screen text-center bg-slate-50 font-sans select-none">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200">
+              <Lock className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 uppercase">PEMIRA UBTH 2026 Telah Resmi Ditutup</h3>
+            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              PEMIRA UBTH 2026 Telah Resmi Ditutup. Terima kasih atas partisipasi seluruh civitas akademika.
+            </p>
           </div>
-          <h3 className="text-xl font-black text-slate-900 uppercase">PEMIRA UBTH 2026 Telah Resmi Ditutup</h3>
-          <p className="text-xs text-slate-500 leading-relaxed font-medium">
-            PEMIRA UBTH 2026 Telah Resmi Ditutup. Terima kasih atas partisipasi seluruh civitas akademika.
-          </p>
         </div>
+        <footer className="w-full py-4 mt-auto text-center border-t border-slate-100 bg-white/50 backdrop-blur-sm">
+          <p className="text-[11px] text-slate-400 font-medium tracking-wide">
+            KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          </p>
+        </footer>
       </div>
     );
   }
@@ -1105,16 +1140,23 @@ function VoteContent() {
   // SCREEN: PEMILIHAN DIJEDA
   if (step !== 'SUCCESS' && electionStatus === 'JEDA') {
     return (
-      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans select-none">
-        <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
-            <AlertTriangle className="w-8 h-8" />
+      <div className="flex flex-col justify-between min-h-screen text-center bg-slate-50 font-sans select-none">
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="max-w-md w-full p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-black text-slate-900 uppercase">Sesi Pemilihan Sedang Dijeda</h3>
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              Sesi Pemilihan Sedang Dijeda Sementara oleh Panitia KPUM.
+            </p>
           </div>
-          <h3 className="text-xl font-black text-slate-900 uppercase">Sesi Pemilihan Sedang Dijeda</h3>
-          <p className="text-xs text-slate-600 leading-relaxed font-medium">
-            Sesi Pemilihan Sedang Dijeda Sementara oleh Panitia KPUM.
-          </p>
         </div>
+        <footer className="w-full py-4 mt-auto text-center border-t border-slate-100 bg-white/50 backdrop-blur-sm">
+          <p className="text-[11px] text-slate-400 font-medium tracking-wide">
+            KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          </p>
+        </footer>
       </div>
     );
   }
@@ -1150,21 +1192,15 @@ function VoteContent() {
           </div>
         </div>
 
-        {/* Kanan: Indikator Timer & Watermark dengan Titik */}
-        <div className="flex items-center gap-4 text-xs">
+        {/* Kanan: Indikator Timer Sesi Bilik */}
+        <div className="flex items-center gap-2 sm:gap-4 text-xs">
           {/* Sesi Bilik Timer */}
           {step !== 'BOOTH_ROUTING' && step !== 'SUCCESS' && step !== 'SESSION_EXPIRED' && (
-            <div className="flex items-center gap-1.5 font-semibold text-rose-600">
+            <div className="flex items-center gap-1.5 font-semibold text-rose-600 whitespace-nowrap">
               <span className={`w-2 h-2 rounded-full bg-rose-500 ${isLoadingCandidates ? 'opacity-40 animate-none' : 'animate-ping'}`}></span>
               <span>Sesi: {isLoadingCandidates ? 'Memuat Data...' : formatTimer(timerSeconds)}</span>
             </div>
           )}
-
-          {/* Watermark By Sagit Faturrakhman */}
-          <div className="hidden sm:flex items-center gap-1.5 text-slate-600 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span>System by Sagit Faturrakhman</span>
-          </div>
         </div>
       </header>
 
@@ -1217,10 +1253,18 @@ function VoteContent() {
             ========================================================================= */}
         {step === 'IDENTITAS' && (
           <div className="w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-6 animate-in fade-in">
-            <div>
-              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block mb-1">
+            {/* Header Tahapan & Watermark Elegan */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold text-indigo-600 tracking-wider uppercase">
                 TAHAP 1: IDENTITAS PEMILIH
               </span>
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Engineered by Sagit Faturrakhman</span>
+              </div>
+            </div>
+
+            <div>
               <h2 className="text-2xl font-black text-slate-900 tracking-tight">
                 Verifikasi Hak Suara DPT
               </h2>
@@ -1359,6 +1403,13 @@ function VoteContent() {
                   )}
                 </button>
               </div>
+
+              {/* Opsi Penutup di Bawah Tombol di Dalam Kartu */}
+              <div className="mt-6 pt-3 border-t border-slate-100/80 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
+                <span>Secure E-Voting</span>
+                <span>•</span>
+                <span className="text-slate-600 font-semibold">Engineered by Sagit Faturrakhman</span>
+              </div>
             </form>
           </div>
         )}
@@ -1368,11 +1419,19 @@ function VoteContent() {
             ========================================================================= */}
         {step === 'VOTE_BEM' && (
           <div className="w-full max-w-4xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-6 animate-in fade-in">
+            {/* Header Tahapan & Watermark Elegan */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold text-indigo-600 tracking-wider uppercase">
+                SURAT SUARA 1 DARI 2
+              </span>
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Engineered by Sagit Faturrakhman</span>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
-                <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block mb-1">
-                  SURAT SUARA 1 DARI 2
-                </span>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   Surat Suara 1 dari 2: Pemilihan Presiden BEM Universitas
                 </h2>
@@ -1537,6 +1596,13 @@ function VoteContent() {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Watermark Penutup di Bawah Tombol di Dalam Kartu */}
+            <div className="mt-6 pt-3 border-t border-slate-100/80 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
+              <span>Secure E-Voting</span>
+              <span>•</span>
+              <span className="text-slate-600 font-semibold">Engineered by Sagit Faturrakhman</span>
+            </div>
           </div>
         )}
 
@@ -1545,11 +1611,19 @@ function VoteContent() {
             ========================================================================= */}
         {step === 'VOTE_HIMA' && (
           <div className="w-full max-w-4xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-6 animate-in fade-in">
+            {/* Header Tahapan & Watermark Elegan */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold text-indigo-600 tracking-wider uppercase">
+                SURAT SUARA 2 DARI 2
+              </span>
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Engineered by Sagit Faturrakhman</span>
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
               <div>
-                <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block mb-1">
-                  SURAT SUARA 2 DARI 2
-                </span>
                 <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                   Surat Suara 2 dari 2: Pemilihan Ketua Himpunan ({voterProdi})
                 </h2>
@@ -1725,6 +1799,13 @@ function VoteContent() {
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Watermark Penutup di Bawah Tombol di Dalam Kartu */}
+            <div className="mt-6 pt-3 border-t border-slate-100/80 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
+              <span>Secure E-Voting</span>
+              <span>•</span>
+              <span className="text-slate-600 font-semibold">Engineered by Sagit Faturrakhman</span>
+            </div>
           </div>
         )}
 
@@ -1733,10 +1814,18 @@ function VoteContent() {
             ========================================================================= */}
         {step === 'REVIEW_CONFIRM' && (
           <div className="w-full max-w-4xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-2xl space-y-6 animate-in fade-in zoom-in-95">
-            <div className="text-center space-y-1 max-w-xl mx-auto">
-              <span className="text-[11px] font-bold text-blue-600 uppercase tracking-wider block">
-                TAHAP TINJAUAN AKHIR
+            {/* Header Tahapan & Watermark Elegan */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-[11px] font-bold text-indigo-600 tracking-wider uppercase">
+                KONFIRMASI AKHIR
               </span>
+              <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Engineered by Sagit Faturrakhman</span>
+              </div>
+            </div>
+
+            <div className="text-center space-y-1 max-w-xl mx-auto">
               <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                 Tinjau Pilihan Suara Anda
               </h2>
@@ -1893,6 +1982,13 @@ function VoteContent() {
                 )}
               </button>
             </div>
+
+            {/* Watermark Penutup di Bawah Tombol di Dalam Kartu */}
+            <div className="mt-6 pt-3 border-t border-slate-100/80 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-medium">
+              <span>Secure E-Voting</span>
+              <span>•</span>
+              <span className="text-slate-600 font-semibold">Engineered by Sagit Faturrakhman</span>
+            </div>
           </div>
         )}
 
@@ -1959,9 +2055,11 @@ function VoteContent() {
         )}
       </main>
 
-      {/* FOOTER */}
-      <footer className="relative z-20 py-3 text-center text-[11px] font-medium text-slate-400 border-t border-slate-200/60 bg-white">
-        KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+      {/* FOOTER RESMI */}
+      <footer className="w-full py-4 mt-auto text-center">
+        <p className="text-[11px] text-slate-400 font-medium tracking-wide">
+          KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+        </p>
       </footer>
 
       {/* Visi Misi Modal */}
