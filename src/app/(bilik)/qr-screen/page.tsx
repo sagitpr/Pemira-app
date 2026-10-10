@@ -150,9 +150,51 @@ export default function QrScreenPage() {
         <div className="absolute inset-0 bg-gradient-to-b from-slate-950/40 via-slate-900/15 via-40% to-[#FAF9F5] to-75%" />
       </div>
 
-      {/* Aksen Lengkungan Vektor Biru Sudut Kiri Atas */}
-      <div className="pointer-events-none absolute -top-16 -left-16 z-10 h-56 w-56 rounded-full bg-gradient-to-br from-sky-400 to-blue-600 opacity-90 shadow-lg" />
-      <div className="pointer-events-none absolute -top-24 -left-24 z-10 h-72 w-72 rounded-full border-[16px] border-sky-300/40" />
+      {/* Ornamen Sayap Kiri Atas */}
+      <div className="absolute top-0 left-0 pointer-events-none opacity-80 z-0">
+        <svg width="220" height="200" viewBox="0 0 220 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M-20 -20 C60 20, 140 80, 180 160 C120 130, 60 90, -20 60 Z" fill="url(#wingGradientLeft1)" opacity="0.9"/>
+          <path d="M-20 -20 C40 40, 100 110, 130 180 C80 140, 30 90, -20 50 Z" fill="url(#wingGradientLeft2)" opacity="0.6"/>
+          <path d="M-20 -20 C20 60, 60 140, 80 190 C40 140, 10 90, -20 40 Z" fill="url(#wingGradientLeft3)" opacity="0.4"/>
+          <defs>
+            <linearGradient id="wingGradientLeft1" x1="0" y1="0" x2="180" y2="160" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#3B82F6"/>
+              <stop offset="1" stopColor="#6366F1"/>
+            </linearGradient>
+            <linearGradient id="wingGradientLeft2" x1="0" y1="0" x2="130" y2="180" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#60A5FA"/>
+              <stop offset="1" stopColor="#3B82F6"/>
+            </linearGradient>
+            <linearGradient id="wingGradientLeft3" x1="0" y1="0" x2="80" y2="190" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#93C5FD"/>
+              <stop offset="1" stopColor="#60A5FA"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      {/* Ornamen Sayap Kanan Atas */}
+      <div className="absolute top-0 right-0 pointer-events-none opacity-80 z-0 scale-x-[-1]">
+        <svg width="220" height="200" viewBox="0 0 220 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M-20 -20 C60 20, 140 80, 180 160 C120 130, 60 90, -20 60 Z" fill="url(#wingGradientRight1)" opacity="0.9"/>
+          <path d="M-20 -20 C40 40, 100 110, 130 180 C80 140, 30 90, -20 50 Z" fill="url(#wingGradientRight2)" opacity="0.6"/>
+          <path d="M-20 -20 C20 60, 60 140, 80 190 C40 140, 10 90, -20 40 Z" fill="url(#wingGradientRight3)" opacity="0.4"/>
+          <defs>
+            <linearGradient id="wingGradientRight1" x1="0" y1="0" x2="180" y2="160" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#3B82F6"/>
+              <stop offset="1" stopColor="#6366F1"/>
+            </linearGradient>
+            <linearGradient id="wingGradientRight2" x1="0" y1="0" x2="130" y2="180" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#60A5FA"/>
+              <stop offset="1" stopColor="#3B82F6"/>
+            </linearGradient>
+            <linearGradient id="wingGradientRight3" x1="0" y1="0" x2="80" y2="190" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#93C5FD"/>
+              <stop offset="1" stopColor="#60A5FA"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
 
       {/* Aksen Lengkungan Vektor Bawah (Kiri & Kanan) */}
       <div className="pointer-events-none absolute -bottom-16 -left-16 z-10 h-64 w-64">
