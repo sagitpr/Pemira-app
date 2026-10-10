@@ -28,8 +28,23 @@ export default function AdminPaslonPage() {
   } = useAdmin();
 
   const [activeTab, setActiveTab] = useState<'BEM' | 'HIMA'>('BEM');
+  const [selectedHimaFilter, setSelectedHimaFilter] = useState('ALL');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
+
+  // Edit modal states
+  const [editingCandidate, setEditingCandidate] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    candidate_number: 1,
+    name: '',
+    chairman_name: '',
+    vice_chairman_name: '',
+    category: 'BEM' as 'BEM' | 'HIMA',
+    hima_name: '',
+    vision: '',
+    mission: '',
+    image_url: '',
+  });
 
   // Persistent candidates state dari Supabase
   const [candidatesList, setCandidatesList] = useState<Candidate[]>([]);
@@ -41,6 +56,7 @@ export default function AdminPaslonPage() {
   const [formType, setFormType] = useState<'BEM' | 'HIMA'>('BEM');
   const [formFaculty, setFormFaculty] = useState<'FTB' | 'FIKES' | 'FARMASI'>('FTB');
   const [formProdi, setFormProdi] = useState('Bisnis Digital');
+  const [formHimaName, setFormHimaName] = useState('');
   const [formLeader, setFormLeader] = useState('');
   const [formVice, setFormVice] = useState('');
   const [formSlogan, setFormSlogan] = useState('');
@@ -91,9 +107,23 @@ export default function AdminPaslonPage() {
     };
   }, []);
 
+  const availableHimaList = Array.from(
+    new Set(
+      candidatesList
+        .filter((c) => c.type !== 'BEM' && (c as any).category !== 'BEM')
+        .map((c: any) => c.hima_name || c.prodi || c.organization || c.prodi_name)
+        .filter(Boolean)
+    )
+  );
+
   const bemCandidatesList = candidatesList.filter((c) => c.type === 'BEM' || (c as any).category === 'BEM');
   const himaCandidatesList = candidatesList.filter((c) => c.type === 'HIMA' || (c as any).category === 'HIMA');
-  const currentCandidates = activeTab === 'BEM' ? bemCandidatesList : himaCandidatesList;
+  const filteredHimaList = himaCandidatesList.filter((c) => {
+    if (selectedHimaFilter === 'ALL') return true;
+    const himaName = (c as any).hima_name || (c as any).prodi || (c as any).organization || (c as any).prodi_name || '';
+    return himaName.toLowerCase() === selectedHimaFilter.toLowerCase();
+  });
+  const currentCandidates = activeTab === 'BEM' ? bemCandidatesList : filteredHimaList;
 
   const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,6 +153,109 @@ export default function AdminPaslonPage() {
     }
   };
 
+  const handleOpenEditModal = (candidate: any) => {
+    setEditingCandidate(candidate);
+    const candType = (candidate.category || candidate.type || 'BEM').toUpperCase() as 'BEM' | 'HIMA';
+    setEditForm({
+      candidate_number: Number(candidate.candidate_number || candidate.number) || 1,
+      name: candidate.name || '',
+      chairman_name: candidate.chairman_name || candidate.leader_name || candidate.leader || '',
+      vice_chairman_name: candidate.vice_chairman_name || candidate.vice_leader_name || candidate.vice || '',
+      category: candType,
+      hima_name: candidate.hima_name || candidate.prodi || candidate.organization || candidate.prodi_name || '',
+      vision: candidate.vision || candidate.visi || '',
+      mission: candidate.mission || candidate.misi || '',
+      image_url: candidate.photo_url || candidate.image_url || candidate.photoUrl || '',
+    });
+  };
+
+  const handleEditPhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditForm((prev) => ({ ...prev, image_url: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleUpdateCandidate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCandidate) return;
+
+    if (!editForm.chairman_name.trim() || !editForm.vice_chairman_name.trim()) {
+      alert('Nama Calon Ketua dan Wakil Ketua wajib diisi.');
+      return;
+    }
+
+    if (editForm.category === 'HIMA' && !editForm.hima_name.trim()) {
+      alert('Nama HIMA wajib diisi untuk kategori HIMA.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const supabase = createClient();
+      const leader = editForm.chairman_name.trim();
+      const vice = editForm.vice_chairman_name.trim();
+      const fullName = `${leader} & ${vice}`;
+      const himaVal = editForm.category === 'HIMA' ? editForm.hima_name.trim() : null;
+
+      const baseUpdate: any = {
+        candidate_number: Number(editForm.candidate_number) || 1,
+        number: String(editForm.candidate_number || '1'),
+        name: fullName,
+        chairman_name: leader,
+        leader_name: leader,
+        vice_chairman_name: vice,
+        vice_leader_name: vice,
+        category: editForm.category,
+        type: editForm.category,
+        prodi: himaVal,
+        prodi_name: himaVal,
+        vision: editForm.vision.trim(),
+        visi: editForm.vision.trim(),
+        mission: editForm.mission.trim(),
+        misi: editForm.mission.trim(),
+        photo_url: editForm.image_url.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let { error } = await supabase
+        .from('candidates')
+        .update({
+          ...baseUpdate,
+          hima_name: himaVal,
+          image_url: editForm.image_url.trim() || null,
+        })
+        .eq('id', editingCandidate.id);
+
+      if (error && error.message.includes('column')) {
+        const retryRes = await supabase
+          .from('candidates')
+          .update(baseUpdate)
+          .eq('id', editingCandidate.id);
+        error = retryRes.error;
+      }
+
+      if (error) {
+        alert('Gagal memperbarui: ' + error.message);
+        return;
+      }
+
+      alert('Data paslon berhasil diperbarui!');
+      showToast('Data paslon berhasil diperbarui!', 'success');
+      setEditingCandidate(null);
+      await fetchCandidates();
+    } catch (err: any) {
+      console.error('Error updating candidate:', err);
+      alert('Gagal memperbarui: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleSaveCandidate = async (e: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!formLeader.trim() || !formVice.trim()) {
@@ -130,7 +263,13 @@ export default function AdminPaslonPage() {
       return;
     }
 
+    if (formType === 'HIMA' && !formHimaName.trim()) {
+      alert('Nama HIMA wajib diisi untuk kategori HIMA.');
+      return;
+    }
+
     setIsSaving(true);
+    const himaVal = formType === 'HIMA' ? (formHimaName.trim() || formProdi) : null;
     const formData = {
       nomorUrut: formNumber,
       candidate_number: formNumber,
@@ -141,7 +280,7 @@ export default function AdminPaslonPage() {
       vice_leader_name: formVice.trim(),
       kategori: formType,
       type: formType,
-      prodi: formProdi,
+      prodi: himaVal,
       visi: formVision.trim(),
       vision: formVision.trim(),
       misi: formMission.trim(),
@@ -152,7 +291,7 @@ export default function AdminPaslonPage() {
     try {
       const supabase = createClient();
       const candId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined;
-      const { data, error } = await supabase.from('candidates').insert([{
+      const baseInsert: any = {
         ...(candId ? { id: candId } : {}),
         candidate_number: Number(formData.candidate_number || formData.nomorUrut || '1') || 1,
         number: String(formData.candidate_number || formData.nomorUrut || '1'),
@@ -163,12 +302,24 @@ export default function AdminPaslonPage() {
         vice_chairman_name: formData.vice_leader_name || formData.wakil,
         category: formData.type || formData.kategori || 'BEM',
         type: formData.type || formData.kategori || 'BEM',
-        prodi: (formData.type === 'HIMA' || formData.kategori === 'HIMA') ? formData.prodi : null,
+        prodi: himaVal,
+        prodi_name: himaVal,
         faculty: 'FTB',
         vision: formData.vision || formData.visi || '',
         mission: formData.mission || formData.misi || '',
         photo_url: formData.photo_url || null,
+      };
+
+      let { data, error } = await supabase.from('candidates').insert([{
+        ...baseInsert,
+        hima_name: himaVal,
+        image_url: formData.photo_url || null,
       }]);
+
+      if (error && error.message.includes('column')) {
+        const retryRes = await supabase.from('candidates').insert([baseInsert]);
+        error = retryRes.error;
+      }
 
       if (error) {
         alert('Gagal menyimpan paslon: ' + error.message);
@@ -183,6 +334,7 @@ export default function AdminPaslonPage() {
       setFormLeader('');
       setFormVice('');
       setFormSlogan('');
+      setFormHimaName('');
       setFormPhotoUrl('');
       setFormVision('');
       setFormMission('');
@@ -234,29 +386,48 @@ export default function AdminPaslonPage() {
           </div>
         </div>
 
-        {/* TAB TOGGLE: BEM vs HIMA */}
-        <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
-          <button
-            onClick={() => setActiveTab('BEM')}
-            className={`px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'BEM'
-                ? 'bg-blue-600 text-white shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            BEM Univ ({bemCandidatesList.length})
-          </button>
+        {/* TAB TOGGLE: BEM vs HIMA + SUB-FILTER HIMA */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs w-fit">
+            <button
+              onClick={() => setActiveTab('BEM')}
+              className={`px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                activeTab === 'BEM'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              BEM Univ ({bemCandidatesList.length})
+            </button>
 
-          <button
-            onClick={() => setActiveTab('HIMA')}
-            className={`px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-              activeTab === 'HIMA'
-                ? 'bg-blue-600 text-white shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-          >
-            HIMA Prodi ({himaCandidatesList.length})
-          </button>
+            <button
+              onClick={() => setActiveTab('HIMA')}
+              className={`px-4 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                activeTab === 'HIMA'
+                  ? 'bg-blue-600 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              HIMA Prodi ({himaCandidatesList.length})
+            </button>
+          </div>
+
+          {activeTab === 'HIMA' && (
+            <div className="flex items-center gap-2">
+              <select
+                value={selectedHimaFilter}
+                onChange={(e) => setSelectedHimaFilter(e.target.value)}
+                className="text-xs px-3 py-2 border border-slate-200 rounded-xl bg-white font-medium text-slate-700 shadow-xs focus:outline-hidden focus:border-slate-900 cursor-pointer"
+              >
+                <option value="ALL">Semua HIMA</option>
+                {availableHimaList.map((hima: any) => (
+                  <option key={hima} value={hima}>
+                    {hima}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* CANDIDATES GRID */}
@@ -297,7 +468,7 @@ export default function AdminPaslonPage() {
                   className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between hover:shadow-md transition-shadow"
                 >
                   <div>
-                    {/* Header: Badge Nomor Urut & Aksi Hapus */}
+                    {/* Header: Badge Nomor Urut & Aksi Edit + Hapus */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-2">
                         <span className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
@@ -307,13 +478,24 @@ export default function AdminPaslonPage() {
                           No. {displayNumber}
                         </span>
                       </div>
-                      <button
-                        onClick={() => handleDelete(cand.id)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title="Hapus Paslon"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditModal(cand)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                          title="Edit Paslon"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(cand.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                          title="Hapus Paslon"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Thumbnail Foto Paslon (Rasio 3:4) */}
@@ -347,8 +529,10 @@ export default function AdminPaslonPage() {
 
                   {/* Footer Kartu Paslon: Kategori & Tombol Preview Detail */}
                   <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-500 text-[11px]">
-                      {cand.type === 'BEM' ? 'BEM Universitas' : `HIMA (${cand.prodi_id || cand.faculty_id || 'Prodi'})`}
+                    <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
+                      {(cand as any).category === 'BEM' || cand.type === 'BEM'
+                        ? 'BEM Universitas' 
+                        : ((cand as any).hima_name || (cand as any).prodi || (cand as any).organization || (cand as any).prodi_name || 'HIMA')}
                     </span>
                     <button
                       type="button"
@@ -474,6 +658,23 @@ export default function AdminPaslonPage() {
                       )}
                     </select>
                   </div>
+                </div>
+              )}
+
+              {/* Input Nama HIMA khusus kategori HIMA */}
+              {formType === 'HIMA' && (
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nama HIMA (Himpunan Mahasiswa) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: HIMASI (Sistem Informasi), HIMA ARS, HIMA Farmasi"
+                    value={formHimaName}
+                    onChange={(e) => setFormHimaName(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                  />
                 </div>
               )}
 
@@ -639,6 +840,233 @@ export default function AdminPaslonPage() {
                     </>
                   ) : (
                     <span>Simpan Paslon</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT PASLON */}
+      {editingCandidate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Edit Data Pasangan Calon (Paslon)
+                </h3>
+                <p className="text-xs text-slate-400 font-medium">
+                  Perbarui nomor urut, identitas kandidat, nama HIMA, visi, dan misi
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingCandidate(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Form */}
+            <form onSubmit={handleUpdateCandidate} className="p-6 space-y-4 text-xs">
+              {/* 1. Kategori & Nomor Urut */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Kategori Paslon
+                  </label>
+                  <select
+                    value={editForm.category}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value as any })}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white font-semibold text-slate-800 focus:outline-hidden focus:border-slate-900"
+                  >
+                    <option value="BEM">BEM Universitas</option>
+                    <option value="HIMA">HIMA Program Studi</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nomor Urut Paslon
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    required
+                    value={editForm.candidate_number}
+                    onChange={(e) => setEditForm({ ...editForm, candidate_number: Number(e.target.value) })}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 font-mono text-xs bg-white focus:outline-hidden focus:border-slate-900 font-bold"
+                  />
+                </div>
+              </div>
+
+              {/* Input Nama HIMA khusus kategori HIMA */}
+              {editForm.category === 'HIMA' && (
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nama HIMA (Himpunan Mahasiswa) <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: HIMASI (Sistem Informasi), HIMA ARS, HIMA Farmasi"
+                    value={editForm.hima_name}
+                    onChange={(e) => setEditForm({ ...editForm, hima_name: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                  />
+                </div>
+              )}
+
+              {/* 2. Nama Calon Ketua & Wakil */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nama Calon Ketua
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Muhammad Fikri"
+                    value={editForm.chairman_name}
+                    onChange={(e) => setEditForm({ ...editForm, chairman_name: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">
+                    Nama Calon Wakil Ketua
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Contoh: Aulia Rahma"
+                    value={editForm.vice_chairman_name}
+                    onChange={(e) => setEditForm({ ...editForm, vice_chairman_name: e.target.value })}
+                    className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* 3. Foto Paslon + Preview */}
+              <div className="p-3.5 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <label className="font-bold text-slate-800 block">
+                  Foto Paslon Resmi (Rasio 3:4)
+                </label>
+
+                <div className="flex items-center gap-4">
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
+                    {editForm.image_url ? (
+                      <img
+                        src={editForm.image_url}
+                        alt="Preview Foto"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center p-2">
+                        <ImageIcon className="w-6 h-6 text-slate-300 mx-auto mb-1" />
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase">
+                          3:4 Preview
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div>
+                      <span className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        URL Gambar:
+                      </span>
+                      <div className="relative">
+                        <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          placeholder="https://... atau /candidates/01.png"
+                          value={editForm.image_url}
+                          onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
+                          className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs cursor-pointer shadow-2xs">
+                        <Upload className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Ganti Foto dari Perangkat</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleEditPhotoFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      {editForm.image_url && (
+                        <button
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, image_url: '' })}
+                          className="text-xs text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Hapus Foto
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. Visi */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Visi Paslon
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Tuliskan visi utama..."
+                  value={editForm.vision}
+                  onChange={(e) => setEditForm({ ...editForm, vision: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                />
+              </div>
+
+              {/* 5. Misi */}
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Misi Paslon
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Tuliskan poin-poin misi..."
+                  value={editForm.mission}
+                  onChange={(e) => setEditForm({ ...editForm, mission: e.target.value })}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 text-xs bg-white focus:outline-hidden focus:border-slate-900"
+                />
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="pt-4 flex gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingCandidate(null)}
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="w-1/2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {isSaving ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Perbarui Paslon</span>
                   )}
                 </button>
               </div>
