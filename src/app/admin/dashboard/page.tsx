@@ -71,7 +71,7 @@ function BoothCard({
 }: {
   booth: BoothItem;
   isResetting: boolean;
-  onReset: (booth: BoothItem) => void;
+  onReset: (boothId: string) => void;
 }) {
   const st = (booth.status || '').toUpperCase();
   const isAvailable = st === 'AVAILABLE' || st === 'TERSEDIA' || st === 'KOSONG';
@@ -123,7 +123,7 @@ function BoothCard({
           </div>
         </div>
         <button
-          onClick={() => onReset(booth)}
+          onClick={() => onReset(String(booth.id || booth.booth_number))}
           disabled={isResetting}
           className="w-full py-1.5 text-xs text-slate-400 border border-slate-200 hover:bg-slate-50 hover:text-slate-600 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
@@ -158,7 +158,7 @@ function BoothCard({
         </div>
 
         <button
-          onClick={() => onReset(booth)}
+          onClick={() => onReset(String(booth.id || booth.booth_number))}
           disabled={isResetting}
           className="w-full py-1.5 text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
         >
@@ -196,12 +196,12 @@ function BoothCard({
       </div>
 
       <button
-        onClick={() => onReset(booth)}
+        onClick={() => onReset(String(booth.id || booth.booth_number))}
         disabled={isResetting}
         className="w-full py-1.5 text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
       >
         <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-        <span>↺ Reset Sesi</span>
+        <span>↺ Batalkan Sesi</span>
       </button>
     </div>
   );
@@ -271,18 +271,98 @@ export default function AdminDashboardPage() {
   const fetchVotersAndStats = fetchVotersStats;
   const fetchStats = fetchVotersStats;
 
-  // 2. Fetch Trafik Pengunjung Bilik (Interval 10 Menit)
-  const fetchTraffic = async () => {
+  // Helper Format Waktu WIB (Asia/Jakarta, UTC+7) untuk Trafik Pengunjung
+  const getWibTimeSlots = () => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now);
+    const curH = parseInt(parts.find((p) => p.type === 'hour')?.value || '08', 10);
+    const curM = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const curTotal = curH * 60 + curM;
+
+    const startTotal = 8 * 60; // Mulai dari 08:00 WIB
+    const endTotal = Math.max(startTotal, curTotal);
+    const slots: string[] = [];
+
+    for (let m = startTotal; m <= endTotal; m += 10) {
+      const hh = Math.floor(m / 60).toString().padStart(2, '0');
+      const mm = (m % 60).toString().padStart(2, '0');
+      slots.push(`${hh}:${mm}`);
+    }
+    return slots;
+  };
+
+  const getWibSlotFromIso = (isoString?: string) => {
+    if (!isoString) return '08:00';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '08:00';
+    const parts = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const hh = (parts.find((p) => p.type === 'hour')?.value || '08').padStart(2, '0');
+    const mmRaw = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const mm = (Math.floor(mmRaw / 10) * 10).toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  const updateTrafficChart = (logs: any[]) => {
+    const wibSlots = getWibTimeSlots();
+    const slotCountMap = new Map<string, number>();
+    wibSlots.forEach((s) => slotCountMap.set(s, 0));
+
+    (logs || []).forEach((log) => {
+      const slot = getWibSlotFromIso(log.created_at);
+      slotCountMap.set(slot, (slotCountMap.get(slot) || 0) + 1);
+    });
+
+    const allSortedSlots = Array.from(slotCountMap.keys()).sort();
+    const formattedChartData = allSortedSlots.map((time) => {
+      const count = slotCountMap.get(time) || 0;
+      return {
+        time,
+        pengunjung: count,
+        visitors: count,
+      };
+    });
+
+    setTrafficData(formattedChartData);
+  };
+
+  // 2. Fetch Trafik Pengunjung Bilik (Wajib dari activity_logs BOOTH_VISIT)
+  const fetchTrafficData = async () => {
     try {
-      const res = await fetch('/api/admin/stats/traffic');
-      const json = await res.json();
-      if (json?.success && Array.isArray(json?.data)) {
-        setTrafficData(json.data);
+      const supabase = createClient();
+      let logs: any[] = [];
+      const { data, error } = await supabase
+        .from('activity_logs')
+        .select('created_at, booth_number, action, event_type')
+        .or('action.eq.BOOTH_VISIT,event_type.eq.BOOTH_VISIT,type.eq.BOOTH_VISIT')
+        .order('created_at', { ascending: true });
+
+      if (!error && Array.isArray(data)) {
+        logs = data;
+      } else {
+        const { data: fallbackData } = await supabase
+          .from('activity_logs')
+          .select('created_at, booth_number, event_type, type')
+          .or('event_type.eq.BOOTH_VISIT,type.eq.BOOTH_VISIT')
+          .order('created_at', { ascending: true });
+        if (Array.isArray(fallbackData)) logs = fallbackData;
       }
+
+      updateTrafficChart(logs);
     } catch (err) {
       console.warn('Gagal memuat trafik bilik:', err);
     }
   };
+  const fetchTraffic = fetchTrafficData;
 
   // 3. Fetch Live Activity Logs dari tabel activity_logs di Supabase
   const fetchActivityLogs = async () => {
@@ -453,6 +533,24 @@ export default function AdminDashboardPage() {
       })
       .subscribe();
 
+    const trafficChannel = supabase
+      .channel('traffic-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'activity_logs' },
+        (payload: any) => {
+          if (
+            payload?.new?.action === 'BOOTH_VISIT' ||
+            payload?.new?.event_type === 'BOOTH_VISIT' ||
+            payload?.new?.type === 'BOOTH_VISIT'
+          ) {
+            // Begitu ada pemilih masuk bilik, grafik seketika naik secara otomatis tanpa refresh!
+            fetchTrafficData();
+          }
+        }
+      )
+      .subscribe();
+
     const interval = setInterval(async () => {
       if (inFlightRef.current) return;
       inFlightRef.current = true;
@@ -461,7 +559,7 @@ export default function AdminDashboardPage() {
           fetchStats(),
           fetchBooths(),
           fetchActivityLogs(),
-          fetchTraffic(),
+          fetchTrafficData(),
         ]);
       } finally {
         inFlightRef.current = false;
@@ -471,72 +569,55 @@ export default function AdminDashboardPage() {
     return () => {
       clearInterval(interval);
       supabase.removeChannel(channel);
+      supabase.removeChannel(trafficChannel);
     };
   }, []);
 
-  // Reset Single Booth Handler dengan Konfirmasi Mahasiswa
-  const handleResetSingleBooth = async (booth: BoothItem) => {
-    const boothNum = booth.booth_number;
-    const st = (booth.status || '').toUpperCase();
-    const isOccupied = st === 'DIGUNAKAN' || st === 'TERISI' || st === 'SEDANG MEMILIH';
-    const voterName = booth.voter_name || 'Pemilih';
-    const boothNumStr = String(boothNum).padStart(2, '0');
-
-    if (isOccupied) {
-      const confirmReset = window.confirm(
-        `Reset Bilik ${boothNumStr}? Mahasiswa ${voterName} akan dikembalikan statusnya ke Belum Memilih dan harus scan ulang QR.`
-      );
-      if (!confirmReset) return;
-    }
-
-    setResettingBoothId(boothNum);
+  // 1. Batalkan Alokasi & Kill-switch Sesi Bilik Pemilih Seketika
+  const handleCancelAllocation = async (boothId: string) => {
     try {
-      const supabase = createClient();
-      await supabase
-        .from('booths')
-        .update({
-          status: 'TERSEDIA',
-          voter_nim: null,
-          voter_name: null,
-          voter_prodi: null,
-          current_voter_nim: null,
-          current_voter_name: null,
-          current_voter_prodi: null,
-          started_at: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('booth_number', boothNum);
+      const confirmCancel = window.confirm(
+        "Yakin ingin membatalkan alokasi bilik ini? Sesi di HP pemilih akan langsung dibatalkan dan dikunci."
+      );
+      if (!confirmCancel) return;
 
-      if (booth.voter_nim || booth.current_voter_nim) {
-        const nimToReset = booth.voter_nim || booth.current_voter_nim;
-        await supabase
-          .from('voters')
-          .update({ voting_status: 'BELUM', start_vote_at: null })
-          .eq('nim', nimToReset)
-          .eq('has_voted', false);
+      const supabase = createClient();
+      // Reset bilik dan hanguskan token sesi seketika di Supabase
+      const updatePayload = {
+        status: 'AVAILABLE',
+        session_token: null,
+        current_voter_name: null,
+        current_voter_nim: null,
+        current_voter_prodi: null,
+        voter_name: null,
+        voter_nim: null,
+        voter_prodi: null,
+        started_at: null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let { error } = await supabase
+        .from('booths')
+        .update(updatePayload)
+        .eq('id', boothId);
+
+      if (error && !isNaN(Number(boothId))) {
+        const fallbackRes = await supabase
+          .from('booths')
+          .update(updatePayload)
+          .eq('booth_number', Number(boothId));
+        error = fallbackRes.error;
       }
 
-      showToast(`Bilik ${boothNumStr} berhasil direset ke status Tersedia.`, 'success');
-      await fetchBooths();
-    } catch (err: any) {
-      showToast(`Gagal reset bilik: ${err?.message || 'Error'}`, 'error');
-    } finally {
-      setResettingBoothId(null);
-      const timeStr = new Date().toLocaleTimeString('id-ID');
-      const logText = isOccupied
-        ? `Bilik ${boothNumStr} di-reset oleh Admin KPUM. Mahasiswa ${voterName} dipersilakan scan ulang QR.`
-        : `Admin mereset sesi Bilik ${boothNumStr} ke status Tersedia.`;
-
-      setActivityLogs((prev) => [
-        {
-          id: `log-${Date.now()}`,
-          time: timeStr,
-          text: logText,
-          type: 'status',
-        },
-        ...prev.slice(0, 19),
-      ]);
-      setResettingBoothId(null);
+      if (error) {
+        alert("Gagal membatalkan alokasi: " + error.message);
+      } else {
+        showToast("Alokasi bilik berhasil dibatalkan dan sesi di HP pemilih dikunci.", "success");
+        // Refresh state lokal dashboard
+        fetchBooths();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -754,7 +835,7 @@ export default function AdminDashboardPage() {
                     <Tooltip content={<TrafficTooltip />} />
                     <Area
                       type="monotone"
-                      dataKey="visitors"
+                      dataKey="pengunjung"
                       name="Pengunjung Bilik"
                       stroke="#2563eb"
                       strokeWidth={2.5}
@@ -876,7 +957,7 @@ export default function AdminDashboardPage() {
                   key={booth.id || booth.booth_number}
                   booth={booth}
                   isResetting={resettingBoothId === booth.booth_number}
-                  onReset={handleResetSingleBooth}
+                  onReset={handleCancelAllocation}
                 />
               ))
             )}

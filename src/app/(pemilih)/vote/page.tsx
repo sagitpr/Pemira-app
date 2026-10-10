@@ -50,6 +50,7 @@ function VoteContent() {
   const [loading, setLoading] = useState(true);
   const [isAccessDenied, setIsAccessDenied] = useState(false);
   const [isSessionExpired, setIsSessionExpired] = useState(false);
+  const [isAccessRevoked, setIsAccessRevoked] = useState(false);
 
   const [assignedBooth, setAssignedBooth] = useState<any>(null);
   const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 01');
@@ -130,6 +131,43 @@ function VoteContent() {
     };
   }, []);
 
+  // Helper Pencatatan Event Kunjungan Fisik Bilik ke activity_logs
+  const lastLoggedVisitRef = useRef<number>(0);
+  const recordBoothVisit = useCallback(async (boothNum: number) => {
+    const now = Date.now();
+    if (now - lastLoggedVisitRef.current < 4000) return;
+    lastLoggedVisitRef.current = now;
+
+    try {
+      const bNumber = Number(boothNum) || 1;
+      const nowIso = new Date().toISOString();
+      const payload = {
+        action: 'BOOTH_VISIT',
+        event_type: 'BOOTH_VISIT',
+        type: 'BOOTH_VISIT',
+        booth_number: bNumber,
+        details: `Pemilih memasuki Bilik ${bNumber}`,
+        message: `Pemilih memasuki Bilik ${bNumber}`,
+        text: `Pemilih memasuki Bilik ${bNumber}`,
+        created_at: nowIso,
+      };
+
+      const { error } = await supabase.from('activity_logs').insert([payload]);
+      if (error) {
+        await supabase.from('activity_logs').insert([
+          {
+            action: 'BOOTH_VISIT',
+            booth_number: bNumber,
+            details: `Pemilih memasuki Bilik ${bNumber}`,
+            created_at: nowIso,
+          },
+        ]);
+      }
+    } catch (err) {
+      console.warn('Catat kunjungan bilik note:', err);
+    }
+  }, []);
+
   // Helper Penguncian Bilik Otomatis
   const assignAndLockBooth = useCallback(async (booth: any, token: string | null) => {
     try {
@@ -150,13 +188,16 @@ function VoteContent() {
         })
         .eq('id', booth.id);
 
+      // Catat event kunjungan fisik pemilih ke tabel activity_logs
+      recordBoothVisit(bNum);
+
       if (typeof window !== 'undefined') {
         localStorage.setItem('pemira_booth', String(bNum));
       }
     } catch (lockErr) {
       console.warn('Gagal mengunci bilik:', lockErr);
     }
-  }, []);
+  }, [recordBoothVisit]);
 
   // 1. Initial Session Check & Auto-Booth Allocation
   useEffect(() => {
@@ -291,6 +332,52 @@ function VoteContent() {
       clearInterval(pollInterval);
     };
   }, [isWaitingQueue, assignAndLockBooth, showToast]);
+
+  // 2B. Realtime Channel Pemantau Sesi Bilik (Kill-switch Pembatalan Alokasi oleh Admin)
+  useEffect(() => {
+    const targetBoothId = assignedBoothId || assignedBooth?.id;
+    if (!targetBoothId) return;
+
+    const boothChannel = supabase
+      .channel(`booth-killswitch-${targetBoothId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'booths',
+          filter: `id=eq.${targetBoothId}`,
+        },
+        (payload: any) => {
+          const updatedBooth = payload?.new;
+          if (!updatedBooth) return;
+
+          const statusUpper = String(updatedBooth.status || '').toUpperCase();
+          const isAvail = statusUpper === 'AVAILABLE' || statusUpper === 'TERSEDIA' || statusUpper === 'KOSONG';
+
+          // JIKA ADMIN MEMBATALKAN ALOKASI:
+          // Status bilik kembali 'AVAILABLE' atau session_token dihapus padahal pemilih belum selesai (currentStep !== 5)
+          if ((isAvail || !updatedBooth.session_token) && currentStep !== 5) {
+            // 1. Bersihkan seluruh penyimpanan perangkat seketika
+            if (typeof window !== 'undefined') {
+              sessionStorage.clear();
+              localStorage.removeItem('pemira_session');
+              localStorage.removeItem('pemira_session_token');
+              localStorage.removeItem('pemira_voter_session');
+              localStorage.removeItem('pemira_booth');
+            }
+
+            // 2. Kunci layar ke tampilan mati (ACCESS_REVOKED)
+            setIsAccessRevoked(true);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(boothChannel);
+    };
+  }, [assignedBoothId, assignedBooth?.id, currentStep]);
 
   // 3. Penanganan Waktu Sesi Habis (Reset DPT ke "BELUM" & Pengosongan Bilik - Tanpa Redirect ke /qr-screen)
   const handleSessionTimeout = useCallback(async () => {
@@ -474,6 +561,8 @@ function VoteContent() {
           })
           .eq('id', assignedBoothId);
       }
+      // Catat event kunjungan fisik pemilih ke tabel activity_logs
+      await recordBoothVisit(assignedBoothNumber || assignedBooth?.booth_number || 1);
     } catch (e) {
       console.warn('Update booth note:', e);
     }
@@ -646,6 +735,41 @@ function VoteContent() {
     setIsSubmitting(true);
     setIsConfirmModalOpen(false);
 
+    // C. PERLINDUNGAN SUBMIT GANDA & VALIDASI SAAT KLIK KIRIM SUARA:
+    // Sebelum menyimpan suara ke tabel 'votes', lakukan pengecekan terakhir ke tabel 'booths'
+    try {
+      const targetBoothIdentifier = assignedBoothId || assignedBooth?.id;
+      let boothQuery = supabase.from('booths').select('id, status, session_token');
+      if (targetBoothIdentifier) {
+        boothQuery = boothQuery.eq('id', targetBoothIdentifier);
+      } else {
+        boothQuery = boothQuery.eq('booth_number', assignedBoothNumber || 1);
+      }
+
+      const { data: latestBoothData } = await boothQuery.maybeSingle();
+
+      if (latestBoothData) {
+        const latestStatus = String(latestBoothData.status || '').toUpperCase();
+        const isBoothAvailable = latestStatus === 'AVAILABLE' || latestStatus === 'TERSEDIA' || latestStatus === 'KOSONG';
+
+        if (isBoothAvailable || !latestBoothData.session_token) {
+          setIsSubmitting(false);
+          if (typeof window !== 'undefined') {
+            sessionStorage.clear();
+            localStorage.removeItem('pemira_session');
+            localStorage.removeItem('pemira_session_token');
+            localStorage.removeItem('pemira_voter_session');
+            localStorage.removeItem('pemira_booth');
+          }
+          setIsAccessRevoked(true);
+          alert('Sesi pemilihan Anda sudah kedaluwarsa atau dibatalkan!');
+          return;
+        }
+      }
+    } catch (checkErr) {
+      console.warn('Pengecekan status bilik sebelum vote note:', checkErr);
+    }
+
     const voterNim = detectedVoter?.nim || inputNim.trim();
     const voterName = detectedVoter?.name || inputName.trim() || 'Pemilih';
     const voterProdi = detectedVoter?.prodi || detectedVoter?.prodi_name || inputProdi.trim();
@@ -771,6 +895,38 @@ function VoteContent() {
         <div className="text-center p-6">
           <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-slate-600 font-semibold text-sm">Menghubungkan ke Bilik Suara...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // SCREEN: AKSES DICABUT / DIBATALKAN OLEH ADMIN (KILL-SWITCH ACCESS_REVOKED)
+  if (isAccessRevoked) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-white text-center">
+        <div className="max-w-md w-full bg-slate-900 border border-rose-500/30 rounded-3xl p-8 shadow-2xl">
+          <div className="w-16 h-16 bg-rose-500/20 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-5">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-rose-400 mb-2">
+            Akses Sesi Bilik Dibatalkan
+          </h2>
+          <p className="text-slate-400 text-sm leading-relaxed mb-6">
+            Sesi pemilihan untuk bilik ini telah dibatalkan atau ditarik oleh Panitia KPUM. Anda tidak dapat lagi mengisi identitas ataupun memberikan suara.
+          </p>
+          <div className="p-3 bg-slate-800/80 rounded-xl text-xs text-amber-300 border border-amber-500/20 mb-6">
+            Silakan keluar dari bilik dan hubungi petugas di meja registrasi jika terjadi kesalahan teknis.
+          </div>
+          <button
+            onClick={() => {
+              window.location.href = 'about:blank';
+            }}
+            className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl transition text-xs cursor-pointer"
+          >
+            Tutup Halaman
+          </button>
         </div>
       </div>
     );
