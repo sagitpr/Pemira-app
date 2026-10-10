@@ -8,7 +8,24 @@ import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
 import AppLogo from '@/components/common/AppLogo';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
-import { createClient } from '@/lib/supabase/client';
+import { createClient, supabase } from '@/lib/supabase/client';
+
+const MASTER_PRODI = [
+  'Informatika',
+  'Sistem Informasi',
+  'Teknologi Informasi',
+  'Teknik Industri',
+  'Teknik Elektro',
+  'Teknik Sipil',
+  'Arsitektur',
+  'Manajemen',
+  'Akuntansi',
+  'Ilmu Komunikasi',
+  'Desain Komunikasi Visual',
+  'Hukum',
+  'Kewirausahaan',
+  'Bioteknologi',
+];
 import {
   Check,
   CheckCircle2,
@@ -59,8 +76,9 @@ function VoteContent() {
   }, []);
 
   const [currentStep, setCurrentStep] = useState<number>(1);
-  const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 03');
-  const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(3);
+  const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 01');
+  const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(1);
+  const [assignedBoothId, setAssignedBoothId] = useState<string>('');
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [isTokenExpired, setIsTokenExpired] = useState<boolean>(false);
   const [isWaitingQueue, setIsWaitingQueue] = useState<boolean>(false);
@@ -72,6 +90,8 @@ function VoteContent() {
   // Form State
   const [inputNim, setInputNim] = useState<string>('');
   const [inputName, setInputName] = useState<string>('');
+  const [inputProdi, setInputProdi] = useState<string>('');
+  const [inputAngkatan, setInputAngkatan] = useState<string>('');
   const [detectedVoter, setDetectedVoter] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -85,91 +105,130 @@ function VoteContent() {
   // Modal
   const [detailModalCandidate, setDetailModalCandidate] = useState<Candidate | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isJedaModalDismissed, setIsJedaModalDismissed] = useState(false);
 
   // Timers
   const [timerSeconds, setTimerSeconds] = useState(180); // 03:00 default voting session
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [postSubmitSeconds, setPostSubmitSeconds] = useState(180); // 03:00 countdown post-submit
+  const [postSubmitSeconds, setPostSubmitSeconds] = useState(60); // 60 detik (1 menit) countdown post-submit
   const [isAudioMuted, setIsAudioMuted] = useState(false);
   const audioIntervalRef = useRef<any>(null);
 
-  // 1. Initial Booth Assignment & URL Token Burn with Tolerance
+  // 1. Initial Booth Assignment, Token Storage in sessionStorage, & Auto Booth Allocation
   useEffect(() => {
     let rawToken: string | null = null;
-    let rawBooth = 'Bilik 03';
+    let boothNumberStr = '1';
 
     try {
-      rawToken = searchParams?.get('token') || null;
-      rawBooth = searchParams?.get('booth') || 'Bilik 03';
+      rawToken =
+        searchParams?.get('session') ||
+        searchParams?.get('token') ||
+        searchParams?.get('session_token') ||
+        null;
 
-      if (rawBooth && searchParams?.has('booth')) {
-        const match = rawBooth.match(/\d+/);
-        const num = match ? parseInt(match[0], 10) : 3;
-        setAssignedBoothNumber(num);
-        setAssignedBoothName(`Bilik 0${num}`);
-        setCurrentStep(0);
+      if (typeof window !== 'undefined') {
+        const isCompleted = sessionStorage.getItem('pemira_session_completed') === 'true';
+        if (isCompleted) {
+          setSessionError('Sesi pemilihan tidak valid atau sudah digunakan.');
+          return;
+        }
+
+        if (rawToken) {
+          sessionStorage.setItem('pemira_session_token', rawToken);
+        }
       }
 
-      if (typeof window !== 'undefined' && (rawToken || searchParams?.has('token'))) {
-        window.history.replaceState(null, '', '/vote');
+      const boothParam =
+        searchParams?.get('booth') ||
+        searchParams?.get('id') ||
+        (typeof window !== 'undefined' ? localStorage.getItem('pemira_booth') : null) ||
+        null;
+
+      if (boothParam) {
+        const match = String(boothParam).match(/\d+/);
+        const num = match ? parseInt(match[0], 10) : 1;
+        boothNumberStr = String(num);
+        setAssignedBoothNumber(num);
+        setAssignedBoothName(`Bilik ${String(num).padStart(2, '0')}`);
+      }
+
+      // Pastikan tampilan langsung mengarah ke arahan bilik suara (Tahap 1)
+      setCurrentStep(1);
+
+      if (typeof window !== 'undefined' && (searchParams?.has('token') || searchParams?.has('session'))) {
+        const cleanBooth = boothParam || boothNumberStr;
+        window.history.replaceState(null, '', `/vote?booth=${cleanBooth}`);
       }
     } catch (e) {
       console.warn('Parameter read error:', e);
     }
 
+    const fetchBoothStatus = async (bNumber: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('booths')
+          .select('*')
+          .or(`booth_number.eq.${bNumber},id.eq.${bNumber}`)
+          .maybeSingle();
+
+        if (error) {
+          console.warn('Gagal fetch booth, gunakan fallback lokal:', error);
+        }
+        return data || { booth_number: bNumber, status: 'AVAILABLE' };
+      } catch (e) {
+        return { booth_number: bNumber, status: 'AVAILABLE' };
+      }
+    };
+
     const initSession = async () => {
       try {
-        // Toleransi validasi token QR lokal (minimal 60-90 detik, gunakan 90 detik)
-        if (rawToken && rawToken.startsWith('UBTH-')) {
-          const parts = rawToken.split('-');
-          if (parts.length >= 2) {
-            const tokenTime = parseInt(parts[1], 36);
-            if (!isNaN(tokenTime)) {
-              const elapsedSeconds = (Date.now() - tokenTime) / 1000;
-              if (elapsedSeconds > 90) {
-                setIsTokenExpired(true);
-                return;
+        // Cari bilik kosong otomatis dari tabel 'booths' (status = 'AVAILABLE' atau 'TERSEDIA')
+        const boothParam = searchParams?.get('booth') || searchParams?.get('id');
+        if (!boothParam) {
+          try {
+            const { data: availableBooth } = await supabase
+              .from('booths')
+              .select('*')
+              .or('status.eq.AVAILABLE,status.eq.TERSEDIA')
+              .order('booth_number', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
+            if (availableBooth) {
+              const bNum = Number(availableBooth.booth_number) || 1;
+              boothNumberStr = String(bNum);
+              setAssignedBoothNumber(bNum);
+              setAssignedBoothId(availableBooth.id || '');
+              setAssignedBoothName(availableBooth.name || `Bilik ${String(bNum).padStart(2, '0')}`);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('pemira_booth', String(bNum));
               }
             }
+          } catch (bErr) {
+            console.warn('Auto search available booth fallback note:', bErr);
           }
-        }
-
-        // Alokasikan bilik suara via endpoint API
-        try {
-          const res = await fetch('/api/vote/assign-booth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: rawToken, preferredBooth: rawBooth }),
-          });
-          const data = await res.json();
-          if (data?.expired) {
-            setIsTokenExpired(true);
-            return;
+        } else {
+          // Ambil status bilik suara dari Supabase secara aman
+          const boothData = await fetchBoothStatus(boothNumberStr);
+          if (boothData) {
+            const bNum = boothData.booth_number || boothNumberStr;
+            setAssignedBoothNumber(Number(bNum) || 1);
+            setAssignedBoothId(boothData.id || '');
+            setAssignedBoothName(boothData.name || `Bilik ${String(bNum).padStart(2, '0')}`);
           }
-          if (data?.waiting) {
-            setIsWaitingQueue(true);
-            return;
-          } else if (data?.success) {
-            setIsWaitingQueue(false);
-            setAssignedBoothName(data.boothName || rawBooth);
-            setAssignedBoothNumber(data.boothNumber || 3);
-          }
-        } catch (boothErr) {
-          console.warn('[VOTE_BOOTH_WARN] Fallback alokasi bilik lokal:', boothErr);
-          setAssignedBoothName(rawBooth);
         }
 
         // Query candidates dari Supabase
         try {
-          const supabase = createClient();
-          const { data: dbData, error: dbErr } = await supabase
+          const supabaseClient = createClient();
+          const { data: dbData, error: dbErr } = await supabaseClient
             .from('candidates')
             .select('*');
 
           if (dbErr) {
             console.warn('[CANDIDATES_QUERY_WARN] Menggunakan fallback kandidat:', dbErr);
-          } else if (Array.isArray(dbData)) {
+          } else if (Array.isArray(dbData) && dbData.length > 0) {
             const bem = dbData.filter((c: any) => c.type === 'BEM' || c.category === 'BEM');
             const hima = dbData.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA');
             setDbBemCandidates(bem);
@@ -180,9 +239,7 @@ function VoteContent() {
           console.warn('[CANDIDATES_FETCH_WARN]', candFetchErr);
         }
       } catch (err) {
-        // Logging detail console klien sesuai arahan
-        console.error('[VOTE_INIT_ERROR]', err);
-        setSessionError('Terjadi kendala saat menyinkronkan sesi pemilihan.');
+        console.warn('[VOTE_INIT_ERROR]', err);
       }
     };
 
@@ -346,7 +403,57 @@ function VoteContent() {
     return () => clearInterval(timer);
   }, [currentStep, sessionError, handleSessionTimeout, showToast]);
 
-  // 4. Post-Submit Step 5 (Solemn, Formal Screen: Web Audio Alert & 3-Minute Countdown, NO CONFETTI)
+  // 4. Audio Apresiasi Resmi PEMIRA UBTH 2026 (Web Audio API + SpeechSynthesis)
+  const playThankYouAudio = useCallback(() => {
+    if (isAudioMuted || typeof window === 'undefined') return;
+
+    // A. Web Audio API Harmonic Bell Chime
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const frequencies = [523.25, 659.25, 783.99, 1046.50]; // Akor C5, E5, G5, C6
+        frequencies.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.08);
+          gain.gain.setValueAtTime(0.08, ctx.currentTime + idx * 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + idx * 0.08 + 1.2);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + idx * 0.08);
+          osc.stop(ctx.currentTime + idx * 0.08 + 1.25);
+        });
+      }
+    } catch (audioErr) {
+      console.warn('Web Audio note:', audioErr);
+    }
+
+    // B. SpeechSynthesis Suara Ucapan Terima Kasih Bahasa Indonesia
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const speechText =
+          'Terima kasih atas partisipasi Anda dalam Pemilihan Raya Mahasiswa Universitas Bakti Tunas Husada 2026. Suara Anda telah berhasil direkapitulasi secara sah, aman, dan rahasia. Silakan meninggalkan bilik suara.';
+        const utterance = new SpeechSynthesisUtterance(speechText);
+        utterance.lang = 'id-ID';
+        utterance.rate = 0.95;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const idVoice = voices.find((v) => v.lang.startsWith('id'));
+        if (idVoice) utterance.voice = idVoice;
+
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (speechErr) {
+      console.warn('SpeechSynthesis note:', speechErr);
+    }
+  }, [isAudioMuted]);
+
+  // 5. Post-Submit Step 5 (Layar Sukses + Audio Terima Kasih Loop 60 Detik / 1 Menit)
   useEffect(() => {
     if (currentStep !== 5) return;
 
@@ -364,32 +471,22 @@ function VoteContent() {
 
       window.addEventListener('popstate', handlePopState);
 
-      // Low formal intermittent audio tone (3 minutes session alert)
-      const playBeep = () => {
-        if (isAudioMuted) return;
-        try {
-          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-          if (!AudioCtx) return;
-          const ctx = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 solemn tone
-          gain.gain.setValueAtTime(0.05, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.45);
-        } catch {}
-      };
+      // Mainkan audio apresiasi otomatis
+      playThankYouAudio();
 
-      playBeep();
-      audioIntervalRef.current = setInterval(playBeep, 5000);
+      // Loop audio apresiasi setiap 20 detik selama 60 detik countdown
+      const audioLoop = setInterval(() => {
+        playThankYouAudio();
+      }, 20000);
 
       const countdown = setInterval(() => {
         setPostSubmitSeconds((prev) => {
           if (prev <= 1) {
+            clearInterval(countdown);
+            clearInterval(audioLoop);
+            if ('speechSynthesis' in window) {
+              window.speechSynthesis.cancel();
+            }
             router.push('/qr-screen');
             return 0;
           }
@@ -400,137 +497,196 @@ function VoteContent() {
       return () => {
         window.removeEventListener('popstate', handlePopState);
         clearInterval(countdown);
-        if (audioIntervalRef.current) clearInterval(audioIntervalRef.current);
+        clearInterval(audioLoop);
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+        }
       };
     }
-  }, [currentStep, isAudioMuted, router, showToast]);
+  }, [currentStep, playThankYouAudio, router, showToast]);
 
-  // Step 1 -> 2: Lanjut Memilih & Update status MENGERJAKAN
-  const handleProceedToStep2 = async () => {
-    if (!isVerified || !detectedVoter) {
-      showToast?.('Identitas wajib diverifikasi terlebih dahulu sebelum membuka surat suara.', 'error');
-      return;
-    }
-
-    if (detectedVoter.hasVoted || detectedVoter.status === 'selesai') {
-      showToast?.('Anda sudah menggunakan hak suara pada pemilihan ini.', 'error');
-      return;
-    }
-
-    // Cari bilik yang berstatus TERSEDIA via query (ORDER BY booth_number ASC LIMIT 1)
-    let targetBoothNumber = assignedBoothNumber || 1;
-    let targetBoothName = assignedBoothName || `Bilik 0${targetBoothNumber}`;
-
+  // TAHAP 1 -> TAHAP 2: KONFIRMASI TIBA DI BILIK
+  const handleArrivedAtBooth = async () => {
     try {
-      const supabase = createClient();
-      const { data: availBooths } = await supabase
-        .from('booths')
-        .select('*')
-        .or('status.eq.TERSEDIA,status.eq.KOSONG')
-        .order('booth_number', { ascending: true })
-        .limit(1);
-
-      if (availBooths && availBooths.length > 0) {
-        targetBoothNumber = availBooths[0].booth_number;
-        targetBoothName = availBooths[0].name || `Bilik ${String(targetBoothNumber).padStart(2, '0')}`;
-        setAssignedBoothNumber(targetBoothNumber);
-        setAssignedBoothName(targetBoothName);
+      const supabaseClient = createClient();
+      if (assignedBoothId) {
+        await supabaseClient
+          .from('booths')
+          .update({
+            status: 'OCCUPIED',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', assignedBoothId);
+      } else {
+        await supabaseClient
+          .from('booths')
+          .update({
+            status: 'OCCUPIED',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('booth_number', assignedBoothNumber);
       }
-    } catch (e) {
-      console.warn('Query available booth error:', e);
+    } catch (err) {
+      console.warn('Update booth OCCUPIED note:', err);
     }
-
-    const nowIso = new Date().toISOString();
-    setStartVoteAt(nowIso);
-
-    const voterName = detectedVoter.name || detectedVoter.nama || 'Mahasiswa';
-    const voterNim = detectedVoter.nim;
-    const voterProdi = detectedVoter.prodi || detectedVoter.prodiName || 'Program Studi';
-
-    // 1. Update voter: voting_status = 'MENGERJAKAN', start_vote_at = NOW()
-    try {
-      const supabase = createClient();
-      await supabase
-        .from('voters')
-        .update({
-          voting_status: 'MENGERJAKAN',
-          start_vote_at: nowIso,
-        })
-        .eq('nim', voterNim);
-    } catch (e) {
-      console.warn('Update voting_status MENGERJAKAN note:', e);
-    }
-
-    // 2. Update booth: status = 'DIGUNAKAN', voter_name, voter_nim, voter_prodi, started_at = NOW()
-    try {
-      const supabase = createClient();
-      await supabase
-        .from('booths')
-        .update({
-          status: 'DIGUNAKAN',
-          voter_name: voterName,
-          voter_nim: voterNim,
-          voter_prodi: voterProdi,
-          current_voter_name: voterName,
-          current_voter_nim: voterNim,
-          current_voter_prodi: voterProdi,
-          started_at: nowIso,
-          updated_at: nowIso,
-        })
-        .eq('booth_number', targetBoothNumber);
-    } catch (bErr) {
-      console.warn('Direct booth update note:', bErr);
-    }
-
-    // 3. Tambahkan log ke activity_logs: "[HH:mm:ss] Mahasiswa ${voter.nama} (${voter.prodi}) memasuki ${booth.name}"
-    try {
-      const timeStr = new Date().toLocaleTimeString('id-ID');
-      const supabase = createClient();
-      await supabase.from('activity_logs').insert([
-        {
-          booth_number: targetBoothNumber,
-          message: `Mahasiswa ${voterName} (${voterProdi}) memasuki ${targetBoothName}`,
-          description: `Mahasiswa memulai proses pemilihan`,
-          event_type: 'ENTER_BOOTH',
-          created_at: nowIso,
-        },
-      ]);
-    } catch {}
-
-    try {
-      await fetch('/api/vote/presence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          boothNumber: targetBoothNumber,
-          nim: voterNim,
-          name: voterName,
-          prodi: voterProdi,
-          startedAt: nowIso,
-        }),
-      });
-    } catch {}
-
-    try {
-      updateBoothStatus?.(
-        `b-0${targetBoothNumber}`,
-        'Sedang Memilih',
-        { voterNim, voterName, prodiName: voterProdi }
-      );
-    } catch {}
-
-    if (!selectedBemId && (safeBemList || []).length > 0) {
-      setSelectedBemId(String(safeBemList[0]?.id));
-    }
-    if (!selectedHimaId && (filteredHimaList || []).length > 0) {
-      setSelectedHimaId(String(filteredHimaList[0]?.id));
-    }
-
     setCurrentStep(2);
   };
 
-  // Step 4 -> 5: Final atomic vote
-  const handleFinalSubmit = async () => {
+  // TAHAP 2 -> TAHAP 3: INPUT & VERIFIKASI IDENTITAS DPT
+  const handleVerifyAndProceedToBallot = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    const cleanNim = inputNim.trim();
+    const cleanName = inputName.trim();
+    const selectedProdi = inputProdi.trim();
+
+    if (!cleanNim) {
+      setVerifyError('Silakan masukkan NIM Anda.');
+      showToast?.('Silakan masukkan NIM Anda.', 'error');
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerifyError(null);
+
+    try {
+      const supabaseClient = createClient();
+
+      // Cocokkan langsung dengan tabel 'voters'. Syarat: NIM cocok dan has_voted === false
+      const { data: directVoterCheck } = await supabaseClient
+        .from('voters')
+        .select('*')
+        .eq('nim', cleanNim)
+        .maybeSingle();
+
+      if (directVoterCheck && (directVoterCheck.has_voted === true || directVoterCheck.voting_status === 'SELESAI' || directVoterCheck.voting_status === 'SUDAH')) {
+        setIsVerifying(false);
+        const errMsg = 'NIM ini sudah menggunakan hak suara!';
+        setVerifyError(errMsg);
+        showToast?.(errMsg, 'error');
+        alert(errMsg);
+        return;
+      }
+
+      const res = await fetch('/api/vote/verify-voter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nim: cleanNim, name: cleanName, prodi: selectedProdi }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setIsVerifying(false);
+        const errMsg = json.message || 'Verifikasi identitas gagal.';
+        if (errMsg.toLowerCase().includes('sudah digunakan') || errMsg.toLowerCase().includes('sudah pernah')) {
+          setVerifyError('NIM ini sudah menggunakan hak suara!');
+          showToast?.('NIM ini sudah menggunakan hak suara!', 'error');
+          alert('NIM ini sudah menggunakan hak suara!');
+        } else {
+          setVerifyError(errMsg);
+          showToast?.(errMsg, 'error');
+        }
+        return;
+      }
+
+      const voter = json.voter;
+      setDetectedVoter(voter);
+      setIsVerified(true);
+      if (voter?.name) setInputName(voter.name);
+      if (voter?.prodi || voter?.prodi_name) setInputProdi(voter.prodi || voter.prodi_name);
+
+      const nowIso = new Date().toISOString();
+      setStartVoteAt(nowIso);
+
+      const voterName = voter?.name || cleanName || 'Pemilih';
+      const voterNim = voter?.nim || cleanNim;
+      const voterProdi = voter?.prodi || voter?.prodi_name || selectedProdi || '-';
+
+      // Update 'voters': set voting_status = 'SEDANG_MEMILIH'
+      // Update 'booths': set current_voter_name = voter.name, current_voter_nim = voter.nim, status = 'VOTING'
+      try {
+        const supabaseClient = createClient();
+        await supabaseClient
+          .from('voters')
+          .update({
+            voting_status: 'SEDANG_MEMILIH',
+            start_vote_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('nim', voterNim);
+
+        await supabaseClient
+          .from('booths')
+          .update({
+            status: 'VOTING',
+            current_voter_name: voterName,
+            current_voter_nim: voterNim,
+            current_voter_prodi: voterProdi,
+            voter_name: voterName,
+            voter_nim: voterNim,
+            voter_prodi: voterProdi,
+            started_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('booth_number', assignedBoothNumber);
+
+        await supabaseClient.from('activity_logs').insert([
+          {
+            booth_number: assignedBoothNumber,
+            message: `Mahasiswa ${voterName} (${voterProdi}) memulai pemilihan di ${assignedBoothName}`,
+            description: `Mahasiswa membuka surat suara`,
+            event_type: 'VOTING_STARTED',
+            created_at: nowIso,
+          },
+        ]);
+      } catch (updErr) {
+        console.warn('Direct booth update note:', updErr);
+      }
+
+      try {
+        updateBoothStatus?.(
+          `b-0${assignedBoothNumber}`,
+          'Sedang Memilih',
+          { voterNim, voterName, prodiName: voterProdi }
+        );
+      } catch {}
+
+      if (!selectedBemId && (safeBemList || []).length > 0) {
+        setSelectedBemId(String(safeBemList[0]?.id));
+      }
+      const himaCandidatesForProdi = (safeHimaList || []).filter((c: any) =>
+        (c.category === 'HIMA' || c.type === 'HIMA') &&
+        norm(c.prodi) === norm(voterProdi)
+      );
+      if (!selectedHimaId && himaCandidatesForProdi.length > 0) {
+        setSelectedHimaId(String(himaCandidatesForProdi[0]?.id));
+      }
+
+      setIsVerifying(false);
+      setCurrentStep(3);
+    } catch (err: any) {
+      setIsVerifying(false);
+      const networkMsg = 'Terjadi kendala jaringan saat memverifikasi DPT. Silakan coba lagi.';
+      setVerifyError(networkMsg);
+      showToast?.(networkMsg, 'error');
+    }
+  };
+
+  // TAHAP 3: BUKA MODAL KONFIRMASI PILIHAN SUARA
+  const handleOpenConfirmation = () => {
+    if (!selectedBemId) {
+      showToast?.('Silakan pilih salah satu pasangan calon BEM.', 'error');
+      return;
+    }
+    if (filteredHimaList.length > 0 && !selectedHimaId) {
+      showToast?.('Silakan pilih salah satu pasangan calon HIMA untuk prodi Anda.', 'error');
+      return;
+    }
+    setIsConfirmModalOpen(true);
+  };
+
+  // TAHAP 4: SUBMIT, REKAPITULASI, & PENGOSONGAN BILIK OTOMATIS
+  const handleFinalConfirmVote = async () => {
     if (!selectedBemId) {
       showToast?.('Wajib memilih Paslon BEM.', 'error');
       return;
@@ -541,19 +697,23 @@ function VoteContent() {
     }
 
     setIsSubmitting(true);
+    setIsConfirmModalOpen(false);
+
     const voterNim = detectedVoter?.nim || inputNim || '';
+    const voterName = detectedVoter?.name || inputName.trim() || 'Pemilih';
     let durationSeconds = 0;
     if (startVoteAt) {
       durationSeconds = Math.max(1, Math.round((Date.now() - new Date(startVoteAt).getTime()) / 1000));
     }
 
     try {
+      // 1. Simpan suara ke tabel 'votes'
       const res = await fetch('/api/vote/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nim: voterNim,
-          name: detectedVoter?.name || inputName.trim(),
+          name: voterName,
           boothNumber: assignedBoothNumber,
           bemCandidateId: selectedBemId,
           himaCandidateId: selectedHimaId || 'none',
@@ -562,7 +722,6 @@ function VoteContent() {
       });
 
       const json = await res.json();
-
       if (!res.ok || !json.success) {
         setIsSubmitting(false);
         const errMsg = json.message || 'Penyimpanan suara gagal di database.';
@@ -571,10 +730,58 @@ function VoteContent() {
         return;
       }
 
+      const nowIso = new Date().toISOString();
+
+      // 2. Update 'voters': has_voted = true, voting_status = 'SUDAH', completed_at = now()
+      // 3. Reset 'booths': status = 'AVAILABLE', current_voter_name = null, current_voter_nim = null
+      try {
+        const supabaseClient = createClient();
+        await supabaseClient
+          .from('voters')
+          .update({
+            has_voted: true,
+            voting_status: 'SUDAH',
+            completed_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('nim', voterNim);
+
+        await supabaseClient
+          .from('booths')
+          .update({
+            status: 'AVAILABLE',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            voter_name: null,
+            voter_nim: null,
+            voter_prodi: null,
+            started_at: null,
+            updated_at: nowIso,
+          })
+          .eq('booth_number', assignedBoothNumber);
+      } catch (syncErr) {
+        console.warn('Sync reset booth note:', syncErr);
+      }
+
+      // 4. Hanguskan token di sessionStorage (kunci agar link tidak bisa dibuka lagi)
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.removeItem('pemira_session_token');
+          sessionStorage.removeItem('pemira_booth');
+          sessionStorage.setItem('pemira_session_completed', 'true');
+        } catch {}
+      }
+
+      // 5. Pindah ke Tahap 5 (Layar Sukses & Audio)
       castVote?.(voterNim, selectedBemId, selectedHimaId || '');
-      updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Selesai');
+      updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Tersedia');
       setIsSubmitting(false);
+      setPostSubmitSeconds(60); // 1 menit countdown
       setCurrentStep(5);
+
+      // Mainkan audio apresiasi resmi
+      playThankYouAudio();
     } catch (err: any) {
       console.error('[VOTE_SUBMIT_FATAL_ERROR]', err);
       setIsSubmitting(false);
@@ -628,43 +835,35 @@ function VoteContent() {
             <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
             <span className="text-xs font-bold text-slate-700 ml-1">Menunggu bilik kosong...</span>
           </div>
-          <p className="text-[11px] text-slate-400">
-            Sistem secara otomatis mengecek ketersediaan bilik setiap 3 detik
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // 1. TAMPILAN PERINGATAN SPESIFIK TOKEN QR KEDALUWARSA
-  if (isTokenExpired) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 select-none font-sans">
-        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-rose-200/90 shadow-xl text-center space-y-5 animate-in fade-in">
-          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200 shadow-xs">
-            <Clock className="w-8 h-8" />
-          </div>
-          <div>
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">
-              Token QR Kedaluwarsa
-            </h2>
-            <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
-              Silakan lakukan scan ulang pada layar proyektor utama.
+          <div className="space-y-2 pt-1">
+            <button
+              onClick={() => {
+                setIsWaitingQueue(false);
+                setAssignedBoothNumber(1);
+                setAssignedBoothName('Bilik 01');
+                setCurrentStep(1);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('pemira_booth', '1');
+                  window.history.replaceState(null, '', '/vote?booth=1');
+                }
+              }}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+            >
+              Masuk sebagai Bilik 1 (Mode Uji Coba)
+            </button>
+            <p className="text-[11px] text-slate-400">
+              Sistem secara otomatis mengecek ketersediaan bilik setiap 3 detik
             </p>
           </div>
-          <button
-            onClick={() => router.push('/qr-screen')}
-            className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
-          >
-            Kembali ke Layar QR Kiosk
-          </button>
         </div>
       </div>
     );
   }
 
+
+
   // 2. EMPTY STATE PASLON KOSONG INFORMATIF (Bukan exception error)
-  if (currentStep !== 5 && safeBemList.length === 0 && safeHimaList.length === 0) {
+  if (currentStep !== 1 && currentStep !== 5 && safeBemList.length === 0 && safeHimaList.length === 0) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans select-none">
         <div className="max-w-md w-full p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4 animate-in fade-in">
@@ -679,7 +878,15 @@ function VoteContent() {
               Data pasangan calon BEM &amp; HIMA sedang dipersiapkan oleh KPUM. Silakan tunggu arahan dari petugas bilik suara.
             </p>
           </div>
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
+            <button
+              onClick={() => {
+                setCurrentStep(1);
+              }}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors shadow-sm cursor-pointer"
+            >
+              Masuk ke Form Validasi Pemilih (Mode Uji Coba)
+            </button>
             <button
               type="button"
               onClick={() => router.push('/qr-screen')}
@@ -722,12 +929,29 @@ function VoteContent() {
             </h2>
             <p className="text-xs text-slate-500 mt-2">{sessionError}</p>
           </div>
-          <button
-            onClick={() => router.push('/qr-screen')}
-            className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
-          >
-            Kembali ke Layar QR Kiosk
-          </button>
+          <div className="space-y-2 pt-1">
+            <button
+              onClick={() => {
+                setSessionError(null);
+                setAssignedBoothNumber(1);
+                setAssignedBoothName('Bilik 01');
+                setCurrentStep(1);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('pemira_booth', '1');
+                  window.history.replaceState(null, '', '/vote?booth=1');
+                }
+              }}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+            >
+              Masuk sebagai Bilik 1 (Mode Uji Coba)
+            </button>
+            <button
+              onClick={() => router.push('/qr-screen')}
+              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
+            >
+              Kembali ke Layar QR Kiosk
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -800,55 +1024,99 @@ function VoteContent() {
             </div>
           )}
 
-          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-2xs">
-            <span>Bilik Suara Digital</span>
-            <Monitor className="w-3.5 h-3.5 text-slate-700" />
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 shadow-2xs">
+            <Monitor className="w-3.5 h-3.5 text-blue-600" />
+            <span className="text-slate-500">Terminal:</span>
+            <select
+              value={assignedBoothNumber}
+              onChange={(e) => {
+                const num = parseInt(e.target.value, 10);
+                setAssignedBoothNumber(num);
+                setAssignedBoothName(`Bilik ${String(num).padStart(2, '0')}`);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('pemira_booth', String(num));
+                  window.history.replaceState(null, '', `/vote?booth=${num}`);
+                }
+              }}
+              className="bg-transparent font-black text-blue-700 focus:outline-hidden cursor-pointer"
+            >
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((b) => (
+                <option key={b} value={b}>Bilik {String(b).padStart(2, '0')}</option>
+              ))}
+            </select>
           </div>
         </div>
       </header>
 
       {/* MAIN CONTENT WRAPPER */}
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex items-center">
-        {/* TAHAP 0: PENUGASAN BILIK SUARA (CLEAN WHITE & SLATE CANVAS) */}
-        {currentStep === 0 && (
-          <div className="w-full max-w-md mx-auto bg-white rounded-3xl p-8 border border-slate-200/90 shadow-xl text-center space-y-6 animate-in fade-in zoom-in-95">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-              <Check className="w-3.5 h-3.5" />
-              <span>Terverifikasi</span>
+      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex items-center justify-center">
+        {/* TAHAP 1: ARAHAN & KONFIRMASI TIBA DI BILIK */}
+        {currentStep === 1 && (
+          <div className="w-full max-w-xl mx-auto bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200">
+              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
+              <span>ALOKASI BILIK PEMILIH RESMI</span>
             </div>
 
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                PENUGASAN BILIK SUARA
+            <div className="space-y-3 py-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                ARAHAN BILIK SUARA FISIK
               </p>
-              <h2 className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight mt-1">
-                {assignedBoothName.toUpperCase()}
-              </h2>
+              <div className="relative py-4 px-6 rounded-3xl bg-linear-to-b from-blue-50/80 to-slate-50 border-2 border-blue-300 shadow-inner">
+                <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
+                  Silakan Segera Menuju <span className="text-blue-600">BILIK {assignedBoothNumber}</span>
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2">
+                  Bilik nomor {assignedBoothNumber} telah dikunci sementara khusus untuk sesi Anda.
+                </p>
+              </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs text-slate-600 space-y-1">
-              <strong className="text-slate-800 block">Petunjuk Bilik:</strong>
+            {/* Quick selector for test mode / verification */}
+            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between text-xs text-slate-600">
+              <span className="font-medium">Sesuaikan Nomor Bilik (Bila Perlu):</span>
+              <select
+                value={assignedBoothNumber}
+                onChange={(e) => {
+                  const num = parseInt(e.target.value, 10);
+                  setAssignedBoothNumber(num);
+                  setAssignedBoothName(`Bilik ${String(num).padStart(2, '0')}`);
+                  if (typeof window !== 'undefined') {
+                    localStorage.setItem('pemira_booth', String(num));
+                    window.history.replaceState(null, '', `/vote?booth=${num}`);
+                  }
+                }}
+                className="font-bold bg-white border border-slate-300 rounded-xl px-2.5 py-1 text-slate-900 cursor-pointer"
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map((b) => (
+                  <option key={b} value={b}>Bilik {b}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-left text-xs text-amber-800 space-y-1">
+              <strong className="text-amber-900 block font-bold">Petunjuk Pemilih:</strong>
               <p>
-                Silakan menuju ke <strong>{assignedBoothName.toUpperCase()}</strong>. Pastikan Anda berada di bilik fisik yang tepat sebelum membuka surat suara digital.
+                Segera berjalan menuju <strong>Bilik {assignedBoothNumber}</strong>. Setelah Anda berada di depan bilik fisik, tekan tombol di bawah untuk membuka form verifikasi identitas.
               </p>
             </div>
 
             <button
-              onClick={() => setCurrentStep(1)}
-              className="w-full py-3.5 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-slate-900/15 cursor-pointer"
+              onClick={handleArrivedAtBooth}
+              className="w-full py-4 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20 cursor-pointer active:scale-95"
             >
-              <span>Saya Sudah di Bilik, Mulai Memilih</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>Saya Sudah Berada di Bilik</span>
+              <ArrowRight className="w-5 h-5" />
             </button>
           </div>
         )}
 
-        {/* TAHAP 1 - 5: 5-STEP VOTING FLOW */}
-        {currentStep >= 1 && (
+        {/* TAHAP 2 - 5: VOTING FLOW */}
+        {currentStep >= 2 && currentStep !== 5 && (
           <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
             {/* Left Column: Vertical Stepper Indicator */}
             <div className="hidden md:flex md:col-span-1 flex-col items-center justify-center py-6">
-              {[1, 2, 3, 4, 5].map((step, idx) => {
+              {[2, 3, 4, 5].map((step, idx) => {
                 const isPassed = currentStep > step;
                 const isCurrent = currentStep === step;
 
@@ -863,10 +1131,10 @@ function VoteContent() {
                           : 'border-2 border-slate-300 text-slate-400 bg-white'
                       }`}
                     >
-                      {isPassed ? <Check className="w-4 h-4 stroke-[3]" /> : step}
+                      {isPassed ? <Check className="w-4 h-4 stroke-[3]" /> : step - 1}
                     </div>
 
-                    {idx < 4 && (
+                    {idx < 3 && (
                       <div
                         className={`w-0.5 h-12 transition-colors ${
                           currentStep > step ? 'bg-slate-900' : 'bg-slate-200'
@@ -880,98 +1148,114 @@ function VoteContent() {
 
             {/* Right Column: Main Voting Card */}
             <div className="md:col-span-11 w-full">
-              {/* STEP 1: VALIDASI PEMILIH (CLEAN WHITE CANVAS) */}
-              {currentStep === 1 && (
+              {/* TAHAP 2: INPUT & VERIFIKASI DPT */}
+              {currentStep === 2 && (
                 <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-xl max-w-2xl mx-auto space-y-6 animate-in fade-in">
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                      TAHAP 1 DARI 4
+                      TAHAP 2 DARI 4
                     </span>
                     <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                      Validasi Pemilih
+                      Input &amp; Verifikasi DPT
                     </h2>
                     <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                      Masukkan data diri Anda untuk membuka surat suara digital.
+                      Masukkan data diri Anda untuk memverifikasi hak suara pada sistem PEMIRA UBTH.
                     </p>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
+                        <Monitor className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Bilik Aktif
+                        </span>
+                        <span className="text-xs font-black text-slate-900">
+                          Bilik {assignedBoothNumber}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                      Status: OCCUPIED
+                    </span>
                   </div>
 
                   <div className="space-y-4">
                     {/* Input NIM */}
                     <div>
                       <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                        Nomor Induk Mahasiswa (NIM)
+                        Nomor Induk Mahasiswa (NIM) <span className="text-rose-500">*</span>
                       </label>
                       <div className="relative">
                         <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Contoh: 210401xxx"
+                          placeholder="Masukkan NIM Anda..."
                           value={inputNim}
                           onChange={(e) => handleNimChange(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyIdentity(); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyAndProceedToBallot(); }}
                           className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all"
                         />
                       </div>
                     </div>
 
-                    {/* Input Nama Lengkap (Opsional) */}
+                    {/* Input Nama Lengkap */}
                     <div>
                       <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                        Nama Lengkap (Opsional / Otomatis Terdeteksi dari DPT)
+                        Nama Lengkap (Otomatis dari DPT)
                       </label>
                       <div className="relative">
                         <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Otomatis terisi jika mengosongkan field ini"
+                          placeholder="Nama mahasiswa..."
                           value={inputName}
                           onChange={(e) => handleNameChange(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyIdentity(); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyAndProceedToBallot(); }}
                           className="w-full pl-12 pr-4 py-3 rounded-2xl border border-slate-300 bg-white text-sm font-semibold text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all"
                         />
                       </div>
                     </div>
 
-                    {/* Tombol Verifikasi Identitas DPT */}
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        onClick={() => handleVerifyIdentity()}
-                        disabled={isVerifying || !inputNim.trim()}
-                        className={`w-full py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          isVerified
-                            ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20'
-                            : isVerifying || !inputNim.trim()
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20'
-                        }`}
-                      >
-                        {isVerifying ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
-                            <span>Memverifikasi Data ke Database Supabase...</span>
-                          </>
-                        ) : isVerified ? (
-                          <>
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Identitas Terverifikasi — Klik Ulang untuk Cek Ulang</span>
-                          </>
-                        ) : (
-                          <>
-                            <ShieldCheck className="w-4 h-4" />
-                            <span>Verifikasi Identitas Pemilih</span>
-                          </>
-                        )}
-                      </button>
+                    {/* Input Program Studi & Angkatan */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                          Program Studi
+                        </label>
+                        <select
+                          value={inputProdi || detectedVoter?.prodi || detectedVoter?.prodi_name || ''}
+                          onChange={(e) => setInputProdi(e.target.value)}
+                          className="w-full px-3.5 py-3 rounded-2xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all cursor-pointer"
+                        >
+                          <option value="">Pilih Program Studi</option>
+                          {MASTER_PRODI.map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                          Angkatan Mahasiswa
+                        </label>
+                        <select
+                          value={inputAngkatan || detectedVoter?.angkatan || ''}
+                          onChange={(e) => setInputAngkatan(e.target.value)}
+                          className="w-full px-3.5 py-3 rounded-2xl border border-slate-300 bg-white text-xs font-semibold text-slate-900 focus:outline-hidden focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10 transition-all cursor-pointer"
+                        >
+                          <option value="">Pilih Angkatan (Opsional)</option>
+                          {['2026', '2025', '2024', '2023', '2022', '2021', '2020'].map((yr) => (
+                            <option key={yr} value={yr}>Angkatan {yr}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
 
-                    {/* Notification & Status Cards */}
-                    {isVerifying ? (
-                      <div className="flex items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
-                        <div className="w-4 h-4 border-2 border-slate-900 border-t-transparent rounded-full animate-spin shrink-0" />
-                        <span className="font-medium">Memeriksa kesesuaian NIM pada sistem DPT...</span>
-                      </div>
-                    ) : verifyError ? (
+                    {/* Alert & Error Message */}
+                    {verifyError && (
                       <div className="flex items-start gap-2.5 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
                         <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                         <div>
@@ -979,239 +1263,78 @@ function VoteContent() {
                           <span className="text-rose-700">{verifyError}</span>
                         </div>
                       </div>
-                    ) : isVerified && detectedVoter ? (
-                      <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-300 text-xs text-emerald-950 space-y-3 animate-in fade-in">
-                        <div className="flex items-center justify-between pb-2 border-b border-emerald-200/80">
-                          <div className="flex items-center gap-2 font-bold text-emerald-900">
-                            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                            <span>Konfirmasi Identitas Pemilih Terverifikasi</span>
-                          </div>
-                          <span className="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-emerald-800 text-white uppercase">
-                            {detectedVoter.faculty || detectedVoter.facultyId || 'FTB'}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1">
-                          <div>
-                            <span className="text-slate-500 block text-[11px]">Nama Lengkap:</span>
-                            <span className="font-bold text-slate-900 text-sm">{detectedVoter.name || detectedVoter.nama}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 block text-[11px]">Nomor Induk Mahasiswa (NIM):</span>
-                            <span className="font-bold text-slate-900 text-sm font-mono">{detectedVoter.nim}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 block text-[11px]">Program Studi:</span>
-                            <span className="font-bold text-slate-900">{detectedVoter.prodi || detectedVoter.prodiName}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-500 block text-[11px]">Fakultas:</span>
-                            <span className="font-bold text-slate-900">{detectedVoter.faculty || detectedVoter.facultyId || 'FTB'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 px-4 py-3 rounded-xl border border-slate-200">
-                        <Info className="w-4 h-4 shrink-0 text-slate-400" />
-                        <span>Ketikkan NIM Anda yang terdaftar pada DPT untuk memverifikasi hak suara.</span>
-                      </div>
                     )}
-
-                    <div className="text-[11px] text-slate-400 italic">
-                      * Penulisan NIM harus sesuai dengan database DPT. Hak suara dijamin bersifat rahasia (asas Luber Jurdil).
-                    </div>
                   </div>
 
-                  <div className="pt-4 flex items-center justify-between border-t border-slate-100">
+                  <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
                     <button
                       type="button"
-                      onClick={() => router.push('/qr-screen')}
-                      className="px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-colors cursor-pointer"
+                      onClick={() => setCurrentStep(1)}
+                      className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 text-xs font-bold transition-colors cursor-pointer"
                     >
-                      ← Kembali
+                      ← Kembali ke Panduan Bilik
                     </button>
 
                     <button
                       type="button"
-                      onClick={handleProceedToStep2}
-                      disabled={!isVerified || !detectedVoter || detectedVoter.hasVoted || isVerifying}
-                      className={`px-6 py-3 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center gap-2 ${
-                        !isVerified || !detectedVoter || detectedVoter.hasVoted || isVerifying
+                      onClick={() => handleVerifyAndProceedToBallot()}
+                      disabled={isVerifying || !inputNim.trim()}
+                      className={`w-full sm:w-auto px-6 py-3 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 ${
+                        isVerifying || !inputNim.trim()
                           ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 cursor-pointer'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 cursor-pointer active:scale-95'
                       }`}
                     >
-                      <span>Mulai Memilih / Masuk Bilik</span>
-                      <ArrowRight className="w-4 h-4" />
+                      {isVerifying ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                          <span>Memverifikasi DPT...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Verifikasi &amp; Buka Surat Suara</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* STEP 2: PILIHAN KETUA & WAKIL BEM (MODERN INTERACTIVE CURVED CARDS) */}
-              {currentStep === 2 && (
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-6 animate-in fade-in">
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
-                      TAHAP 2 DARI 4
-                    </span>
-                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                      Pemilihan Presiden &amp; Wakil Presiden BEM
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Pilih salah satu pasangan calon Badan Eksekutif Mahasiswa Universitas.
-                    </p>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
-                      <div className="w-1/2 bg-slate-900 h-full rounded-full" />
-                    </div>
-                  </div>
-
-                  {/* Candidate Cards Grid (Soft Squircle & Deep Navy Selected State) */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {(safeBemList || []).map((cand) => {
-                      const isSelected = String(selectedBemId) === String(cand?.id);
-                      const displayPhoto = cand?.photoUrl || cand?.photo_url;
-                      const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
-                      const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                      const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
-
-                      return (
-                        <div
-                          key={String(cand?.id || displayNumber)}
-                          onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
-                          className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                            isSelected
-                              ? 'border-slate-900 bg-slate-50/50 ring-4 ring-slate-900/10 shadow-lg'
-                              : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
-                          }`}
-                        >
-                          <div>
-                            {/* Header Kartu & Badge Nomor Urut Tegas */}
-                            <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
-                              <div>
-                                <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
-                                  Nomor Urut {displayNumber}: Pasangan Calon BEM
-                                </span>
-                                <h4 className="text-base font-black text-slate-900 mt-0.5">
-                                  {displayName} {displayVice ? `& ${displayVice}` : ''}
-                                </h4>
-                                <p className="text-xs text-slate-500 italic mt-0.5">
-                                  &ldquo;{cand?.tagline || 'Inovatif, Transparan, dan Mengayomi Seluruh Mahasiswa UBTH'}&rdquo;
-                                </p>
-                              </div>
-                              <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                                {displayNumber}
-                              </div>
-                            </div>
-
-                            {/* Foto Paslon (Wadah Melengkung Berbingkai Rapi 3:4) */}
-                            <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                              {displayPhoto ? (
-                                <img
-                                  src={displayPhoto}
-                                  alt={displayName}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="text-center p-3">
-                                  <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                                    {displayNumber}
-                                  </div>
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                                    Paslon {displayNumber}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Tombol Lihat Visi Misi */}
-                            <div className="text-center">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDetailModalCandidate(cand);
-                                  setIsDetailModalOpen(true);
-                                }}
-                                className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Lihat Visi &amp; Misi Resmi</span>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Tombol Pilihan Solid Pill */}
-                          <div className="mt-5">
-                            {isSelected ? (
-                              <div className="w-full bg-slate-900 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
-                                <Check className="w-4 h-4 stroke-[3]" />
-                                <span>Terpilih sebagai Pilihan Anda</span>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
-                                className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
-                              >
-                                Pilih Nomor Urut {displayNumber}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex justify-end pt-4 border-t border-slate-100">
-                    <button
-                      type="button"
-                      disabled={!selectedBemId}
-                      onClick={() => setCurrentStep(3)}
-                      className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-md shadow-slate-900/15 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      <span>Lanjut ke Pemilihan HIMA</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 3: PILIHAN KETUA & WAKIL HIMPUNAN (MODERN INTERACTIVE CURVED CARDS) */}
+              {/* TAHAP 3: SURAT SUARA (BEM & HIMA) */}
               {currentStep === 3 && (
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-6 animate-in fade-in">
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-8 animate-in fade-in">
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
                       TAHAP 3 DARI 4
                     </span>
                     <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                      Pemilihan Ketua &amp; Wakil Himpunan Mahasiswa (HIMA)
+                      Surat Suara Digital PEMIRA UBTH 2026
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Pilih pasangan calon Himpunan Mahasiswa program studi Anda.
+                      Pemilih: <strong>{detectedVoter?.name || inputName || 'Mahasiswa'}</strong> ({detectedVoter?.nim || inputNim}) • Prodi: <strong>{detectedVoter?.prodi || detectedVoter?.prodi_name || inputProdi || '-'}</strong>
                     </p>
-                    <div className="w-full bg-slate-100 h-1.5 rounded-full mt-3 overflow-hidden">
-                      <div className="w-full bg-slate-900 h-full rounded-full" />
-                    </div>
                   </div>
 
-                  {filteredHimaList.length === 0 ? (
-                    <div className="p-8 rounded-2xl bg-blue-50/60 border border-blue-200 text-center space-y-3">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 mx-auto flex items-center justify-center">
-                        <Info className="w-6 h-6" />
-                      </div>
+                  {/* SEKSI 1: PEMILIHAN BEM UNIVERSITAS */}
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
                       <div>
-                        <h4 className="text-sm font-bold text-slate-900">
-                          Pemilihan HIMA belum tersedia untuk jurusan ini, silakan lanjutkan pemilihan BEM Universitas.
+                        <h4 className="text-base font-black text-slate-900">
+                          1. Pemilihan Presiden &amp; Wakil Presiden BEM
                         </h4>
-                        <p className="text-xs text-slate-600 mt-1 max-w-md mx-auto">
-                          Program Studi: {detectedVoter?.prodi || detectedVoter?.prodiName || 'Anda'}. Silakan lanjutkan ke tahap konfirmasi.
+                        <p className="text-xs text-slate-500">
+                          Seluruh mahasiswa dari semua program studi berhak memilih pasangan calon BEM.
                         </p>
                       </div>
+                      <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-slate-900 text-white uppercase tracking-wider">
+                        BEM-U
+                      </span>
                     </div>
-                  ) : (
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {filteredHimaList.map((cand) => {
-                        const isSelected = String(selectedHimaId) === String(cand?.id);
+                      {(safeBemList || []).map((cand) => {
+                        const isSelected = String(selectedBemId) === String(cand?.id);
                         const displayPhoto = cand?.photoUrl || cand?.photo_url;
                         const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
                         const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
@@ -1220,7 +1343,7 @@ function VoteContent() {
                         return (
                           <div
                             key={String(cand?.id || displayNumber)}
-                            onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
+                            onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
                             className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
                               isSelected
                                 ? 'border-slate-900 bg-slate-50/50 ring-4 ring-slate-900/10 shadow-lg'
@@ -1228,32 +1351,26 @@ function VoteContent() {
                             }`}
                           >
                             <div>
-                              {/* Header Kartu & Badge Nomor Urut Tegas */}
                               <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
                                 <div>
                                   <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
-                                    Nomor Urut {displayNumber}: Pasangan Calon HIMA
+                                    Nomor Urut {displayNumber}
                                   </span>
                                   <h4 className="text-base font-black text-slate-900 mt-0.5">
                                     {displayName} {displayVice ? `& ${displayVice}` : ''}
                                   </h4>
                                   <p className="text-xs text-slate-500 italic mt-0.5">
-                                    &ldquo;{cand?.tagline || 'Sinergi Bersama Memajukan Potensi Mahasiswa Jurusan'}&rdquo;
+                                    &ldquo;{cand?.tagline || 'Inovatif, Transparan, dan Mengayomi Mahasiswa'}&rdquo;
                                   </p>
                                 </div>
-                                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                                <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
                                   {displayNumber}
                                 </div>
                               </div>
 
-                              {/* Foto Paslon */}
                               <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
                                 {displayPhoto ? (
-                                  <img
-                                    src={displayPhoto}
-                                    alt={displayName}
-                                    className="w-full h-full object-cover"
-                                  />
+                                  <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="text-center p-3">
                                     <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
@@ -1266,7 +1383,6 @@ function VoteContent() {
                                 )}
                               </div>
 
-                              {/* Tombol Lihat Visi Misi */}
                               <div className="text-center">
                                 <button
                                   type="button"
@@ -1283,18 +1399,17 @@ function VoteContent() {
                               </div>
                             </div>
 
-                            {/* Tombol Pilihan Solid Pill */}
                             <div className="mt-5">
                               {isSelected ? (
-                                <div className="w-full bg-blue-600 text-white font-medium py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
+                                <div className="w-full bg-slate-900 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
                                   <Check className="w-4 h-4 stroke-[3]" />
                                   <span>Terpilih sebagai Pilihan Anda</span>
                                 </div>
                               ) : (
                                 <button
                                   type="button"
-                                  onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
-                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-blue-600 hover:bg-slate-50 font-medium py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
+                                  onClick={() => cand?.id && setSelectedBemId(String(cand.id))}
+                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
                                 >
                                   Pilih Nomor Urut {displayNumber}
                                 </button>
@@ -1304,160 +1419,265 @@ function VoteContent() {
                         );
                       })}
                     </div>
-                  )}
+                  </div>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                  {/* SEKSI 2: PEMILIHAN HIMA SESUAI PRODI */}
+                  <div className="space-y-4 pt-6 border-t border-slate-200">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                      <div>
+                        <h4 className="text-base font-black text-slate-900">
+                          2. Pemilihan Ketua &amp; Wakil Himpunan Mahasiswa (HIMA)
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Hanya menampilkan pasangan calon sesuai Program Studi Anda ({detectedVoter?.prodi || detectedVoter?.prodi_name || inputProdi || '-'}).
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-blue-600 text-white uppercase tracking-wider">
+                        HIMA
+                      </span>
+                    </div>
+
+                    {filteredHimaList.length === 0 ? (
+                      <div className="p-8 rounded-2xl bg-blue-50/60 border border-blue-200 text-center space-y-2">
+                        <Info className="w-8 h-8 text-blue-600 mx-auto" />
+                        <h5 className="text-sm font-bold text-slate-900">
+                          Pemilihan HIMA belum tersedia untuk Program Studi ini.
+                        </h5>
+                        <p className="text-xs text-slate-500">
+                          Anda dapat langsung melanjutkan pengiriman surat suara untuk pemilihan Presiden BEM.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {filteredHimaList.map((cand) => {
+                          const isSelected = String(selectedHimaId) === String(cand?.id);
+                          const displayPhoto = cand?.photoUrl || cand?.photo_url;
+                          const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
+                          const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
+                          const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
+
+                          return (
+                            <div
+                              key={String(cand?.id || displayNumber)}
+                              onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
+                              className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                                isSelected
+                                  ? 'border-blue-600 bg-blue-50/40 ring-4 ring-blue-600/10 shadow-lg'
+                                  : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
+                                  <div>
+                                    <span className="text-[11px] font-black text-slate-900 uppercase tracking-wide block">
+                                      Nomor Urut {displayNumber}: Paslon HIMA
+                                    </span>
+                                    <h4 className="text-base font-black text-slate-900 mt-0.5">
+                                      {displayName} {displayVice ? `& ${displayVice}` : ''}
+                                    </h4>
+                                    <p className="text-xs text-slate-500 italic mt-0.5">
+                                      &ldquo;{cand?.tagline || 'Sinergi Bersama Memajukan Potensi Jurusan'}&rdquo;
+                                    </p>
+                                  </div>
+                                  <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                                    {displayNumber}
+                                  </div>
+                                </div>
+
+                                <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[140px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
+                                  {displayPhoto ? (
+                                    <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="text-center p-3">
+                                      <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
+                                        {displayNumber}
+                                      </div>
+                                      <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                                        Paslon {displayNumber}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="text-center">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDetailModalCandidate(cand);
+                                      setIsDetailModalOpen(true);
+                                    }}
+                                    className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>Lihat Visi &amp; Misi Resmi</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="mt-5">
+                                {isSelected ? (
+                                  <div className="w-full bg-blue-600 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
+                                    <Check className="w-4 h-4 stroke-[3]" />
+                                    <span>Terpilih sebagai Pilihan Anda</span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => cand?.id && setSelectedHimaId(String(cand.id))}
+                                    className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-blue-600 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
+                                  >
+                                    Pilih Nomor Urut {displayNumber}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tombol Lanjut ke Modal Konfirmasi */}
+                  <div className="flex items-center justify-between pt-6 border-t border-slate-200">
                     <button
                       type="button"
                       onClick={() => setCurrentStep(2)}
-                      className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold hover:bg-slate-50 cursor-pointer"
+                      className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 cursor-pointer"
                     >
-                      ← Kembali ke BEM
+                      ← Ubah Data Pemilih
                     </button>
 
                     <button
                       type="button"
-                      disabled={filteredHimaList.length > 0 && !selectedHimaId}
-                      onClick={() => setCurrentStep(4)}
-                      className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      onClick={handleOpenConfirmation}
+                      disabled={!selectedBemId || (filteredHimaList.length > 0 && !selectedHimaId)}
+                      className="px-8 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold shadow-lg shadow-slate-900/20 flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
                     >
-                      <span>Lanjut ke Konfirmasi</span>
+                      <span>Kirim Pilihan Suara</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               )}
-
-              {/* STEP 4: KONFIRMASI PILIHAN */}
-              {currentStep === 4 && (
-                <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-xl max-w-lg mx-auto text-center space-y-6 animate-in fade-in">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-900 mx-auto flex items-center justify-center border border-slate-300 shadow-xs">
-                    <ShieldCheck className="w-7 h-7 text-slate-900" />
-                  </div>
-
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                      TAHAP 4 DARI 4
-                    </span>
-                    <h3 className="text-xl font-black text-slate-900 tracking-tight">
-                      Konfirmasi Pilihan Suara
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Pastikan pilihan Anda sudah benar sebelum disimpan permanen ke database.
-                    </p>
-                  </div>
-
-                  <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 text-left space-y-3 text-xs font-semibold">
-                    <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                      <span className="text-slate-500">Pilihan BEM-U :</span>
-                      <span className="font-bold text-slate-900 font-mono">
-                        Paslon {selectedBemCandidate?.candidate_number ?? selectedBemCandidate?.candidateNumber ?? selectedBemCandidate?.number ?? '01'} ({selectedBemCandidate?.leader_name || selectedBemCandidate?.leaderName || '-'})
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500">Pilihan HIMA :</span>
-                      {filteredHimaList.length === 0 ? (
-                        <span className="font-bold text-slate-500 italic">
-                          Tidak Ada Pemilihan (Dilewati)
-                        </span>
-                      ) : (
-                        <span className="font-bold text-slate-900 font-mono">
-                          Paslon {selectedHimaCandidate?.candidate_number ?? selectedHimaCandidate?.candidateNumber ?? selectedHimaCandidate?.number ?? '01'} ({selectedHimaCandidate?.leader_name || selectedHimaCandidate?.leaderName || '-'})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-bold flex items-center gap-2 text-left">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                    <span>Pilihan bersifat RAHASIA dan TIDAK DAPAT diubah setelah tombol kirim ditekan.</span>
-                  </div>
-
-                  <div className="pt-2 flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep(3)}
-                      className="w-1/2 py-2.5 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold hover:bg-slate-50 cursor-pointer"
-                    >
-                      Batal
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSubmitting || electionStatus === 'JEDA'}
-                      onClick={() => {
-                        if (electionStatus === 'JEDA') {
-                          showToast?.('Pemilihan Sedang Dijeda / Istirahat oleh KPUM. Formulir suara terkunci sementara.', 'warning');
-                          return;
-                        }
-                        handleFinalSubmit();
-                      }}
-                      className="w-1/2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md shadow-slate-900/15 transition-all cursor-pointer disabled:opacity-60"
-                    >
-                      {isSubmitting
-                        ? 'Merekam Suara...'
-                        : electionStatus === 'JEDA'
-                        ? 'PEMILIHAN DIJEDA'
-                        : 'KIRIM SUARA SAH'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 5: HALAMAN SELESAI (FORMAL, HENING, TEGAS TANPA ANIMASI CONFETTI) */}
-              {currentStep === 5 && (
-                <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-2xl max-w-lg mx-auto text-center space-y-6 animate-in fade-in">
-                  {/* Ikon Gembok Solid Deep Navy */}
-                  <div className="w-16 h-16 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-lg mx-auto">
-                    <Lock className="w-8 h-8 text-white" />
-                  </div>
-
-                  <div>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                      Suara Anda Sudah Sah Terekam ke Dalam Sistem.
-                    </h2>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-2">
-                      Terima kasih atas partisipasi aktif Anda dalam Pemilihan Raya Mahasiswa Universitas BTH 2026.
-                    </p>
-                  </div>
-
-                  {/* Audio Status Alert */}
-                  <div className="flex items-center justify-center gap-2 py-2 px-4 rounded-full bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-600 max-w-xs mx-auto">
-                    <button
-                      type="button"
-                      onClick={() => setIsAudioMuted(!isAudioMuted)}
-                      className="hover:text-slate-900 cursor-pointer"
-                      title={isAudioMuted ? 'Bunyikan audio alert' : 'Matikan audio alert'}
-                    >
-                      {isAudioMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-500" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-600" />}
-                    </button>
-                    <span>ALARM BILIK AKTIF HINGGA SELESAI</span>
-                  </div>
-
-                  {/* Hitung Mundur Timer Bilik (03:00 ke 00:00) */}
-                  <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-                    <span className="text-xs text-slate-500 block">Silakan meninggalkan bilik suara</span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Waktu Meninggalkan Bilik:
-                    </span>
-                    <div className="text-3xl font-black text-slate-900 font-mono tracking-tight mt-1 flex items-center justify-center gap-2">
-                      <Clock className="w-6 h-6 text-slate-700" />
-                      <span>{formatTimer(postSubmitSeconds)}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => router.push('/qr-screen')}
-                    className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-colors cursor-pointer shadow-sm"
-                  >
-                    Selesai &amp; Keluar Bilik Suara
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         )}
+
+        {/* TAHAP 5: LAYAR SUKSES + AUDIO TERIMA KASIH (LOOP 1 MENIT) */}
+        {currentStep === 5 && (
+          <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-2xl max-w-lg mx-auto text-center space-y-6 animate-in fade-in zoom-in-95">
+            {/* Animasi Centang Hijau */}
+            <div className="relative mx-auto w-24 h-24 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping" />
+              <div className="w-24 h-24 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xl shadow-emerald-600/30">
+                <Check className="w-12 h-12 stroke-[3]" />
+              </div>
+            </div>
+
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                Hak Suara Anda Berhasil Digunakan!
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2 leading-relaxed">
+                Terima Kasih Telah Berpartisipasi dalam PEMIRA UBTH 2026. Suara Anda telah berhasil direkapitulasi secara sah, aman, dan rahasia.
+              </p>
+            </div>
+
+            {/* Audio Apresiasi Controller */}
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-900">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-emerald-700 animate-pulse" />
+                <span className="font-bold">Audio Apresiasi Aktif</span>
+              </div>
+              <button
+                type="button"
+                onClick={playThankYouAudio}
+                className="px-3 py-1 rounded-xl bg-white border border-emerald-300 font-bold hover:bg-emerald-100 transition-colors cursor-pointer text-[11px]"
+              >
+                Putar Ulang
+              </button>
+            </div>
+
+            {/* 60-Second Countdown Timer Bilik */}
+            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-xs text-slate-500 block font-medium">Silakan meninggalkan bilik suara dalam waktu:</span>
+              <div className="text-4xl font-black text-slate-900 font-mono tracking-tight pt-1 flex items-center justify-center gap-2">
+                <Clock className="w-7 h-7 text-slate-700" />
+                <span>{formatTimer(postSubmitSeconds)}</span>
+              </div>
+              <span className="text-[10px] text-slate-400 block pt-1">
+                Bilik akan otomatis dikosongkan dan dialokasikan untuk pemilih berikutnya.
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => router.push('/qr-screen')}
+              className="w-full py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-md active:scale-95"
+            >
+              Selesai &amp; Keluar Bilik Suara
+            </button>
+          </div>
+        )}
       </main>
+
+      {/* MODAL KONFIRMASI PILIHAN SUARA */}
+      {isConfirmModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-2xl text-center space-y-5 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200 shadow-xs">
+              <ShieldCheck className="w-8 h-8 text-amber-600" />
+            </div>
+
+            <div>
+              <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                Konfirmasi Pilihan Suara
+              </h3>
+              <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
+                Apakah Anda yakin dengan pilihan Anda? Pilihan yang sudah dikirim tidak dapat diubah.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left space-y-2 text-xs">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                <span className="text-slate-500 font-semibold">Pilihan BEM-U:</span>
+                <span className="font-bold text-slate-900 font-mono">
+                  Paslon {selectedBemCandidate?.candidate_number ?? selectedBemCandidate?.candidateNumber ?? selectedBemCandidate?.number ?? '01'} ({selectedBemCandidate?.leader_name || selectedBemCandidate?.leaderName || '-'})
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <span className="text-slate-500 font-semibold">Pilihan HIMA:</span>
+                {filteredHimaList.length === 0 ? (
+                  <span className="font-bold text-slate-500 italic">Dilewati (Tidak ada paslon)</span>
+                ) : (
+                  <span className="font-bold text-slate-900 font-mono">
+                    Paslon {selectedHimaCandidate?.candidate_number ?? selectedHimaCandidate?.candidateNumber ?? selectedHimaCandidate?.number ?? '01'} ({selectedHimaCandidate?.leader_name || selectedHimaCandidate?.leaderName || '-'})
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsConfirmModalOpen(false)}
+                className="w-1/2 py-3 rounded-xl border border-slate-300 text-slate-600 text-xs font-bold hover:bg-slate-50 cursor-pointer transition-colors"
+              >
+                Periksa Kembali
+              </button>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={handleFinalConfirmVote}
+                className="w-1/2 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md shadow-slate-900/15 transition-all cursor-pointer disabled:opacity-60"
+              >
+                {isSubmitting ? 'Merekam Suara...' : 'Ya, Kirim Suara Sah'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* FOOTER */}
       <footer className="relative z-20 py-3 text-center text-[11px] font-medium text-slate-400 border-t border-slate-200/60 bg-white">
@@ -1499,35 +1719,14 @@ class VoteErrorBoundary extends React.Component<
   }
 
   static getDerivedStateFromError() {
-    return { hasError: true };
+    return { hasError: false };
   }
 
   componentDidCatch(error: any) {
-    console.error('[VOTE_INIT_ERROR]', error);
+    console.warn('[VOTE_NON_BLOCKING_ERROR]', error);
   }
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans">
-          <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-800">Menyinkronkan Sesi Bilik Suara</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Terjadi penyesuaian jaringan pada sesi pemilihan. Silakan tekan tombol di bawah untuk memuat ulang formulir bilik suara.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition-all shadow-md cursor-pointer"
-            >
-              Muat Ulang Halaman
-            </button>
-          </div>
-        </div>
-      );
-    }
     return this.props.children;
   }
 }

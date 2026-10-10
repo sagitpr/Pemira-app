@@ -8,17 +8,46 @@ export const dynamic = 'force-dynamic';
 
 export default function QrScreenPage() {
   const [token, setToken] = useState('');
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(20);
   const [baseUrl, setBaseUrl] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const generateNewToken = () => {
-    const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const timestamp = Date.now().toString(36).toUpperCase();
-    setToken(`UBTH-${timestamp}-${randomStr}`);
-    setTimeLeft(30);
+  const [tokenTime, setTokenTime] = useState<number>(Date.now());
+
+  const generateNewToken = async () => {
+    const now = Date.now();
+    let sessionUuid: string;
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        sessionUuid = crypto.randomUUID();
+      } else {
+        sessionUuid = `UBTH-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      }
+    } catch {
+      sessionUuid = `UBTH-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    }
+
+    setToken(sessionUuid);
+    setTokenTime(now);
+    setTimeLeft(20);
+
+    // Simpan token aktif ini ke tabel/state Supabase sebagai token sah yang siap di-claim
+    try {
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabaseClient = createClient();
+      await supabaseClient.from('activity_logs').insert([
+        {
+          event_type: 'QR_SESSION_GENERATED',
+          message: `Token Sesi QR Baru Dibuat: ${sessionUuid}`,
+          description: sessionUuid,
+          created_at: new Date(now).toISOString(),
+        },
+      ]);
+    } catch (saveErr) {
+      console.warn('Simpan token ke Supabase log:', saveErr);
+    }
   };
 
   useEffect(() => {
@@ -50,7 +79,7 @@ export default function QrScreenPage() {
       setTimeLeft((prev) => {
         if (prev <= 1) {
           generateNewToken();
-          return 30;
+          return 20;
         }
         return prev - 1;
       });
@@ -76,7 +105,7 @@ export default function QrScreenPage() {
     }
   };
 
-  const voteUrl = baseUrl ? `${baseUrl}/vote?token=${token}` : '';
+  const voteUrl = baseUrl ? `${baseUrl}/vote?session=${token}&ts=${tokenTime}` : '';
   const formattedTime = `00:${timeLeft < 10 ? `0${timeLeft}` : timeLeft}`;
 
   return (

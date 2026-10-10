@@ -74,9 +74,10 @@ function BoothCard({
   onReset: (booth: BoothItem) => void;
 }) {
   const st = (booth.status || '').toUpperCase();
-  const isAvailable = st === 'TERSEDIA' || st === 'KOSONG';
+  const isAvailable = st === 'AVAILABLE' || st === 'TERSEDIA' || st === 'KOSONG';
+  const isOccupied = st === 'OCCUPIED' || st === 'MENUJU_BILIK' || st === 'MENUJU BILIK';
   const boothNumStr = String(booth.booth_number).padStart(2, '0');
-  const voterName = booth.voter_name || booth.current_voter_name || 'Memproses Sesi...';
+  const voterName = booth.voter_name || booth.current_voter_name || 'Pemilih Terdaftar';
   const voterNim = booth.voter_nim || booth.current_voter_nim || '-';
   const voterProdi = booth.voter_prodi || booth.current_voter_prodi || '-';
 
@@ -84,7 +85,7 @@ function BoothCard({
   const [elapsed, setElapsed] = useState<string>('00:00');
 
   useEffect(() => {
-    if (isAvailable || !booth.started_at) {
+    if (isAvailable || isOccupied || !booth.started_at) {
       setElapsed('00:00');
       return;
     }
@@ -101,21 +102,25 @@ function BoothCard({
     calcElapsed();
     const timer = setInterval(calcElapsed, 1000);
     return () => clearInterval(timer);
-  }, [isAvailable, booth.started_at]);
+  }, [isAvailable, isOccupied, booth.started_at]);
 
+  // STATUS HIJAU: AVAILABLE (Tersedia / Kosong)
   if (isAvailable) {
     return (
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm flex flex-col justify-between transition-all hover:border-slate-300">
+      <div className="rounded-2xl border border-emerald-200/90 bg-white p-4 shadow-sm flex flex-col justify-between transition-all hover:border-emerald-400">
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="font-bold text-slate-800">Bilik {boothNumStr}</span>
-            <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-emerald-50 text-emerald-600 border border-emerald-200">
-              Tersedia
+            <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              Tersedia / Kosong
             </span>
           </div>
-          <p className="text-center text-xs text-slate-400 py-4 font-medium">
-            - (Kosong) -
-          </p>
+          <div className="py-4 text-center">
+            <p className="text-xs text-slate-400 font-medium">
+              - Bilik Siap Digunakan -
+            </p>
+          </div>
         </div>
         <button
           onClick={() => onReset(booth)}
@@ -129,15 +134,50 @@ function BoothCard({
     );
   }
 
-  // Kondisi Status 'DIGUNAKAN'
+  // STATUS KUNING: OCCUPIED (Pemilih Menuju Bilik)
+  if (isOccupied) {
+    return (
+      <div className="rounded-2xl border border-amber-300 bg-amber-50/40 p-4 shadow-sm flex flex-col justify-between ring-1 ring-amber-200 transition-all">
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
+            <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1.5 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              Pemilih Menuju Bilik
+            </span>
+          </div>
+
+          <div className="py-3 px-3 rounded-xl bg-white/95 border border-amber-200 shadow-2xs space-y-1 mb-3 text-center">
+            <p className="font-bold text-amber-900 text-xs">
+              Alokasi Bilik Berhasil
+            </p>
+            <p className="text-[11px] text-amber-700 font-medium">
+              Menunggu pemilih tiba &amp; menekan tombol konfirmasi...
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={() => onReset(booth)}
+          disabled={isResetting}
+          className="w-full py-1.5 text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
+        >
+          <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+          <span>↺ Batalkan Alokasi</span>
+        </button>
+      </div>
+    );
+  }
+
+  // STATUS MERAH: VOTING / DIGUNAKAN (Sedang Memilih)
   return (
-    <div className="rounded-2xl border border-rose-300 bg-rose-50/30 p-4 shadow-sm flex flex-col justify-between ring-1 ring-rose-200 transition-all">
+    <div className="rounded-2xl border border-rose-300 bg-rose-50/40 p-4 shadow-sm flex flex-col justify-between ring-1 ring-rose-200 transition-all">
       <div>
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-          <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1.5 animate-pulse">
+          <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1.5 animate-pulse">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-            Digunakan
+            Sedang Memilih
           </span>
         </div>
 
@@ -145,8 +185,8 @@ function BoothCard({
           <p className="font-bold text-slate-900 text-xs truncate" title={voterName}>
             {voterName}
           </p>
-          <p className="text-[10px] text-slate-500 font-medium truncate">
-            {voterNim} • {voterProdi}
+          <p className="text-[10px] text-slate-600 font-semibold truncate">
+            {voterNim !== '-' ? `(${voterNim})` : ''} - {voterProdi}
           </p>
           <div className="pt-1 flex items-center gap-1 text-[11px] font-mono font-bold text-rose-600">
             <Clock className="w-3 h-3" />
@@ -367,7 +407,30 @@ export default function AdminDashboardPage() {
 
     const channel = supabase
       .channel('dashboard_live_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, (payload: any) => {
+        if (payload?.new) {
+          const upd = payload.new;
+          setBooths((prev) =>
+            prev.map((b) => {
+              if (b.booth_number === upd.booth_number || (b.id && upd.id && b.id === upd.id)) {
+                const newStatus = (upd.status || 'AVAILABLE').toUpperCase();
+                const isReset = newStatus === 'AVAILABLE' || newStatus === 'TERSEDIA' || newStatus === 'KOSONG';
+                return {
+                  ...b,
+                  status: newStatus,
+                  voter_name: isReset ? null : (upd.voter_name || upd.current_voter_name || null),
+                  voter_nim: isReset ? null : (upd.voter_nim || upd.current_voter_nim || null),
+                  voter_prodi: isReset ? null : (upd.voter_prodi || upd.current_voter_prodi || null),
+                  current_voter_name: isReset ? null : (upd.current_voter_name || upd.voter_name || null),
+                  current_voter_nim: isReset ? null : (upd.current_voter_nim || upd.voter_nim || null),
+                  current_voter_prodi: isReset ? null : (upd.current_voter_prodi || upd.voter_prodi || null),
+                  started_at: isReset ? null : (upd.started_at || null),
+                };
+              }
+              return b;
+            })
+          );
+        }
         fetchBooths();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {

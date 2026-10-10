@@ -34,9 +34,9 @@ export default function AdminPengaturanPage() {
   const [currentElectionStatus, setCurrentElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>(electionStatus || 'AKTIF');
 
   const [configData, setConfigData] = useState<any>(null);
-  const [admins, setAdmins] = useState<any[]>([]);
+  const [adminList, setAdminList] = useState<any[]>([]);
 
-  const fetchAdmins = async () => {
+  const fetchAdminUsers = async () => {
     try {
       const { data, error } = await supabase
         .from('admin_users')
@@ -48,10 +48,10 @@ export default function AdminPengaturanPage() {
         return;
       }
       if (data) {
-        setAdmins(data);
+        setAdminList(data);
       }
     } catch (err) {
-      console.error(err);
+      console.error('Fetch error:', err);
     }
   };
 
@@ -94,7 +94,7 @@ export default function AdminPengaturanPage() {
   // Load konfigurasi, bilik dan akun admin aktual dari Supabase saat pertama kali dibuka
   useEffect(() => {
     fetchConfig();
-    fetchAdmins();
+    fetchAdminUsers();
     async function loadCurrentBoothCount() {
       try {
         const { count } = await supabase.from('booths').select('*', { count: 'exact', head: true });
@@ -263,7 +263,7 @@ export default function AdminPengaturanPage() {
       setNewAdminEmail('');
       setNewAdminPassword('');
       showToast('Akun admin berhasil disimpan ke database.', 'success');
-      await fetchAdmins();
+      await fetchAdminUsers();
     } catch (err: any) {
       console.error('Error adding admin:', err);
       alert('Terjadi kesalahan saat menambah admin.');
@@ -304,7 +304,7 @@ export default function AdminPengaturanPage() {
 
       setEditingAdmin(null);
       showToast('Data akun admin berhasil diperbarui.', 'success');
-      await fetchAdmins();
+      await fetchAdminUsers();
     } catch (err: any) {
       console.error('Error editing admin:', err);
       alert('Terjadi kesalahan saat memperbarui admin.');
@@ -329,7 +329,7 @@ export default function AdminPengaturanPage() {
       }
 
       showToast('Akun admin berhasil dihapus dari database.', 'info');
-      await fetchAdmins();
+      await fetchAdminUsers();
     } catch (err: any) {
       console.error('Error deleting admin:', err);
       alert('Terjadi kesalahan saat menghapus admin.');
@@ -390,25 +390,25 @@ export default function AdminPengaturanPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {admins.length === 0 ? (
+                {adminList.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="text-center py-8 text-xs text-slate-400 font-medium">
                       Belum ada akun admin terdaftar di database
                     </td>
                   </tr>
                 ) : (
-                  admins.map((adm, idx) => (
-                    <tr key={adm.id || idx} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-400 text-center">{idx + 1}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{adm.name || 'Admin'}</td>
-                      <td className="py-3 px-4 font-mono text-slate-500">{adm.email}</td>
+                  adminList.map((adm, index) => (
+                    <tr key={adm.id || index} className="border-b hover:bg-slate-50/50 transition-colors">
+                      <td className="py-3 px-4 font-mono text-slate-400 text-center">{index + 1}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-900">{adm.name || adm.nama || 'Admin KPUM'}</td>
+                      <td className="py-3 px-4 font-mono text-slate-500">{adm.email || adm.username}</td>
                       <td className="py-3 px-3 text-center">
-                        <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          {adm.role || 'Admin'}
+                        <span className="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700 font-medium">
+                          {adm.role || 'panitia'}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 font-semibold">
                           {adm.status || 'Aktif'}
                         </span>
                       </td>

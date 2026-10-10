@@ -207,12 +207,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // e. Lepaskan status bilik suara kembali ke TERSEDIA
+    // e. Lepaskan status bilik suara kembali ke AVAILABLE
     try {
       await supabaseAdmin
         .from('booths')
         .update({
-          status: 'TERSEDIA',
+          status: 'AVAILABLE',
           voter_name: null,
           voter_nim: null,
           voter_prodi: null,
