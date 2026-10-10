@@ -13,10 +13,11 @@ function normalizeString(val: string): string {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { nim, name } = body || {};
+    const { nim, name, prodi } = body || {};
 
     const cleanNim = String(nim || '').trim();
     const cleanName = String(name || '').trim();
+    const inputProdi = String(prodi || '').trim();
 
     // 1. Validasi input NIM
     if (!cleanNim) {
@@ -54,11 +55,16 @@ export async function POST(request: Request) {
     }
 
     // 3. Cari record pemilih di DPT berdasarkan NIM
-    const { data: voter, error: voterErr } = await supabaseAdmin
+    let voterQuery = supabaseAdmin
       .from('voters')
       .select('*')
-      .eq('nim', cleanNim)
-      .maybeSingle();
+      .eq('nim', cleanNim);
+
+    if (inputProdi) {
+      voterQuery = voterQuery.or(`prodi.ilike.%${inputProdi}%,prodi_name.ilike.%${inputProdi}%`);
+    }
+
+    const { data: voter, error: voterErr } = await voterQuery.maybeSingle();
 
     if (voterErr) {
       console.error('Database query error in verify-voter:', voterErr);
@@ -161,7 +167,7 @@ export async function POST(request: Request) {
     }
 
     const voterName = voter.nama || voter.name || 'Mahasiswa';
-    const voterProdi = voter.prodi || voter.prodi_name || 'Program Studi';
+    const voterProdi = voter.prodi || voter.prodi_name || 'Kewirausahaan';
     const voterFaculty = voter.faculty || voter.faculty_id || 'FTB';
 
     // 5. Verifikasi Berhasil: Kembalikan data pemilih lengkap
@@ -175,6 +181,7 @@ export async function POST(request: Request) {
         nama: voterName,
         prodi: voterProdi,
         prodiName: voterProdi,
+        prodi_name: voterProdi,
         faculty: voterFaculty,
         facultyId: voterFaculty,
         facultyName: voter.faculty_name || `Fakultas ${voterFaculty}`,

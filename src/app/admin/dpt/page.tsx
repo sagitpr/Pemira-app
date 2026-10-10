@@ -26,6 +26,9 @@ export default function AdminDptPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'belum' | 'selesai'>('ALL');
+  const [selectedProdi, setSelectedProdi] = useState('ALL');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   // Deletion States
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -61,7 +64,7 @@ export default function AdminDptPage() {
     };
     fetchProdiOptions();
   }, []);
-  const [newAngkatan, setNewAngkatan] = useState('2023');
+  const [newAngkatan, setNewAngkatan] = useState('2026');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modal Import CSV
@@ -84,13 +87,16 @@ export default function AdminDptPage() {
         const mapped: Voter[] = data.map((d: any) => {
           const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
           const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
+          const prodiResolved = d.prodi || d.prodi_name || d.prodiName || 'Kewirausahaan';
           return {
             id: String(d.id || d.nim),
             nim: d.nim,
             name: d.name || d.nama,
             facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
             prodiId: d.prodi_id || d.prodiId || 'general',
-            prodiName: d.prodi_name || d.prodi || d.prodiName || 'Program Studi',
+            prodiName: prodiResolved,
+            prodi: prodiResolved,
+            prodi_name: prodiResolved,
             angkatan: d.angkatan || '2024',
             status,
             voting_status: rawStatus as any,
@@ -99,7 +105,7 @@ export default function AdminDptPage() {
             duration_seconds: d.duration_seconds,
             votedAt: d.voted_at || d.votedAt || undefined,
             boothId: d.booth_id || d.boothId || undefined,
-          };
+          } as any;
         });
         setVoters(mapped);
         return;
@@ -155,16 +161,40 @@ export default function AdminDptPage() {
     };
   }, []);
 
+  // Daftar program studi unik dari data pemilih
+  const uniqueProdiList = Array.from(
+    new Set(
+      voters
+        .map((v) => (v as any).prodi || v.prodiName || (v as any).prodi_name)
+        .filter(Boolean)
+    )
+  ).sort();
+
+  // Reset halaman aktif ke 1 saat filter atau pencarian berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, selectedProdi]);
+
   // Filter DPT
   const filteredVoters = voters.filter((v) => {
     const q = searchQuery.toLowerCase();
+    const prodiVal = (v as any).prodi || v.prodiName || (v as any).prodi_name || '';
+    const angkatanVal = String((v as any).angkatan || '');
     const matchSearch =
       v.name?.toLowerCase().includes(q) ||
       v.nim?.toLowerCase().includes(q) ||
-      v.prodiName?.toLowerCase().includes(q);
+      prodiVal.toLowerCase().includes(q) ||
+      angkatanVal.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'ALL' || v.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchProdi = selectedProdi === 'ALL' || prodiVal.toLowerCase() === selectedProdi.toLowerCase();
+    return matchSearch && matchStatus && matchProdi;
   });
+
+  const totalPages = Math.ceil(filteredVoters.length / pageSize) || 1;
+  const paginatedVoters = filteredVoters.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   // Hapus Pemilih per Baris ke Database Supabase
   const handleDeleteVoter = async (voter: Voter) => {
@@ -233,16 +263,18 @@ export default function AdminDptPage() {
     setIsSubmitting(true);
     try {
       const supabase = createClient();
+      const prodiVal = String(newProdi || '').trim() || 'Kewirausahaan';
+      const angkatanVal = String(newAngkatan || '').trim() || '2026';
       const payloadVoter = {
         nim: String(newNim).trim(),
         name: String(newName).trim(),
         nama: String(newName).trim(),
-        prodi: String(newProdi || '').trim(),
-        prodi_name: String(newProdi || '').trim(),
+        prodi: prodiVal,
+        prodi_name: prodiVal,
         prodi_id: prodiOptions.find((p) => p.name === newProdi)?.id ?? null,
         faculty: newFaculty,
         faculty_id: newFaculty,
-        angkatan: newAngkatan.trim() || '2024',
+        angkatan: angkatanVal,
         has_voted: false,
         voting_status: 'BELUM',
       };
@@ -258,6 +290,7 @@ export default function AdminDptPage() {
       setIsAddModalOpen(false);
       setNewNim('');
       setNewName('');
+      setNewAngkatan('2026');
       await fetchSupabaseVoters();
     } catch (err: any) {
       console.error('Error creating voter:', err);
@@ -302,12 +335,15 @@ export default function AdminDptPage() {
 
         const parts = line.split(/[,;\t]/).map((p) => p.replace(/["']/g, '').trim());
         if (parts.length >= 2 && parts[0] && parts[1]) {
+          const prodiVal = parts[2] || 'Kewirausahaan';
           parsedList.push({
             nim: parts[0],
             name: parts[1],
             nama: parts[1],
-            prodi: parts[2] || '',
+            prodi: prodiVal,
+            prodi_name: prodiVal,
             faculty: 'FTB',
+            faculty_id: 'FTB',
             has_voted: false,
             voting_status: 'BELUM',
           });
@@ -442,21 +478,48 @@ export default function AdminDptPage() {
         {/* TABEL DATA DPT RINGKAS & MINIMALIS */}
         <section className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
           {/* SEARCH & FILTER BAR */}
-          <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
-            <div className="relative max-w-sm w-full">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari NIM, nama, atau prodi..."
-                className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 bg-slate-50/50 focus:outline-hidden focus:border-slate-900 focus:bg-white transition-colors"
-              />
+          <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white">
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full md:max-w-xl">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder="Cari NIM, nama, atau prodi..."
+                  className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-900 bg-slate-50/50 focus:outline-hidden focus:border-slate-900 focus:bg-white transition-colors"
+                />
+              </div>
+
+              {/* Filter Dropdown Program Studi */}
+              <div className="w-full sm:w-56">
+                <select
+                  value={selectedProdi}
+                  onChange={(e) => {
+                    setSelectedProdi(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-slate-50/50 focus:outline-hidden focus:border-slate-900 focus:bg-white transition-colors cursor-pointer"
+                >
+                  <option value="ALL">Semua Program Studi</option>
+                  {uniqueProdiList.map((prodi) => (
+                    <option key={prodi} value={prodi}>
+                      {prodi}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => setStatusFilter('ALL')}
+                onClick={() => {
+                  setStatusFilter('ALL');
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                   statusFilter === 'ALL'
                     ? 'bg-slate-900 text-white'
@@ -466,7 +529,10 @@ export default function AdminDptPage() {
                 Semua ({voters.length})
               </button>
               <button
-                onClick={() => setStatusFilter('selesai')}
+                onClick={() => {
+                  setStatusFilter('selesai');
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                   statusFilter === 'selesai'
                     ? 'bg-emerald-600 text-white'
@@ -476,7 +542,10 @@ export default function AdminDptPage() {
                 Selesai ({sudahMemilih})
               </button>
               <button
-                onClick={() => setStatusFilter('belum')}
+                onClick={() => {
+                  setStatusFilter('belum');
+                  setCurrentPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
                   statusFilter === 'belum'
                     ? 'bg-slate-700 text-white'
@@ -488,7 +557,7 @@ export default function AdminDptPage() {
             </div>
           </div>
 
-          {/* TABEL DATA: NIM | NAMA MAHASISWA | PROGRAM STUDI | STATUS HAK SUARA | WAKTU MEMILIH | AKSI */}
+          {/* TABEL DATA: NIM | NAMA MAHASISWA | PROGRAM STUDI | ANGKATAN | STATUS HAK SUARA | WAKTU MEMILIH | AKSI */}
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead>
@@ -496,6 +565,7 @@ export default function AdminDptPage() {
                   <th className="py-3 px-5 w-32">NIM</th>
                   <th className="py-3 px-5">Nama Mahasiswa</th>
                   <th className="py-3 px-5">Program Studi</th>
+                  <th className="py-3 px-4 text-center w-28">Angkatan</th>
                   <th className="py-3 px-4 text-center w-36">Status Hak Suara</th>
                   <th className="py-3 px-5 text-right w-44">Waktu Memilih</th>
                   <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 w-24">Aksi</th>
@@ -504,20 +574,20 @@ export default function AdminDptPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-slate-400">
                       <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-400" />
                       <span>Memuat data DPT dari server...</span>
                     </td>
                   </tr>
-                ) : filteredVoters.length === 0 ? (
+                ) : paginatedVoters.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <td colSpan={7} className="py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-1.5">
                         <Users className="w-8 h-8 text-slate-300 mb-1" />
                         <span className="font-semibold text-slate-600">
                           {voters.length === 0
                             ? 'Belum ada data DPT. Silakan tambahkan DPT atau impor file CSV.'
-                            : 'Tidak ada data pemilih yang sesuai dengan kriteria pencarian.'}
+                            : 'Tidak ada data pemilih yang sesuai dengan kriteria pencarian atau filter.'}
                         </span>
                         {voters.length === 0 && (
                           <span className="text-[11px] text-slate-400">
@@ -528,7 +598,7 @@ export default function AdminDptPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredVoters.map((v) => {
+                  paginatedVoters.map((v) => {
                     const rawStatus = v.voting_status || (v.status === 'selesai' ? 'SELESAI' : v.status === 'memilih' ? 'MENGERJAKAN' : 'BELUM');
                     const isMengerjakan = rawStatus === 'MENGERJAKAN';
                     const isSelesai = rawStatus === 'SELESAI';
@@ -562,7 +632,10 @@ export default function AdminDptPage() {
                           {v.name}
                         </td>
                         <td className="py-3 px-5 text-slate-600 font-medium">
-                          {v.prodiName}
+                          {(v as any).prodi || (v as any).prodi_name || v.prodiName || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-center font-mono font-semibold text-slate-700">
+                          {(v as any).angkatan || '-'}
                         </td>
                         <td className="py-3 px-4 text-center">
                           <span
@@ -612,6 +685,40 @@ export default function AdminDptPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* KONTROL PAGINASI ELEGAN */}
+          <div className="p-4 sm:p-5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-white">
+            <span className="text-slate-500 font-medium">
+              {filteredVoters.length === 0
+                ? 'Tidak ada pemilih'
+                : `Menampilkan ${(currentPage - 1) * pageSize + 1} - ${Math.min(
+                    currentPage * pageSize,
+                    filteredVoters.length
+                  )} dari ${filteredVoters.length} pemilih`}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Sebelumnya
+              </button>
+              <span className="px-3 py-1.5 rounded-xl bg-slate-50 text-slate-600 font-mono font-bold border border-slate-100">
+                Halaman {currentPage} dari {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Berikutnya
+              </button>
+            </div>
           </div>
         </section>
       </main>
@@ -738,6 +845,20 @@ export default function AdminDptPage() {
                     );
                   })}
                 </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Tahun Angkatan
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: 2026"
+                  value={newAngkatan}
+                  onChange={(e) => setNewAngkatan(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-mono focus:outline-hidden focus:border-slate-900"
+                />
               </div>
 
               <div className="flex gap-2 pt-2">

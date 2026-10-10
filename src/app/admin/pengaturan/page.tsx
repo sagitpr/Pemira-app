@@ -36,29 +36,53 @@ export default function AdminPengaturanPage() {
   const [saving, setSaving] = useState(false);
   const [currentElectionStatus, setCurrentElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>(electionStatus || 'AKTIF');
 
-  // Load jumlah bilik dan status pemilihan aktual dari Supabase saat pertama kali dibuka
-  useEffect(() => {
-    async function loadCurrentBoothCount() {
-      try {
-        const supabase = createClient();
-        const { count } = await supabase.from('booths').select('*', { count: 'exact', head: true });
-        if (count && count > 0) {
-          setTotalBooths(count);
-          updateConfig({ totalBooths: count });
+  const [configData, setConfigData] = useState<any>(null);
+
+  const fetchConfig = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('system_config')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching system_config:', error);
+        return;
+      }
+
+      if (data) {
+        // Isi form/state dengan data dari Supabase
+        setConfigData(data);
+        if (data.total_booths) {
+          setTotalBooths(Number(data.total_booths));
+          updateConfig({ totalBooths: Number(data.total_booths) });
         }
-
-        const { data: configData } = await supabase
-          .from('system_config')
-          .select('election_status, total_booths')
-          .limit(1)
-          .maybeSingle();
-
-        if (configData?.election_status) {
-          const st = configData.election_status.toUpperCase();
+        if (data.session_timeout_seconds || data.session_timeout) {
+          setSessionTimeout(Number(data.session_timeout_seconds || data.session_timeout));
+        }
+        if (data.election_status) {
+          const st = String(data.election_status).toUpperCase();
           if (st === 'JEDA' || st === 'AKTIF' || st === 'TUTUP') {
             setCurrentElectionStatus(st as any);
             setElectionStatus(st as any);
           }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Load jumlah bilik dan status pemilihan aktual dari Supabase saat pertama kali dibuka
+  useEffect(() => {
+    fetchConfig();
+    async function loadCurrentBoothCount() {
+      try {
+        const { count } = await supabase.from('booths').select('*', { count: 'exact', head: true });
+        if (count && count > 0) {
+          setTotalBooths(count);
+          updateConfig({ totalBooths: count });
         }
       } catch (err) {
         console.warn('Gagal memuat status & bilik Supabase:', err);
@@ -82,10 +106,10 @@ export default function AdminPengaturanPage() {
 
   const handleChangeElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
     try {
-      const supabase = createClient();
+      const configId = configData?.id || 'primary';
       const { error } = await supabase
         .from('system_config')
-        .upsert({ id: 'primary', election_status: newStatus });
+        .upsert({ id: configId, election_status: newStatus, updated_at: new Date().toISOString() });
 
       if (error) {
         console.warn('Supabase system_config upsert warning:', error.message);
@@ -173,9 +197,11 @@ export default function AdminPengaturanPage() {
       }
 
       // Update system_config
+      const configId = configData?.id || 'primary';
       await supabase
         .from('system_config')
-        .upsert({ id: 'primary', total_booths: target, updated_at: new Date().toISOString() });
+        .upsert({ id: configId, total_booths: target, updated_at: new Date().toISOString() });
+      fetchConfig();
 
       localStorage.setItem('pemira_booth_timeout', String(sessionTimeout));
       updateConfig({
