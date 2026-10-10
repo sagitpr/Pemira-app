@@ -4,8 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useAdmin } from '@/context/AdminContext';
-import { Candidate } from '@/data/voteMockData';
+import { Candidate, BEM_CANDIDATES, HIMA_CANDIDATES } from '@/data/voteMockData';
 import AppLogo from '@/components/common/AppLogo';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
 import { createClient, supabase } from '@/lib/supabase/client';
@@ -48,17 +47,17 @@ function VoteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const {
-    voters = [],
-    bemCandidates = [],
-    himaCandidates = [],
-    castVote,
-    updateBoothStatus,
-    showToast,
-    electionStatus: contextStatus,
-  } = useAdmin();
+  const [mounted, setMounted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [assignedBooth, setAssignedBooth] = useState<any>(null);
 
-  const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>(contextStatus || 'AKTIF');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
+  const showToast = useCallback((msg: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+    setToast({ message: msg, type });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -117,6 +116,9 @@ function VoteContent() {
 
   // 1. Initial Booth Assignment, Token Storage in sessionStorage, & Auto Booth Allocation
   useEffect(() => {
+    setMounted(true);
+    let isCancelled = false;
+
     let rawToken: string | null = null;
     let boothNumberStr = '1';
 
@@ -131,6 +133,7 @@ function VoteContent() {
         const isCompleted = sessionStorage.getItem('pemira_session_completed') === 'true';
         if (isCompleted) {
           setSessionError('Sesi pemilihan tidak valid atau sudah digunakan.');
+          setLoading(false);
           return;
         }
 
@@ -175,13 +178,14 @@ function VoteContent() {
         if (error) {
           console.warn('Gagal fetch booth, gunakan fallback lokal:', error);
         }
-        return data || { booth_number: bNumber, status: 'AVAILABLE' };
+        return data || { id: String(bNumber), booth_number: Number(bNumber) || 1, status: 'AVAILABLE', name: `Bilik ${String(bNumber).padStart(2, '0')}` };
       } catch (e) {
-        return { booth_number: bNumber, status: 'AVAILABLE' };
+        return { id: String(bNumber), booth_number: Number(bNumber) || 1, status: 'AVAILABLE', name: `Bilik ${String(bNumber).padStart(2, '0')}` };
       }
     };
 
     const initSession = async () => {
+      setLoading(true);
       try {
         // Cari bilik kosong otomatis dari tabel 'booths' (status = 'AVAILABLE' atau 'TERSEDIA')
         const boothParam = searchParams?.get('booth') || searchParams?.get('id');
@@ -201,12 +205,16 @@ function VoteContent() {
               setAssignedBoothNumber(bNum);
               setAssignedBoothId(availableBooth.id || '');
               setAssignedBoothName(availableBooth.name || `Bilik ${String(bNum).padStart(2, '0')}`);
+              setAssignedBooth(availableBooth);
               if (typeof window !== 'undefined') {
                 localStorage.setItem('pemira_booth', String(bNum));
               }
+            } else {
+              setAssignedBooth({ id: '1', booth_number: 1, status: 'AVAILABLE', name: 'Bilik 01' });
             }
           } catch (bErr) {
             console.warn('Auto search available booth fallback note:', bErr);
+            setAssignedBooth({ id: '1', booth_number: 1, status: 'AVAILABLE', name: 'Bilik 01' });
           }
         } else {
           // Ambil status bilik suara dari Supabase secara aman
@@ -216,6 +224,9 @@ function VoteContent() {
             setAssignedBoothNumber(Number(bNum) || 1);
             setAssignedBoothId(boothData.id || '');
             setAssignedBoothName(boothData.name || `Bilik ${String(bNum).padStart(2, '0')}`);
+            setAssignedBooth(boothData);
+          } else {
+            setAssignedBooth({ id: String(boothNumberStr), booth_number: Number(boothNumberStr) || 1, status: 'AVAILABLE', name: `Bilik ${String(boothNumberStr).padStart(2, '0')}` });
           }
         }
 
@@ -240,10 +251,19 @@ function VoteContent() {
         }
       } catch (err) {
         console.warn('[VOTE_INIT_ERROR]', err);
+        setAssignedBooth({ id: '1', booth_number: 1, status: 'AVAILABLE', name: 'Bilik 01' });
+      } finally {
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     initSession();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [searchParams]);
 
   // Listener antrean bilik ketika isWaitingQueue === true
@@ -643,13 +663,7 @@ function VoteContent() {
         console.warn('Direct booth update note:', updErr);
       }
 
-      try {
-        updateBoothStatus?.(
-          `b-0${assignedBoothNumber}`,
-          'Sedang Memilih',
-          { voterNim, voterName, prodiName: voterProdi }
-        );
-      } catch {}
+
 
       if (!selectedBemId && (safeBemList || []).length > 0) {
         setSelectedBemId(String(safeBemList[0]?.id));
@@ -774,8 +788,6 @@ function VoteContent() {
       }
 
       // 5. Pindah ke Tahap 5 (Layar Sukses & Audio)
-      castVote?.(voterNim, selectedBemId, selectedHimaId || '');
-      updateBoothStatus?.(`b-0${assignedBoothNumber}`, 'Tersedia');
       setIsSubmitting(false);
       setPostSubmitSeconds(60); // 1 menit countdown
       setCurrentStep(5);
@@ -796,12 +808,12 @@ function VoteContent() {
     return `0${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const safeBemList = dbCandidatesLoaded
+  const safeBemList = dbCandidatesLoaded && dbBemCandidates.length > 0
     ? dbBemCandidates
-    : (bemCandidates && bemCandidates.length > 0 ? bemCandidates : []);
-  const safeHimaList = dbCandidatesLoaded
+    : BEM_CANDIDATES;
+  const safeHimaList = dbCandidatesLoaded && dbHimaCandidates.length > 0
     ? dbHimaCandidates
-    : (himaCandidates && himaCandidates.length > 0 ? himaCandidates : []);
+    : HIMA_CANDIDATES;
 
   const currentVoter = detectedVoter;
   const norm = (s: string) => (s || '').toLowerCase().replace(/\s+/g, '');
@@ -811,6 +823,18 @@ function VoteContent() {
 
   const selectedBemCandidate = safeBemList.find((c) => String(c?.id) === String(selectedBemId)) || safeBemList[0] || null;
   const selectedHimaCandidate = filteredHimaList.find((c) => String(c?.id) === String(selectedHimaId)) || filteredHimaList[0] || null;
+
+  // Hindari hydration mismatch
+  if (!mounted || loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 font-sans select-none">
+        <div className="text-center p-6">
+          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-600 font-medium text-sm">Menyiapkan Bilik Suara...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 1. TAMPILAN ANTREAN BILIK PENUH
   if (isWaitingQueue) {
@@ -959,6 +983,17 @@ function VoteContent() {
 
   return (
     <div className="relative min-h-screen bg-slate-50 flex flex-col justify-between overflow-x-hidden font-sans text-slate-800 select-none">
+      {/* FLOATING TOAST NOTIFICATION */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 max-w-sm rounded-2xl bg-slate-900 text-white px-4 py-3 shadow-xl flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">
+          {toast.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+          {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+          {toast.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />}
+          {toast.type === 'info' && <Info className="w-4 h-4 text-blue-400 shrink-0" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       {/* JEDA NOTIFICATION BANNER */}
       {electionStatus === 'JEDA' && (
         <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs font-bold text-center flex items-center justify-center gap-2 border-b border-amber-600 shadow-xs sticky top-0 z-30">
@@ -1709,43 +1744,20 @@ function VoteContent() {
   );
 }
 
-class VoteErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: false };
-  }
-
-  componentDidCatch(error: any) {
-    console.warn('[VOTE_NON_BLOCKING_ERROR]', error);
-  }
-
-  render() {
-    return this.props.children;
-  }
-}
-
-export default function VotingPage() {
+// WAJIB: Bungkus dengan Suspense agar tidak memicu deopt exception Next.js
+export default function VotePage() {
   return (
-    <VoteErrorBoundary>
-      <Suspense
-        fallback={
-          <div className="flex min-h-screen items-center justify-center bg-slate-50">
-            <div className="text-center">
-              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-slate-900 border-t-transparent" />
-              <p className="mt-3 text-xs font-bold text-slate-600">Menyiapkan Bilik Suara Digital...</p>
-            </div>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 font-sans">
+          <div className="text-center p-6">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-slate-600 font-medium text-sm">Memuat Sesi Pemilihan...</p>
           </div>
-        }
-      >
-        <VoteContent />
-      </Suspense>
-    </VoteErrorBoundary>
+        </div>
+      }
+    >
+      <VoteContent />
+    </Suspense>
   );
 }

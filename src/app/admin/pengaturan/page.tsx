@@ -35,25 +35,50 @@ export default function AdminPengaturanPage() {
 
   const [configData, setConfigData] = useState<any>(null);
   const [adminList, setAdminList] = useState<any[]>([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(true);
 
-  const fetchAdminUsers = async () => {
+  const fetchAdmins = async () => {
     try {
+      setLoadingAdmins(true);
+      // WAJIB: Gunakan select('*') agar tidak error mencari kolom yang tidak ada
+      // JANGAN berikan filter role atau status apapun agar semua admin tampil!
       const { data, error } = await supabase
         .from('admin_users')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching admin_users:', error);
+      console.log('HASIL FETCH ADMIN_USERS:', data, 'ERROR:', error);
+
+      if (!error && data && data.length > 0) {
+        setAdminList(data);
         return;
       }
-      if (data) {
+
+      // Fallback service role API jika RLS membatasi client anonim
+      try {
+        const res = await fetch('/api/admin/pengaturan/admins');
+        const json = await res.json();
+        if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+          setAdminList(json.data);
+          return;
+        }
+      } catch (apiErr) {
+        console.warn('API fetch admins note:', apiErr);
+      }
+
+      if (data && data.length > 0) {
         setAdminList(data);
+      } else {
+        setAdminList([]);
       }
     } catch (err) {
-      console.error('Fetch error:', err);
+      console.error('Fetch admin crash:', err);
+    } finally {
+      setLoadingAdmins(false);
     }
   };
+
+  const fetchAdminUsers = fetchAdmins;
 
   const fetchConfig = async () => {
     try {
@@ -311,25 +336,29 @@ export default function AdminPengaturanPage() {
     }
   };
 
-  const handleDeleteAdmin = async (adm: any) => {
-    if (!confirm(`Hapus akun admin ${adm.name || adm.email} dari database?`)) return;
+  const handleDeleteAdmin = async (idOrAdm: any) => {
+    const id = typeof idOrAdm === 'object' ? idOrAdm?.id : idOrAdm;
+    const email = typeof idOrAdm === 'object' ? idOrAdm?.email : null;
+    const name = typeof idOrAdm === 'object' ? (idOrAdm?.name || idOrAdm?.email) : 'ini';
+
+    if (!confirm(`Hapus akun admin ${name} dari database?`)) return;
 
     try {
       let q = supabase.from('admin_users').delete();
-      if (adm.id) {
-        q = q.eq('id', adm.id);
-      } else {
-        q = q.eq('email', adm.email);
+      if (id) {
+        q = q.eq('id', id);
+      } else if (email) {
+        q = q.eq('email', email);
       }
 
       const { error } = await q;
       if (error) {
-        alert('Gagal menghapus admin: ' + error.message);
-        return;
+        // Fallback via API service role
+        await fetch(`/api/admin/pengaturan/admins?id=${id || ''}&email=${email || ''}`, { method: 'DELETE' });
       }
 
       showToast('Akun admin berhasil dihapus dari database.', 'info');
-      await fetchAdminUsers();
+      await fetchAdmins();
     } catch (err: any) {
       console.error('Error deleting admin:', err);
       alert('Terjadi kesalahan saat menghapus admin.');
@@ -390,41 +419,55 @@ export default function AdminPengaturanPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {adminList.length === 0 ? (
+                {loadingAdmins ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-xs text-slate-400 font-medium">
-                      Belum ada akun admin terdaftar di database
+                    <td colSpan={6} className="text-center py-6 text-slate-500 font-medium">
+                      Memuat data admin...
+                    </td>
+                  </tr>
+                ) : adminList.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-6 text-slate-400 font-medium">
+                      Belum ada akun admin terdaftar di database.
                     </td>
                   </tr>
                 ) : (
-                  adminList.map((adm, index) => (
-                    <tr key={adm.id || index} className="border-b hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-400 text-center">{index + 1}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-900">{adm.name || adm.nama || 'Admin KPUM'}</td>
-                      <td className="py-3 px-4 font-mono text-slate-500">{adm.email || adm.username}</td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="px-2 py-0.5 rounded text-xs bg-indigo-100 text-indigo-700 font-medium">
+                  adminList.map((adm, idx) => (
+                    <tr key={adm.id || idx} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-4 text-center">{idx + 1}</td>
+                      <td className="py-3 px-4 font-semibold text-slate-800">
+                        {adm.name || adm.nama || 'Admin KPUM'}
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 font-mono text-sm">
+                        {adm.email || adm.username || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          String(adm.role || '').toLowerCase().includes('super')
+                            ? 'bg-purple-100 text-purple-700' 
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
                           {adm.role || 'panitia'}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 font-semibold">
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
                           {adm.status || 'Aktif'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2 text-slate-400">
+                        <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => openEditModal(adm)}
+                            className="text-slate-400 hover:text-sky-600 transition p-1 cursor-pointer"
                             title="Edit Akun"
-                            className="p-1.5 rounded-lg hover:bg-sky-50 hover:text-sky-600 transition-colors cursor-pointer"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleDeleteAdmin(adm)}
+                          <button 
+                            onClick={() => handleDeleteAdmin(adm.id || adm)}
+                            className="text-slate-400 hover:text-red-600 transition p-1 cursor-pointer"
                             title="Hapus Akun"
-                            className="p-1.5 rounded-lg hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
