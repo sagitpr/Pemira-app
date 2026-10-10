@@ -27,29 +27,67 @@ export async function GET() {
         .or('has_voted.eq.true,voting_status.eq.SELESAI')
         .order('created_at', { ascending: true });
 
-      if (!votersErr && Array.isArray(voters) && voters.length > 0) {
-        const timeMap = new Map<string, number>();
+      // Helper format WIB
+      const getWibSlot = (d: Date) => {
+        const parts = new Intl.DateTimeFormat('id-ID', {
+          timeZone: 'Asia/Jakarta',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(d);
+        const hh = (parts.find((p) => p.type === 'hour')?.value || '08').padStart(2, '0');
+        const mmRaw = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+        const mm = (Math.floor(mmRaw / 10) * 10).toString().padStart(2, '0');
+        return `${hh}:${mm}`;
+      };
 
+      const getWibTimeSlots = () => {
+        const now = new Date();
+        const parts = new Intl.DateTimeFormat('id-ID', {
+          timeZone: 'Asia/Jakarta',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).formatToParts(now);
+        const curH = parseInt(parts.find((p) => p.type === 'hour')?.value || '08', 10);
+        const curM = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+        const curTotal = curH * 60 + curM;
+
+        const startTotal = 8 * 60; // 08:00 WIB
+        const endTotal = Math.max(startTotal, curTotal);
+        const slots: string[] = [];
+
+        for (let m = startTotal; m <= endTotal; m += 10) {
+          const hh = Math.floor(m / 60).toString().padStart(2, '0');
+          const mm = (m % 60).toString().padStart(2, '0');
+          slots.push(`${hh}:${mm}`);
+        }
+        return slots;
+      };
+
+      const wibSlots = getWibTimeSlots();
+      const slotMap = new Map<string, number>();
+      wibSlots.forEach((s) => slotMap.set(s, 0));
+
+      if (!votersErr && Array.isArray(voters) && voters.length > 0) {
         for (const v of voters) {
           const timestamp = v.completed_at || v.voted_at || v.created_at;
           if (!timestamp) continue;
           const date = new Date(timestamp);
           if (isNaN(date.getTime())) continue;
 
-          const hour = date.getHours().toString().padStart(2, '0');
-          const minSlot = (Math.floor(date.getMinutes() / 10) * 10).toString().padStart(2, '0');
-          const timeSlot = `${hour}:${minSlot}`;
-
-          timeMap.set(timeSlot, (timeMap.get(timeSlot) || 0) + 1);
-        }
-
-        if (timeMap.size > 0) {
-          const sorted = Array.from(timeMap.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([time, visitors]) => ({ time, visitors }));
-          return NextResponse.json({ success: true, data: sorted });
+          const timeSlot = getWibSlot(date);
+          slotMap.set(timeSlot, (slotMap.get(timeSlot) || 0) + 1);
         }
       }
+
+      const allSortedSlots = Array.from(slotMap.keys()).sort();
+      const resultData = allSortedSlots.map((time) => ({
+        time,
+        visitors: slotMap.get(time) || 0,
+      }));
+
+      return NextResponse.json({ success: true, data: resultData });
     } catch (dbErr) {
       console.warn('Voters traffic table fallback:', dbErr);
     }
@@ -60,9 +98,6 @@ export async function GET() {
       { time: '08:10', visitors: 0 },
       { time: '08:20', visitors: 0 },
       { time: '08:30', visitors: 0 },
-      { time: '08:40', visitors: 0 },
-      { time: '08:50', visitors: 0 },
-      { time: '09:00', visitors: 0 },
     ];
 
     return NextResponse.json({ success: true, data: defaultData });

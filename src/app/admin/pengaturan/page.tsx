@@ -406,8 +406,8 @@ export default function AdminPengaturanPage() {
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
+            <table className="w-full min-w-[640px] text-xs text-left">
               <thead>
                 <tr className="bg-slate-50/70 text-slate-600 border-b border-slate-100 text-[11px] font-bold">
                   <th className="py-2.5 px-4 w-12 text-center">No</th>

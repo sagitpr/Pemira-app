@@ -57,7 +57,7 @@ export default function QrScreenPage() {
     generateNewToken();
   }, []);
 
-  // Poll election status every 3 seconds
+  // Poll & Realtime election status from system_config
   useEffect(() => {
     const checkStatus = async () => {
       try {
@@ -71,7 +71,32 @@ export default function QrScreenPage() {
 
     checkStatus();
     const interval = setInterval(checkStatus, 3000);
-    return () => clearInterval(interval);
+
+    let channel: any = null;
+    import('@/lib/supabase/client').then(({ createClient }) => {
+      const supabaseClient = createClient();
+      channel = supabaseClient
+        .channel('qr_system_config_realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'system_config' }, (payload: any) => {
+          const raw = payload?.new?.election_status || payload?.new?.status;
+          if (raw) {
+            const s = String(raw).toUpperCase();
+            if (s === 'JEDA' || s === 'DIJEDA') setElectionStatus('JEDA');
+            else if (s === 'TUTUP' || s === 'DITUTUP') setElectionStatus('TUTUP');
+            else setElectionStatus('AKTIF');
+          }
+        })
+        .subscribe();
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (channel) {
+        import('@/lib/supabase/client').then(({ createClient }) => {
+          createClient().removeChannel(channel);
+        });
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -182,7 +207,7 @@ export default function QrScreenPage() {
         </span>
       </header>
 
-      {/* KONDISI STATUS: TUTUP (QR Code OFF & Tampilkan Banner Layar Penuh) */}
+      {/* KONDISI STATUS: TUTUP (QR Code OFF & Tampilkan Layar Resmi Ditutup) */}
       {electionStatus === 'TUTUP' ? (
         <div className="z-20 my-auto flex flex-col items-center max-w-2xl px-6 text-center animate-in fade-in zoom-in-95">
           <div className="p-8 sm:p-12 rounded-3xl bg-white/95 backdrop-blur-md shadow-2xl border border-slate-200 space-y-4">
@@ -190,15 +215,30 @@ export default function QrScreenPage() {
               <StopCircle className="w-8 h-8" />
             </div>
             <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-950 uppercase tracking-tight">
-              PEMILIHAN RESMI DITUTUP - TERIMA KASIH ATAS PARTISIPASI MAHASISWA UBTH
+              PEMIRA UBTH 2026 Telah Resmi Ditutup
             </h2>
-            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-              Seluruh proses pemungutan suara telah selesai secara tertib dan aman. Tabulasi perolehan suara sedang direkapitulasi secara resmi oleh Komisi Pemilihan Raya Universitas.
+            <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed font-medium">
+              PEMIRA UBTH 2026 Telah Resmi Ditutup. Terima kasih atas partisipasi seluruh civitas akademika.
+            </p>
+          </div>
+        </div>
+      ) : electionStatus === 'JEDA' ? (
+        /* KONDISI STATUS: JEDA (Layar Jeda Resmi) */
+        <div className="z-20 my-auto flex flex-col items-center max-w-2xl px-6 text-center animate-in fade-in zoom-in-95">
+          <div className="p-8 sm:p-12 rounded-3xl bg-white/95 backdrop-blur-md shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200 shadow-xs">
+              <PauseCircle className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-950 uppercase tracking-tight">
+              Sesi Pemilihan Sedang Dijeda
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed font-medium">
+              Sesi Pemilihan Sedang Dijeda Sementara oleh Panitia KPUM.
             </p>
           </div>
         </div>
       ) : (
-        /* KONDISI STATUS: AKTIF ATAU JEDA (QR Code Ditampilkan) */
+        /* KONDISI STATUS: AKTIF (QR Code Ditampilkan Siap Scan) */
         <div className="z-20 my-auto flex flex-col items-center">
           <div className="relative rounded-3xl bg-white p-6 sm:p-7 shadow-2xl border border-slate-100">
             {/* 4 Sudut Fokus Cyan */}
@@ -218,18 +258,6 @@ export default function QrScreenPage() {
                 />
               ) : (
                 <div className="h-60 w-60 animate-pulse rounded-lg bg-slate-100" />
-              )}
-
-              {/* OVERLAY STATUS JEDA DI ATAS QR */}
-              {electionStatus === 'JEDA' && (
-                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-4 text-center text-white z-10">
-                  <div className="px-3 py-1 rounded-full bg-amber-500 text-slate-950 font-black text-[11px] uppercase tracking-wider mb-2 shadow-md">
-                    STATUS: JEDA / ISTIRAHAT
-                  </div>
-                  <p className="text-[11px] text-slate-200 font-semibold leading-relaxed">
-                    Sesi pemilihan sedang dijeda sementara oleh KPUM. Silakan scan untuk persiapan antrean bilik.
-                  </p>
-                </div>
               )}
             </div>
 

@@ -97,7 +97,7 @@ function VoteContent() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // 0. Polling Status Pemilihan
+  // 0. Polling & Realtime Status Pemilihan
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -109,8 +109,25 @@ function VoteContent() {
       } catch {}
     };
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchStatus, 3000);
+
+    const channel = supabase
+      .channel('vote_system_config_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_config' }, (payload: any) => {
+        const raw = payload?.new?.election_status || payload?.new?.status;
+        if (raw) {
+          const s = String(raw).toUpperCase();
+          if (s === 'JEDA' || s === 'DIJEDA') setElectionStatus('JEDA');
+          else if (s === 'TUTUP' || s === 'DITUTUP') setElectionStatus('TUTUP');
+          else setElectionStatus('AKTIF');
+        }
+      })
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Helper Penguncian Bilik Otomatis
@@ -863,9 +880,26 @@ function VoteContent() {
           <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center border border-rose-200">
             <Lock className="w-8 h-8" />
           </div>
-          <h3 className="text-xl font-black text-slate-900 uppercase">Pemilihan Telah Ditutup</h3>
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Pemilihan telah resmi ditutup oleh panitia KPUM. Terima kasih atas partisipasi Anda.
+          <h3 className="text-xl font-black text-slate-900 uppercase">PEMIRA UBTH 2026 Telah Resmi Ditutup</h3>
+          <p className="text-xs text-slate-500 leading-relaxed font-medium">
+            PEMIRA UBTH 2026 Telah Resmi Ditutup. Terima kasih atas partisipasi seluruh civitas akademika.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // SCREEN: PEMILIHAN DIJEDA
+  if (currentStep !== 5 && electionStatus === 'JEDA') {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6 text-center bg-slate-50 font-sans select-none">
+        <div className="max-w-md p-8 bg-white rounded-3xl shadow-sm border border-slate-200 space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-600 mx-auto flex items-center justify-center border border-amber-200">
+            <AlertTriangle className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-black text-slate-900 uppercase">Sesi Pemilihan Sedang Dijeda</h3>
+          <p className="text-xs text-slate-600 leading-relaxed font-medium">
+            Sesi Pemilihan Sedang Dijeda Sementara oleh Panitia KPUM.
           </p>
         </div>
       </div>
@@ -885,56 +919,44 @@ function VoteContent() {
         </div>
       )}
 
-      {/* JEDA BANNER & MODAL */}
-      {electionStatus === 'JEDA' && (
-        <div className="bg-amber-500 text-slate-950 px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 sticky top-0 z-30">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-slate-950" />
-          <span>Pemilihan Sedang Dijeda oleh KPUM. Formulir suara terkunci sementara.</span>
-        </div>
-      )}
-
-      {/* =========================================================================
-          1. HEADER: GANTI TERMINAL DENGAN WATERMARK RESMI
-          ========================================================================= */}
-      <header className="relative z-20 px-6 sm:px-12 py-4 flex items-center justify-between border-b border-slate-200/80 bg-white shadow-2xs">
-        <div className="flex items-center gap-3">
+      {/* HEADER HALAMAN /VOTE (HAPUS KOTAK, GUNAKAN TITIK INDIKATOR) */}
+      <header className="w-full max-w-full bg-white/80 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 sticky top-0 z-30">
+        {/* Kiri: Logo & Nama */}
+        <div className="flex items-center gap-2.5">
           <img
-            src="/candidate/image/logo-pemira.png"
+            src="/logo-kpr.png"
             onError={(e) => {
-              e.currentTarget.style.display = 'none';
+              e.currentTarget.src = '/candidate/image/logo-pemira.png';
             }}
-            alt="Logo Pemira"
-            className="h-10 w-auto object-contain"
+            alt="KPR UBTH"
+            className="w-8 h-8 object-contain"
           />
           <div>
-            <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 block leading-tight">
-              PEMIRA UBTH 2026
-            </span>
-            <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">
-              Universitas Bakti Tunas Husada
-            </span>
+            <h1 className="text-sm font-bold text-slate-800 leading-tight">PEMIRA UBTH 2026</h1>
+            <p className="text-[10px] text-slate-500 font-medium">KOMISI PEMILIHAN RAYA</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Sesi Bilik Timer (Hanya tampil di Tahap 2 - 4) */}
+        {/* Kanan: Indikator Timer & Watermark dengan Titik (Tanpa Kotak) */}
+        <div className="flex items-center gap-4 text-xs">
+          {/* Sesi Bilik Timer */}
           {currentStep >= 2 && currentStep <= 4 && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 font-bold font-mono text-xs shadow-2xs">
-              <Clock className="w-3.5 h-3.5 text-rose-500" />
-              <span>Sesi Bilik: {formatTimer(timerSeconds)}</span>
+            <div className="flex items-center gap-1.5 font-semibold text-rose-600">
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
+              <span>Sesi: {formatTimer(timerSeconds)}</span>
             </div>
           )}
 
-          {/* WATERMARK RESMI SISTEM */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            System by Sagit Faturrakhman
+          {/* Watermark By Sagit Faturrakhman */}
+          <div className="hidden sm:flex items-center gap-1.5 text-slate-600 font-medium">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span>System by Sagit Faturrakhman</span>
           </div>
         </div>
       </header>
 
       {/* MAIN CONTENT AREA */}
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-6 sm:py-8 flex items-center justify-center">
+      <main className="relative z-10 flex-1 w-full max-w-5xl mx-auto px-4 py-6 overflow-x-hidden flex flex-col items-center justify-center">
         {/* =========================================================================
             2. TAHAP 1: KUNCI ALOKASI SISTEM (HAPUS PILIH MANUAL) & TOMBOL TUNGGAL
             ========================================================================= */}
@@ -1019,7 +1041,7 @@ function VoteContent() {
                   TAHAP 2: VERIFIKASI DPT (HAPUS ANGKATAN & MASTER 14 PRODI UBTH)
                   ========================================================================= */}
               {currentStep === 2 && (
-                <div className="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-xl max-w-2xl mx-auto space-y-6 animate-in fade-in">
+                <div className="w-full max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl space-y-6 animate-in fade-in">
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                       TAHAP 2 DARI 4

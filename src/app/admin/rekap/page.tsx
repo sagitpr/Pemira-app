@@ -59,22 +59,17 @@ export default function AdminRekapPage() {
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // 1. Fetch DPT & Realtime Stats
+  // 1. Fetch DPT & Realtime Stats (Riil dari Supabase tanpa angka 97)
   const fetchVotersAndStats = async () => {
     try {
       const supabase = createClient();
-      const { count } = await supabase
+      const { data: votersList, error } = await supabase
         .from('voters')
-        .select('*', { count: 'exact', head: true });
+        .select('id, has_voted, voting_status, prodi, prodi_name, prodiName');
 
-      if (count !== null && count !== undefined) {
-        setTotalDptCount(count);
-      }
-
-      const { data: votersList, error } = await supabase.from('voters').select('*');
       if (!error && Array.isArray(votersList)) {
         setRawVoters(votersList);
-        if (votersList.length > 0) setTotalDptCount(votersList.length);
+        setTotalDptCount(votersList.length);
         return;
       }
     } catch (err) {
@@ -87,7 +82,7 @@ export default function AdminRekapPage() {
       const json = await res.json();
       if (json?.success && Array.isArray(json?.voters)) {
         setRawVoters(json.voters);
-        if (json.stats?.totalDpt) setTotalDptCount(json.stats.totalDpt);
+        setTotalDptCount(json.voters.length);
       }
     } catch (e) {
       console.warn('Fetch stats fallback in rekap error:', e);
@@ -123,7 +118,48 @@ export default function AdminRekapPage() {
     }
   };
 
-  // 3. Generator Chart Data yang Aman & Tidak Merender Kotak Kosong
+  // Helper Format Waktu WIB (Asia/Jakarta, UTC+7)
+  const getWibTimeSlots = () => {
+    const now = new Date();
+    const parts = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now);
+    const curH = parseInt(parts.find((p) => p.type === 'hour')?.value || '08', 10);
+    const curM = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const curTotal = curH * 60 + curM;
+
+    const startTotal = 8 * 60; // Mulai dari 08:00 WIB
+    const endTotal = Math.max(startTotal, curTotal);
+    const slots: string[] = [];
+
+    for (let m = startTotal; m <= endTotal; m += 10) {
+      const hh = Math.floor(m / 60).toString().padStart(2, '0');
+      const mm = (m % 60).toString().padStart(2, '0');
+      slots.push(`${hh}:${mm}`);
+    }
+    return slots;
+  };
+
+  const getWibSlotFromIso = (isoString?: string) => {
+    if (!isoString) return '08:00';
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return '08:00';
+    const parts = new Intl.DateTimeFormat('id-ID', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(d);
+    const hh = (parts.find((p) => p.type === 'hour')?.value || '08').padStart(2, '0');
+    const mmRaw = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10);
+    const mm = (Math.floor(mmRaw / 10) * 10).toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  // 3. Generator Chart Data yang Aman & Realtime WIB (Interval 10 Menit dari 08:00 WIB sampai sekarang)
   const generateChartData = (votes: any[], candidates: Candidate[], category: 'BEM' | 'HIMA') => {
     const targetCands = candidates.filter((c: any) => c.type === category || c.category === category);
     const candLabelMap: Record<string, string> = {};
@@ -140,51 +176,42 @@ export default function AdminRekapPage() {
       defaultLabels.push('Paslon 01', 'Paslon 02');
     }
 
-    // Filter votes yang sesuai dengan kategori ini
+    // Deret waktu WIB mulai 08:00 WIB sampai jam saat ini
+    const wibSlots = getWibTimeSlots();
+
+    // Filter votes kategori ini
     const targetVotes = (votes || []).filter((v: any) => {
       return v.candidate_id && candLabelMap[String(v.candidate_id)];
     });
 
-    // Jika belum ada votes, sediakan titik awal baseline 0 agar grafik tetap muncul garis horizontal rapi
-    if (targetVotes.length === 0) {
-      const baselineStart: Record<string, any> = { time: '08:00' };
-      const baselineEnd: Record<string, any> = { time: 'Sekarang' };
-      defaultLabels.forEach((lbl) => {
-        baselineStart[lbl] = 0;
-        baselineEnd[lbl] = 0;
-      });
-      return [baselineStart, baselineEnd];
-    }
-
-    // Kelompokkan votes per interval 10 menit
-    const timeMap = new Map<string, Record<string, number>>();
-    timeMap.set('08:00', {});
+    // Petakan perolehan suara per slot WIB
+    const slotCountsMap: Record<string, Record<string, number>> = {};
+    wibSlots.forEach((slot) => {
+      slotCountsMap[slot] = {};
+    });
 
     for (const v of targetVotes) {
-      const date = new Date(v.created_at || Date.now());
-      const hour = date.getHours().toString().padStart(2, '0');
-      const minSlot = (Math.floor(date.getMinutes() / 10) * 10).toString().padStart(2, '0');
-      const timeSlot = `${hour}:${minSlot}`;
+      const slot = getWibSlotFromIso(v.created_at);
       const lbl = candLabelMap[String(v.candidate_id)] || `Paslon ${v.candidate_id}`;
-
-      if (!timeMap.has(timeSlot)) {
-        timeMap.set(timeSlot, {});
+      if (!slotCountsMap[slot]) {
+        slotCountsMap[slot] = {};
       }
-      const current = timeMap.get(timeSlot)!;
-      current[lbl] = (current[lbl] || 0) + 1;
+      slotCountsMap[slot][lbl] = (slotCountsMap[slot][lbl] || 0) + 1;
     }
 
-    const sortedTimes = Array.from(timeMap.keys()).sort();
+    // Akumulasi kumulatif
     const cumulativeMap: Record<string, number> = {};
     defaultLabels.forEach((lbl) => {
       cumulativeMap[lbl] = 0;
     });
 
-    return sortedTimes.map((t) => {
-      const entry: Record<string, any> = { time: t };
-      const slotCounts = timeMap.get(t) || {};
+    const allSlots = Array.from(new Set([...wibSlots, ...Object.keys(slotCountsMap)])).sort();
+
+    return allSlots.map((timeSlot) => {
+      const entry: Record<string, any> = { time: timeSlot };
+      const currentSlotVotes = slotCountsMap[timeSlot] || {};
       defaultLabels.forEach((lbl) => {
-        cumulativeMap[lbl] = (cumulativeMap[lbl] || 0) + (slotCounts[lbl] || 0);
+        cumulativeMap[lbl] = (cumulativeMap[lbl] || 0) + (currentSlotVotes[lbl] || 0);
         entry[lbl] = cumulativeMap[lbl];
       });
       return entry;
@@ -212,7 +239,7 @@ export default function AdminRekapPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // 4. Supabase Realtime Listener (Auto-Update Tanpa Refresh)
+  // 4. Supabase Realtime Listener (Auto-Update Tanpa Refresh untuk Votes dan Voters)
   useEffect(() => {
     const supabase = createClient();
 
@@ -223,11 +250,8 @@ export default function AdminRekapPage() {
         fetchCandidatesAndVotes();
         fetchVotersAndStats();
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voters' }, () => {
-        // Perbarui status DPT dan persentase partisipasi jika ada pemilih yang selesai
-        fetchVotersAndStats();
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voters' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        // Perbarui status DPT dan persentase jika pemilih bertambah, berubah, atau dihapus
         fetchVotersAndStats();
       })
       .subscribe();
@@ -238,12 +262,14 @@ export default function AdminRekapPage() {
   }, []);
 
   // =========================================================================
-  // 1. KALKULASI PERSENTASE REALTIME DI KARTU ATAS
+  // 1. KALKULASI PERSENTASE REALTIME DI KARTU ATAS (RIIL DARI SUPABASE, NO 97)
   // =========================================================================
-  const totalDpt = rawVoters.length > 0 ? rawVoters.length : (totalDptCount || 97);
-  const totalSudahMemilih = rawVoters.filter(
-    (v: any) => v.has_voted === true || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI'
-  ).length;
+  const totalDpt = rawVoters ? rawVoters.length : (totalDptCount || 0);
+  const totalSudahMemilih = rawVoters
+    ? rawVoters.filter(
+        (v: any) => v.has_voted === true || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI'
+      ).length
+    : 0;
   const sisaBelumMemilih = Math.max(0, totalDpt - totalSudahMemilih);
   const persentasePartisipasi = totalDpt > 0
     ? ((totalSudahMemilih / totalDpt) * 100).toFixed(1)
@@ -973,8 +999,8 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
+            <table className="w-full min-w-[640px] text-xs text-left">
               <thead>
                 <tr className="bg-slate-50 text-slate-600 border-b border-slate-100 uppercase tracking-wider text-[11px] font-bold">
                   <th className="py-3 px-4 w-12 text-center">No</th>
