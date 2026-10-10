@@ -93,6 +93,7 @@ function VoteContent() {
 
   // Candidate Data & Cache
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState<boolean>(true);
   const [dbCandidatesLoaded, setDbCandidatesLoaded] = useState<boolean>(false);
   const [dbBemCandidates, setDbBemCandidates] = useState<Candidate[]>([]);
   const [dbHimaCandidates, setDbHimaCandidates] = useState<Candidate[]>([]);
@@ -232,22 +233,49 @@ function VoteContent() {
     }
   }, [recordBoothVisit]);
 
-  // Helper Caching Master Kandidat (SessionStorage - Hemat Bandwidth Supabase)
-  const getCachedCandidates = useCallback(async () => {
-    if (typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem('pemira_candidates_cache');
-      if (cached) {
-        try {
-          return JSON.parse(cached);
-        } catch (e) {}
+  // 1. PREFETCH & CACHE PASLON DI BACKGROUND SEJAK DETIK PERTAMA (LOCALSTORAGE)
+  const getOrFetchCandidates = useCallback(async () => {
+    // 1. Cek apakah sudah ada di cache lokal HP
+    const cached = typeof window !== 'undefined' ? localStorage.getItem('pemira_candidates_v1') : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAllCandidates(parsed);
+          setDbCandidatesLoaded(true);
+          setIsLoadingCandidates(false);
+          // Tetap lakukan fetch background diam-diam untuk update jika ada revisi
+        }
+      } catch (e) {
+        console.warn('Cache parsing note:', e);
       }
     }
-    const { data } = await supabase.from('candidates').select('*');
-    if (data && typeof window !== 'undefined') {
-      sessionStorage.setItem('pemira_candidates_cache', JSON.stringify(data));
+
+    // 2. Fetch dari Supabase jika belum ada cache / background update
+    try {
+      const { data, error } = await supabase.from('candidates').select('*');
+
+      if (data && data.length > 0) {
+        setAllCandidates(data);
+        setDbCandidatesLoaded(true);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('pemira_candidates_v1', JSON.stringify(data));
+        }
+      } else {
+        setAllCandidates((prev) => (prev.length > 0 ? prev : [...BEM_CANDIDATES, ...HIMA_CANDIDATES]));
+      }
+    } catch (err) {
+      console.error('Error fetch candidates:', err);
+      setAllCandidates((prev) => (prev.length > 0 ? prev : [...BEM_CANDIDATES, ...HIMA_CANDIDATES]));
+    } finally {
+      setIsLoadingCandidates(false);
     }
-    return data || [];
   }, []);
+
+  // Prefetch paslon segera sejak detik pertama halaman /vote dimuat
+  useEffect(() => {
+    getOrFetchCandidates();
+  }, [getOrFetchCandidates]);
 
   // 1. Initial Session Check & Auto-Booth Allocation
   useEffect(() => {
@@ -289,27 +317,6 @@ function VoteContent() {
           setIsAccessDenied(true);
           setLoading(false);
           return;
-        }
-
-        // Load Kandidat dari Cache / Supabase
-        try {
-          const dbData = await getCachedCandidates();
-          if (Array.isArray(dbData) && dbData.length > 0) {
-            setAllCandidates(dbData);
-            const bem = dbData.filter((c: any) => c.type === 'BEM' || c.category === 'BEM');
-            const hima = dbData.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA');
-            setDbBemCandidates(bem);
-            setDbHimaCandidates(hima);
-            setDbCandidatesLoaded(true);
-          } else {
-            setAllCandidates([...BEM_CANDIDATES, ...HIMA_CANDIDATES]);
-            setDbBemCandidates(BEM_CANDIDATES);
-            setDbHimaCandidates(HIMA_CANDIDATES);
-            setDbCandidatesLoaded(true);
-          }
-        } catch (candErr) {
-          console.warn('Kandidat fallback note:', candErr);
-          setAllCandidates([...BEM_CANDIDATES, ...HIMA_CANDIDATES]);
         }
 
         // Cari bilik yang berstatus 'AVAILABLE' (diurutkan berdasarkan booth_number asc)
@@ -488,9 +495,16 @@ function VoteContent() {
     }
   }, [assignedBoothId, assignedBooth, assignedBoothNumber, detectedVoter, inputNim]);
 
-  // Timer Countdown Sesi Bilik
+  // Timer Countdown Sesi Bilik (BEKUKAN TIMER SAAT MASIH PROSES MEMUAT DATA)
   useEffect(() => {
-    if (step === 'BOOTH_ROUTING' || step === 'SUCCESS' || step === 'SESSION_EXPIRED' || isSessionExpired) return;
+    if (
+      step === 'BOOTH_ROUTING' ||
+      step === 'SUCCESS' ||
+      step === 'SESSION_EXPIRED' ||
+      isSessionExpired ||
+      isLoadingCandidates
+    )
+      return;
 
     const timer = setInterval(() => {
       setTimerSeconds((prev) => {
@@ -504,7 +518,7 @@ function VoteContent() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [step, isSessionExpired, handleSessionTimeout]);
+  }, [step, isSessionExpired, isLoadingCandidates, handleSessionTimeout]);
 
   // 4. Audio Ucapan Terima Kasih Resmi (Loop 60 Detik di Langkah SUCCESS)
   const playThankYouAudio = useCallback(() => {
@@ -915,19 +929,20 @@ function VoteContent() {
   const verifiedVoter = detectedVoter;
   const voterProdi = verifiedVoter?.prodi || verifiedVoter?.prodi_name || inputProdi.trim();
 
-  // B. PENYARINGAN PASLON:
+  // B. PENYARINGAN PASLON (FUZZY BEM CATEGORY MATCH):
   const candidatesPool = allCandidates.length > 0 ? allCandidates : [...safeBemList, ...safeHimaList];
 
-  // - Paslon BEM: candidates.filter(c => c.category === 'BEM');
-  const bemCandidates = candidatesPool.filter((c: any) => c.category === 'BEM' || c.type === 'BEM');
+  // - Paslon BEM (Mencakup 'BEM-U', 'BEM Univ', 'BEM Universitas', atau 'BEM'):
+  const bemCandidates = candidatesPool.filter((c: any) => {
+    const cat = (c.category || c.type || '').toUpperCase().trim();
+    return cat.includes('BEM');
+  });
 
-  // - Paslon HIMA: candidates.filter(c => {
-  //     if (c.category === 'BEM') return false;
-  //     return isProdiMatching(c.hima_name || c.prodi || '', verifiedVoter?.prodi || '');
-  //   });
+  // - Paslon HIMA:
   const himaCandidates = candidatesPool.filter((c: any) => {
-    if (c.category === 'BEM' || c.type === 'BEM') return false;
-    return isProdiMatching(c.hima_name || c.prodi || c.prodi_name || '', voterProdi);
+    const cat = (c.category || c.type || '').toUpperCase().trim();
+    if (cat.includes('BEM')) return false;
+    return isProdiMatching(c.hima_name || c.prodi || c.prodi_name || '', voterProdi || '');
   });
 
   // Loading State
@@ -1140,8 +1155,8 @@ function VoteContent() {
           {/* Sesi Bilik Timer */}
           {step !== 'BOOTH_ROUTING' && step !== 'SUCCESS' && step !== 'SESSION_EXPIRED' && (
             <div className="flex items-center gap-1.5 font-semibold text-rose-600">
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping"></span>
-              <span>Sesi: {formatTimer(timerSeconds)}</span>
+              <span className={`w-2 h-2 rounded-full bg-rose-500 ${isLoadingCandidates ? 'opacity-40 animate-none' : 'animate-ping'}`}></span>
+              <span>Sesi: {isLoadingCandidates ? 'Memuat Data...' : formatTimer(timerSeconds)}</span>
             </div>
           )}
 
@@ -1371,99 +1386,131 @@ function VoteContent() {
             </div>
 
             {/* DAFTAR PASLON BEM */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              {bemCandidates.map((cand: any) => {
-                const isSelected = selectedBem && String(selectedBem.id) === String(cand.id);
-                const displayPhoto = cand?.photoUrl || cand?.photo_url;
-                const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
-                const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
-
-                return (
+            {isLoadingCandidates && bemCandidates.length === 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                {[1, 2].map((idx) => (
                   <div
-                    key={String(cand?.id || displayNumber)}
-                    onClick={() => {
-                      setSelectedBem(cand);
-                      setSelectedBemId(String(cand.id));
-                    }}
-                    className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                      isSelected
-                        ? 'border-blue-600 bg-blue-50/40 ring-4 ring-blue-600/15 shadow-xl scale-[1.01]'
-                        : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
-                    }`}
+                    key={`skeleton-bem-${idx}`}
+                    className="rounded-3xl border-2 border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between animate-pulse"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
-                        <div>
-                          <span className="text-[11px] font-black text-blue-600 uppercase tracking-wide block">
-                            Nomor Urut {displayNumber}
-                          </span>
-                          <h4 className="text-base font-black text-slate-900 mt-0.5">
-                            {displayName} {displayVice ? `& ${displayVice}` : ''}
-                          </h4>
-                          <p className="text-xs text-slate-500 italic mt-0.5 line-clamp-2">
-                            &ldquo;{cand?.tagline || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
-                          </p>
+                        <div className="space-y-2">
+                          <div className="h-3 w-28 bg-slate-200 rounded-full" />
+                          <div className="h-5 w-44 bg-slate-200 rounded-lg" />
+                          <div className="h-3 w-56 bg-slate-100 rounded-md" />
                         </div>
-                        <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                          {displayNumber}
-                        </div>
+                        <div className="w-10 h-10 rounded-2xl bg-slate-200 shrink-0" />
                       </div>
 
-                      <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                        {displayPhoto ? (
-                          <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="text-center p-3">
-                            <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                              {displayNumber}
-                            </div>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                              Paslon {displayNumber}
-                            </span>
-                          </div>
-                        )}
+                      <div className="rounded-2xl border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
+                        <div className="w-10 h-10 border-3 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
                       </div>
 
-                      <div className="text-center">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDetailModalCandidate(cand);
-                            setIsDetailModalOpen(true);
-                          }}
-                          className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Lihat Visi &amp; Misi Resmi</span>
-                        </button>
-                      </div>
+                      <div className="h-3.5 w-36 bg-slate-100 rounded-md mx-auto" />
                     </div>
 
                     <div className="mt-5">
-                      {isSelected ? (
-                        <div className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
-                          <Check className="w-4 h-4 stroke-[3]" />
-                          <span>Terpilih sebagai Pilihan Anda</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedBem(cand);
-                            setSelectedBemId(String(cand.id));
-                          }}
-                          className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
-                        >
-                          Pilih Nomor Urut {displayNumber}
-                        </button>
-                      )}
+                      <div className="w-full h-11 bg-slate-200 rounded-full" />
                     </div>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                {bemCandidates.map((cand: any) => {
+                  const isSelected = selectedBem && String(selectedBem.id) === String(cand.id);
+                  const displayPhoto = cand?.photoUrl || cand?.photo_url;
+                  const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
+                  const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
+                  const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
+
+                  return (
+                    <div
+                      key={String(cand?.id || displayNumber)}
+                      onClick={() => {
+                        setSelectedBem(cand);
+                        setSelectedBemId(String(cand.id));
+                      }}
+                      className={`rounded-3xl border-2 p-6 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-blue-600 bg-blue-50/40 ring-4 ring-blue-600/15 shadow-xl scale-[1.01]'
+                          : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
+                          <div>
+                            <span className="text-[11px] font-black text-blue-600 uppercase tracking-wide block">
+                              Nomor Urut {displayNumber}
+                            </span>
+                            <h4 className="text-base font-black text-slate-900 mt-0.5">
+                              {displayName} {displayVice ? `& ${displayVice}` : ''}
+                            </h4>
+                            <p className="text-xs text-slate-500 italic mt-0.5 line-clamp-2">
+                              &ldquo;{cand?.tagline || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
+                            </p>
+                          </div>
+                          <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                            {displayNumber}
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
+                          {displayPhoto ? (
+                            <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="text-center p-3">
+                              <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
+                                {displayNumber}
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                                Paslon {displayNumber}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="text-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailModalCandidate(cand);
+                              setIsDetailModalOpen(true);
+                            }}
+                            className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Lihat Visi &amp; Misi Resmi</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-5">
+                        {isSelected ? (
+                          <div className="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
+                            <Check className="w-4 h-4 stroke-[3]" />
+                            <span>Terpilih sebagai Pilihan Anda</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedBem(cand);
+                              setSelectedBemId(String(cand.id));
+                            }}
+                            className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-slate-900 hover:bg-slate-50 font-bold py-2.5 px-4 rounded-full text-xs transition-colors cursor-pointer"
+                          >
+                            Pilih Nomor Urut {displayNumber}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* FOOTER AKSI VOTE_BEM */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-6 border-t border-slate-200">
@@ -1515,8 +1562,38 @@ function VoteContent() {
               </span>
             </div>
 
-            {/* JIKA TIDAK ADA PASLON HIMA TERDAFTAR */}
-            {himaCandidates.length === 0 ? (
+            {/* JIKA SEDANG LOADING ATAU TIDAK ADA PASLON HIMA TERDAFTAR */}
+            {isLoadingCandidates && himaCandidates.length === 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                {[1, 2].map((idx) => (
+                  <div
+                    key={`skeleton-hima-${idx}`}
+                    className="rounded-3xl border-2 border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between animate-pulse"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
+                        <div className="space-y-2">
+                          <div className="h-3 w-32 bg-slate-200 rounded-full" />
+                          <div className="h-5 w-44 bg-slate-200 rounded-lg" />
+                          <div className="h-3 w-56 bg-slate-100 rounded-md" />
+                        </div>
+                        <div className="w-10 h-10 rounded-2xl bg-slate-200 shrink-0" />
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
+                        <div className="w-10 h-10 border-3 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
+                      </div>
+
+                      <div className="h-3.5 w-36 bg-slate-100 rounded-md mx-auto" />
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="w-full h-11 bg-slate-200 rounded-full" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : himaCandidates.length === 0 ? (
               <div className="p-8 sm:p-12 rounded-3xl bg-blue-50/70 border-2 border-dashed border-blue-200 text-center space-y-3">
                 <Info className="w-12 h-12 text-blue-600 mx-auto" />
                 <h4 className="text-base sm:text-lg font-black text-slate-900">
