@@ -19,6 +19,24 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
+const MASTER_PRODI = [
+  'S1 Farmasi',
+  'Pendidikan Profesi Apoteker',
+  'S1 Rekayasa Kosmetika',
+  'S2 Farmasi',
+  'S1 Keperawatan',
+  'D3 Keperawatan',
+  'Pendidikan Profesi Ners',
+  'S1 Administrasi Rumah Sakit',
+  'D3 Teknologi Laboratorium Medis',
+  'D3 Optometri',
+  'S1 Gizi',
+  'S1 Sistem Informasi',
+  'S1 Bisnis Digital',
+  'S1 Kewirausahaan',
+  'S1 Teknologi Pangan'
+];
+
 export default function AdminDptPage() {
   const { voters: fallbackVoters, addVoter: addVoterContext, deleteVoter: deleteVoterContext, showToast } = useAdmin();
 
@@ -40,7 +58,7 @@ export default function AdminDptPage() {
   const [newNim, setNewNim] = useState('');
   const [newName, setNewName] = useState('');
   const [newFaculty, setNewFaculty] = useState<'FTB' | 'FIKES' | 'FARMASI'>('FTB');
-  const [newProdi, setNewProdi] = useState('');
+  const [newProdi, setNewProdi] = useState('S1 Kewirausahaan');
 
   // Fetch daftar prodi REAL dari tabel study_program di Supabase
   const [prodiOptions, setProdiOptions] = useState<
@@ -161,14 +179,15 @@ export default function AdminDptPage() {
     };
   }, []);
 
-  // Daftar program studi unik dari data pemilih
-  const uniqueProdiList = Array.from(
-    new Set(
-      voters
+  // Daftar program studi: MASTER_PRODI + pilihan yang ada di database
+  const allProdiList = Array.from(
+    new Set([
+      ...MASTER_PRODI,
+      ...voters
         .map((v) => (v as any).prodi || v.prodiName || (v as any).prodi_name)
-        .filter(Boolean)
-    )
-  ).sort();
+        .filter(Boolean),
+    ])
+  );
 
   // Reset halaman aktif ke 1 saat filter atau pencarian berubah
   useEffect(() => {
@@ -186,7 +205,10 @@ export default function AdminDptPage() {
       prodiVal.toLowerCase().includes(q) ||
       angkatanVal.toLowerCase().includes(q);
     const matchStatus = statusFilter === 'ALL' || v.status === statusFilter;
-    const matchProdi = selectedProdi === 'ALL' || prodiVal.toLowerCase() === selectedProdi.toLowerCase();
+    const matchProdi =
+      selectedProdi === 'ALL' ||
+      prodiVal.toLowerCase().includes(selectedProdi.toLowerCase()) ||
+      selectedProdi.toLowerCase().includes(prodiVal.toLowerCase());
     return matchSearch && matchStatus && matchProdi;
   });
 
@@ -263,7 +285,7 @@ export default function AdminDptPage() {
     setIsSubmitting(true);
     try {
       const supabase = createClient();
-      const prodiVal = String(newProdi || '').trim() || 'Kewirausahaan';
+      const prodiVal = String(newProdi || '').trim() || 'S1 Kewirausahaan';
       const angkatanVal = String(newAngkatan || '').trim() || '2026';
       const payloadVoter = {
         nim: String(newNim).trim(),
@@ -290,6 +312,7 @@ export default function AdminDptPage() {
       setIsAddModalOpen(false);
       setNewNim('');
       setNewName('');
+      setNewProdi('S1 Kewirausahaan');
       setNewAngkatan('2026');
       await fetchSupabaseVoters();
     } catch (err: any) {
@@ -335,15 +358,14 @@ export default function AdminDptPage() {
 
         const parts = line.split(/[,;\t]/).map((p) => p.replace(/["']/g, '').trim());
         if (parts.length >= 2 && parts[0] && parts[1]) {
-          const prodiVal = parts[2] || 'Kewirausahaan';
+          const [nim, name, prodi, angkatan] = parts;
           parsedList.push({
-            nim: parts[0],
-            name: parts[1],
-            nama: parts[1],
-            prodi: prodiVal,
-            prodi_name: prodiVal,
-            faculty: 'FTB',
-            faculty_id: 'FTB',
+            nim,
+            name,
+            nama: name,
+            prodi: prodi || 'S1 Kewirausahaan',
+            prodi_name: prodi || 'S1 Kewirausahaan',
+            angkatan: angkatan || '2026',
             has_voted: false,
             voting_status: 'BELUM',
           });
@@ -351,7 +373,7 @@ export default function AdminDptPage() {
       }
 
       if (parsedList.length === 0) {
-        alert('Format CSV tidak terbaca. Format: NIM,Nama,Prodi');
+        alert('Format CSV tidak terbaca. Format: NIM,Nama,Prodi,Angkatan (pisahkan dengan koma)');
         setIsImporting(false);
         return;
       }
@@ -495,7 +517,7 @@ export default function AdminDptPage() {
               </div>
 
               {/* Filter Dropdown Program Studi */}
-              <div className="w-full sm:w-56">
+              <div className="w-full sm:w-64">
                 <select
                   value={selectedProdi}
                   onChange={(e) => {
@@ -504,10 +526,10 @@ export default function AdminDptPage() {
                   }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-slate-50/50 focus:outline-hidden focus:border-slate-900 focus:bg-white transition-colors cursor-pointer"
                 >
-                  <option value="ALL">Semua Program Studi</option>
-                  {uniqueProdiList.map((prodi) => (
-                    <option key={prodi} value={prodi}>
-                      {prodi}
+                  <option value="ALL">Semua Program Studi (14 Prodi)</option>
+                  {allProdiList.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
                     </option>
                   ))}
                 </select>
@@ -824,26 +846,11 @@ export default function AdminDptPage() {
                   onChange={(e) => setNewProdi(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-medium focus:outline-hidden focus:border-slate-900"
                 >
-                  <option value="" disabled>
-                    {prodiOptions.length === 0
-                      ? 'Memuat daftar prodi...'
-                      : 'Pilih Program Studi'}
-                  </option>
-                  {['FTB', 'FIKES', 'FARMASI'].map((fac) => {
-                    const inFaculty = prodiOptions.filter(
-                      (p) => (p.faculty || '').toUpperCase() === fac
-                    );
-                    if (inFaculty.length === 0) return null;
-                    return (
-                      <optgroup key={fac} label={fac}>
-                        {inFaculty.map((p) => (
-                          <option key={p.id} value={p.name}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    );
-                  })}
+                  {MASTER_PRODI.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -854,7 +861,7 @@ export default function AdminDptPage() {
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: 2026"
+                  placeholder="2026"
                   value={newAngkatan}
                   onChange={(e) => setNewAngkatan(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-slate-300 bg-white font-mono focus:outline-hidden focus:border-slate-900"
@@ -911,15 +918,18 @@ export default function AdminDptPage() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
                   <label className="font-bold text-slate-700">Atau Tempel Teks CSV</label>
-                  <span className="text-[10px] text-slate-400 font-mono">Format: NIM,Nama,Prodi</span>
+                  <span className="text-[10px] text-slate-500 font-mono">Format: NIM,Nama,Prodi,Angkatan (pisahkan dengan koma)</span>
                 </div>
+                <p className="text-[11px] text-slate-500 mb-1.5 font-medium">
+                  Contoh: <code className="bg-slate-100 text-slate-800 px-1.5 py-0.5 rounded font-mono text-[10px]">12026123001, Ahmad Rizky, S1 Kewirausahaan, 2026</code>
+                </p>
                 <textarea
                   rows={5}
                   value={csvText}
                   onChange={(e) => setCsvText(e.target.value)}
-                  placeholder={`24030101,Ahmad Rizky,S1 Farmasi\n24030102,Budi Santoso,Bisnis Digital\n24030103,Citra Lestari,S1 Keperawatan`}
+                  placeholder={`12026123001, Ahmad Rizky, S1 Kewirausahaan, 2026\n12026123002, Budi Santoso, S1 Bisnis Digital, 2025\n12026123003, Citra Lestari, S1 Keperawatan, 2024`}
                   className="w-full p-2.5 rounded-xl border border-slate-300 font-mono text-xs bg-slate-50 focus:outline-hidden focus:border-slate-900 focus:bg-white"
                 />
               </div>

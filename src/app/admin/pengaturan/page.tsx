@@ -21,9 +21,6 @@ export default function AdminPengaturanPage() {
   const {
     config,
     updateConfig,
-    adminAccounts,
-    addAdminAccount,
-    deleteAdminAccount,
     resetAllVotes,
     resetAllVoters,
     showToast,
@@ -37,6 +34,26 @@ export default function AdminPengaturanPage() {
   const [currentElectionStatus, setCurrentElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>(electionStatus || 'AKTIF');
 
   const [configData, setConfigData] = useState<any>(null);
+  const [admins, setAdmins] = useState<any[]>([]);
+
+  const fetchAdmins = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('admin_users')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching admin_users:', error);
+        return;
+      }
+      if (data) {
+        setAdmins(data);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const fetchConfig = async () => {
     try {
@@ -74,9 +91,10 @@ export default function AdminPengaturanPage() {
     }
   };
 
-  // Load jumlah bilik dan status pemilihan aktual dari Supabase saat pertama kali dibuka
+  // Load konfigurasi, bilik dan akun admin aktual dari Supabase saat pertama kali dibuka
   useEffect(() => {
     fetchConfig();
+    fetchAdmins();
     async function loadCurrentBoothCount() {
       try {
         const { count } = await supabase.from('booths').select('*', { count: 'exact', head: true });
@@ -99,7 +117,7 @@ export default function AdminPengaturanPage() {
   const [newAdminRole, setNewAdminRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
 
   // Modal Edit Admin
-  const [editingAdmin, setEditingAdmin] = useState<AdminAccount | null>(null);
+  const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editRole, setEditRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
@@ -219,76 +237,104 @@ export default function AdminPengaturanPage() {
     }
   };
 
-  const handleAddAdmin = (e: React.FormEvent) => {
+  const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminName || !newAdminEmail) {
-      showToast('Nama dan Email wajib diisi.', 'error');
+    if (!newAdminName || !newAdminEmail || !newAdminPassword) {
+      showToast('Nama, Email, dan Kata Sandi wajib diisi.', 'error');
       return;
     }
 
-    const mappedRole =
-      newAdminRole === 'Super Admin'
-        ? 'KPUM Utama'
-        : newAdminRole === 'Operator Bilik'
-        ? 'Operator Bilik'
-        : 'Saksi Paslon 01';
+    try {
+      const { error } = await supabase.from('admin_users').insert([{
+        name: newAdminName.trim(),
+        email: newAdminEmail.trim().toLowerCase(),
+        password: newAdminPassword,
+        role: newAdminRole,
+        status: 'Aktif',
+      }]);
 
-    addAdminAccount({
-      name: newAdminName.trim(),
-      email: newAdminEmail.trim(),
-      role: mappedRole as any,
-      status: 'Aktif',
-      lastActive: 'Baru saja dibuat',
-    });
+      if (error) {
+        alert('Gagal menambah akun admin: ' + error.message);
+        return;
+      }
 
-    setIsAddModalOpen(false);
-    setNewAdminName('');
-    setNewAdminEmail('');
-    setNewAdminPassword('');
-    showToast('Akun admin berhasil disimpan.', 'success');
+      setIsAddModalOpen(false);
+      setNewAdminName('');
+      setNewAdminEmail('');
+      setNewAdminPassword('');
+      showToast('Akun admin berhasil disimpan ke database.', 'success');
+      await fetchAdmins();
+    } catch (err: any) {
+      console.error('Error adding admin:', err);
+      alert('Terjadi kesalahan saat menambah admin.');
+    }
   };
 
-  const openEditModal = (acc: AdminAccount) => {
+  const openEditModal = (acc: any) => {
     setEditingAdmin(acc);
-    setEditName(acc.name);
-    setEditEmail(acc.email);
-    const roleNormalized =
-      acc.role === 'KPUM Utama' || (acc.role as string) === 'Super Admin'
-        ? 'Super Admin'
-        : acc.role === 'Operator Bilik'
-        ? 'Operator Bilik'
-        : 'Saksi Paslon';
-    setEditRole(roleNormalized);
+    setEditName(acc.name || '');
+    setEditEmail(acc.email || '');
+    setEditRole(acc.role || 'Super Admin');
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAdmin) return;
 
-    // Update in context by deleting and re-adding or mapping
-    deleteAdminAccount(editingAdmin.id);
-    const mappedRole =
-      editRole === 'Super Admin'
-        ? 'KPUM Utama'
-        : editRole === 'Operator Bilik'
-        ? 'Operator Bilik'
-        : 'Saksi Paslon 01';
+    try {
+      let q = supabase
+        .from('admin_users')
+        .update({
+          name: editName.trim(),
+          email: editEmail.trim().toLowerCase(),
+          role: editRole,
+        });
 
-    addAdminAccount({
-      name: editName.trim(),
-      email: editEmail.trim(),
-      role: mappedRole as any,
-      status: editingAdmin.status,
-      lastActive: 'Baru saja diperbarui',
-    });
+      if (editingAdmin.id) {
+        q = q.eq('id', editingAdmin.id);
+      } else {
+        q = q.eq('email', editingAdmin.email);
+      }
 
-    setEditingAdmin(null);
-    showToast('Data akun admin berhasil diperbarui.', 'success');
+      const { error } = await q;
+      if (error) {
+        alert('Gagal memperbarui akun admin: ' + error.message);
+        return;
+      }
+
+      setEditingAdmin(null);
+      showToast('Data akun admin berhasil diperbarui.', 'success');
+      await fetchAdmins();
+    } catch (err: any) {
+      console.error('Error editing admin:', err);
+      alert('Terjadi kesalahan saat memperbarui admin.');
+    }
   };
 
-  // ZERO DUMMY: tampilkan akun dari database; jika kosong, tampilkan pesan,
-  // JANGAN fallback akun fiktif hardcoded.
-  const displayAccounts = adminAccounts;
+  const handleDeleteAdmin = async (adm: any) => {
+    if (!confirm(`Hapus akun admin ${adm.name || adm.email} dari database?`)) return;
+
+    try {
+      let q = supabase.from('admin_users').delete();
+      if (adm.id) {
+        q = q.eq('id', adm.id);
+      } else {
+        q = q.eq('email', adm.email);
+      }
+
+      const { error } = await q;
+      if (error) {
+        alert('Gagal menghapus admin: ' + error.message);
+        return;
+      }
+
+      showToast('Akun admin berhasil dihapus dari database.', 'info');
+      await fetchAdmins();
+    } catch (err: any) {
+      console.error('Error deleting admin:', err);
+      alert('Terjadi kesalahan saat menghapus admin.');
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
@@ -344,46 +390,39 @@ export default function AdminPengaturanPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {displayAccounts.length === 0 ? (
+                {admins.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 px-4 text-center text-xs text-slate-400 font-medium">
-                      Belum ada akun admin terdaftar di database.
+                    <td colSpan={6} className="text-center py-8 text-xs text-slate-400 font-medium">
+                      Belum ada akun admin terdaftar di database
                     </td>
                   </tr>
-                ) : displayAccounts.map((acc, idx) => {
-                  const roleLabel =
-                    acc.role === 'KPUM Utama'
-                      ? 'Super Admin'
-                      : acc.role === 'Operator Bilik'
-                      ? 'Operator Bilik'
-                      : 'Saksi Paslon';
-
-                  return (
-                    <tr key={acc.id} className="hover:bg-slate-50/50 transition-colors">
+                ) : (
+                  admins.map((adm, idx) => (
+                    <tr key={adm.id || idx} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-3 px-4 font-mono text-slate-400 text-center">{idx + 1}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{acc.name}</td>
-                      <td className="py-3 px-4 font-mono text-slate-500">{acc.email}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">{adm.name || 'Admin'}</td>
+                      <td className="py-3 px-4 font-mono text-slate-500">{adm.email}</td>
                       <td className="py-3 px-3 text-center">
                         <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                          {roleLabel}
+                          {adm.role || 'Admin'}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {acc.status}
+                          {adm.status || 'Aktif'}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-2 text-slate-400">
                           <button
-                            onClick={() => openEditModal(acc)}
+                            onClick={() => openEditModal(adm)}
                             title="Edit Akun"
                             className="p-1.5 rounded-lg hover:bg-sky-50 hover:text-sky-600 transition-colors cursor-pointer"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => deleteAdminAccount(acc.id)}
+                            onClick={() => handleDeleteAdmin(adm)}
                             title="Hapus Akun"
                             className="p-1.5 rounded-lg hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
                           >
@@ -392,8 +431,8 @@ export default function AdminPengaturanPage() {
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
