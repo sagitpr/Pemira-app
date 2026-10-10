@@ -44,59 +44,67 @@ export default function AdminRekapPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBeritaAcaraOpen, setIsBeritaAcaraOpen] = useState(false);
 
+  // 1. Empat Kotak Metrik (Sinkron 100% dengan Dashboard)
+  const [metrics, setMetrics] = useState({
+    totalDpt: 0,
+    suaraMasuk: 0,
+    belumMemilih: 0,
+    partisipasi: '0.0',
+  });
+
   // Real-time DPT & Votes State dari Supabase
   const [rawVoters, setRawVoters] = useState<any[]>([]);
   const [rawVotes, setRawVotes] = useState<any[]>([]);
   const [totalDptCount, setTotalDptCount] = useState<number>(0);
 
   // Candidates State
+  const [allCandidates, setAllCandidates] = useState<any[]>([]);
   const [bemList, setBemList] = useState<Candidate[]>(contextBem || []);
   const [himaList, setHimaList] = useState<Candidate[]>(contextHima || []);
-  const [candidateVoteCounts, setCandidateVoteCounts] = useState<Record<string, number>>({});
+  const [selectedHimaProdi, setSelectedHimaProdi] = useState<string>('');
 
   // Chart State
   const [chartType, setChartType] = useState<'BEM' | 'HIMA'>('BEM');
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // 1. Fetch DPT & Realtime Stats (Riil dari Supabase tanpa angka 97)
-  const fetchVotersAndStats = async () => {
+  // 1. Fetch DPT & Realtime Metric Data (Sinkron 100% dengan Dashboard)
+  const fetchMetricData = async () => {
     try {
       const supabase = createClient();
-      const { data: votersList, error } = await supabase
+      const { data: votersData, error } = await supabase
         .from('voters')
         .select('id, has_voted, voting_status, prodi, prodi_name, prodiName');
 
-      if (!error && Array.isArray(votersList)) {
-        setRawVoters(votersList);
-        setTotalDptCount(votersList.length);
-        return;
-      }
-    } catch (err) {
-      console.warn('Fetch voters direct error in rekap:', err);
-    }
+      if (!error && votersData) {
+        const total = votersData.length;
+        const masuk = votersData.filter((v: any) => v.has_voted === true).length;
+        const sisa = total - masuk;
+        const pct = total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0';
 
-    try {
-      // Fallback service role API jika anon client terhalang RLS
-      const res = await fetch('/api/admin/stats', { cache: 'no-store' });
-      const json = await res.json();
-      if (json?.success && Array.isArray(json?.voters)) {
-        setRawVoters(json.voters);
-        setTotalDptCount(json.voters.length);
+        setMetrics({
+          totalDpt: total,
+          suaraMasuk: masuk,
+          belumMemilih: sisa,
+          partisipasi: pct,
+        });
+        setRawVoters(votersData);
+        setTotalDptCount(total);
       }
     } catch (e) {
-      console.warn('Fetch stats fallback in rekap error:', e);
+      console.error('Fetch metric data error in rekap:', e);
     }
   };
 
-  // 2. Fetch Candidates & Realtime Votes
-  const fetchCandidatesAndVotes = async () => {
+  // 2. Fetch Candidates & Realtime Rekap Votes
+  const fetchRekapVotes = async () => {
     try {
       const supabase = createClient();
       const { data: candsData } = await supabase.from('candidates').select('*');
       if (candsData && candsData.length > 0) {
-        setBemList(candsData.filter((c: any) => c.type === 'BEM' || c.category === 'BEM'));
-        setHimaList(candsData.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA'));
+        setAllCandidates(candsData);
+        setBemList(candsData.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
+        setHimaList(candsData.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM')));
       }
 
       const { data: votesData } = await supabase
@@ -106,17 +114,63 @@ export default function AdminRekapPage() {
 
       if (votesData) {
         setRawVotes(votesData);
-        const counts: Record<string, number> = {};
-        for (const v of votesData) {
-          const cid = String(v.candidate_id);
-          counts[cid] = (counts[cid] || 0) + 1;
-        }
-        setCandidateVoteCounts(counts);
       }
     } catch (err) {
-      console.warn('Fetch candidates & votes error:', err);
+      console.warn('Fetch rekap votes error:', err);
     }
   };
+
+  // 2. Perhitungan Suara Paslon yang Fleksibel (Dukung UUID, string ID, dan nomor urut)
+  const calculateCandidateVotes = (candidates: any[], votes: any[]) => {
+    const counts: Record<string, number> = {};
+
+    (votes || []).forEach((vote) => {
+      // Cari paslon yang cocok baik dari id UUID maupun candidate_number/paslon_number
+      const matched = candidates.find(
+        (c) =>
+          String(c.id) === String(vote.candidate_id) ||
+          (c.paslon_number !== undefined && c.paslon_number !== null && String(c.paslon_number) === String(vote.candidate_id)) ||
+          (c.candidate_number !== undefined && c.candidate_number !== null && String(c.candidate_number) === String(vote.candidate_id))
+      );
+
+      if (matched) {
+        counts[matched.id] = (counts[matched.id] || 0) + 1;
+      }
+    });
+
+    return counts;
+  };
+
+  const candidateVoteCounts = useMemo(() => {
+    const targetCands = allCandidates.length > 0 ? allCandidates : [...bemList, ...himaList];
+    return calculateCandidateVotes(targetCands, rawVotes);
+  }, [allCandidates, bemList, himaList, rawVotes]);
+
+  // 3. Dinamika Grafik HIMA: Sesuaikan dengan Prodi dari Kelola Paslon
+  const himaProdiList = useMemo(() => {
+    const target = allCandidates.length > 0 ? allCandidates : himaList;
+    const prodis = target
+      .filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM'))
+      .map((c: any) => c.prodi || c.hima_name || c.prodi_name)
+      .filter(Boolean);
+    return Array.from(new Set(prodis)) as string[];
+  }, [allCandidates, himaList]);
+
+  // Set default prodi HIMA yang dipilih
+  useEffect(() => {
+    if (himaProdiList.length > 0 && (!selectedHimaProdi || !himaProdiList.includes(selectedHimaProdi))) {
+      setSelectedHimaProdi(himaProdiList[0]);
+    }
+  }, [himaProdiList, selectedHimaProdi]);
+
+  const activeHimaCandidates = useMemo(() => {
+    const target = allCandidates.length > 0 ? allCandidates : himaList;
+    return target.filter(
+      (c: any) =>
+        (c.prodi === selectedHimaProdi || c.hima_name === selectedHimaProdi || c.prodi_name === selectedHimaProdi) &&
+        !(c.category || c.type || '').toUpperCase().includes('BEM')
+    );
+  }, [allCandidates, himaList, selectedHimaProdi]);
 
   // Helper Format Waktu WIB (Asia/Jakarta, UTC+7)
   const getWibTimeSlots = () => {
@@ -160,15 +214,20 @@ export default function AdminRekapPage() {
   };
 
   // 3. Generator Chart Data yang Aman & Realtime WIB (Interval 10 Menit dari 08:00 WIB sampai sekarang)
-  const generateChartData = (votes: any[], candidates: Candidate[], category: 'BEM' | 'HIMA') => {
-    const targetCands = candidates.filter((c: any) => c.type === category || c.category === category);
+  const generateChartData = (votes: any[], targetCands: any[]) => {
     const candLabelMap: Record<string, string> = {};
     const defaultLabels: string[] = [];
 
     targetCands.forEach((c, idx) => {
-      const num = c.candidate_number ?? c.candidateNumber ?? c.number ?? idx + 1;
+      const num = c.candidate_number ?? c.paslon_number ?? c.candidateNumber ?? c.number ?? idx + 1;
       const label = `Paslon ${String(num).padStart(2, '0')}`;
       candLabelMap[String(c.id)] = label;
+      if (c.paslon_number !== undefined && c.paslon_number !== null) {
+        candLabelMap[String(c.paslon_number)] = label;
+      }
+      if (c.candidate_number !== undefined && c.candidate_number !== null) {
+        candLabelMap[String(c.candidate_number)] = label;
+      }
       if (!defaultLabels.includes(label)) defaultLabels.push(label);
     });
 
@@ -179,7 +238,7 @@ export default function AdminRekapPage() {
     // Deret waktu WIB mulai 08:00 WIB sampai jam saat ini
     const wibSlots = getWibTimeSlots();
 
-    // Filter votes kategori ini
+    // Filter votes yang cocok dengan salah satu candidate di targetCands
     const targetVotes = (votes || []).filter((v: any) => {
       return v.candidate_id && candLabelMap[String(v.candidate_id)];
     });
@@ -218,62 +277,56 @@ export default function AdminRekapPage() {
     });
   };
 
-  // Perbarui chart data setiap kali rawVotes, candidates, atau chartType berubah
+  // Perbarui chart data setiap kali rawVotes, candidates, atau prodi HIMA berubah
   useEffect(() => {
-    const cands = chartType === 'BEM' ? bemList : himaList;
-    const chartRows = generateChartData(rawVotes, cands, chartType);
+    const cands = chartType === 'BEM' ? bemList : activeHimaCandidates;
+    const chartRows = generateChartData(rawVotes, cands);
     setTimelineData(chartRows);
-  }, [rawVotes, bemList, himaList, chartType]);
+  }, [rawVotes, bemList, activeHimaCandidates, chartType]);
 
-  // Initial Load & Interval Fallback
+  // 4. Supabase Realtime Listener (Update Instan < 0.5 Detik Tanpa Delay)
   useEffect(() => {
     setIsMounted(true);
-    fetchVotersAndStats();
-    fetchCandidatesAndVotes();
+    fetchMetricData();
+    fetchRekapVotes();
 
-    const interval = setInterval(() => {
-      fetchVotersAndStats();
-      fetchCandidatesAndVotes();
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // 4. Supabase Realtime Listener (Auto-Update Tanpa Refresh untuk Votes dan Voters)
-  useEffect(() => {
     const supabase = createClient();
-
     const channel = supabase
-      .channel('rekap-live-dashboard')
+      .channel('rekap-instant-stream')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
-        // Panggil ulang data suara & rekapitulasi agar angka, grafik, dan persentase seketika bertambah
-        fetchCandidatesAndVotes();
-        fetchVotersAndStats();
+        // Begitu suara baru masuk, langsung hitung ulang seketika
+        fetchRekapVotes();
+        fetchMetricData();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        // Perbarui status DPT dan persentase jika pemilih bertambah, berubah, atau dihapus
-        fetchVotersAndStats();
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voters' }, () => {
+        fetchMetricData();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voters' }, () => {
+        fetchMetricData();
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'voters' }, () => {
+        fetchMetricData();
       })
       .subscribe();
 
+    const interval = setInterval(() => {
+      fetchMetricData();
+      fetchRekapVotes();
+    }, 10000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(interval);
     };
   }, []);
 
   // =========================================================================
-  // 1. KALKULASI PERSENTASE REALTIME DI KARTU ATAS (RIIL DARI SUPABASE, NO 97)
+  // 1. SINKRONISASI 4 KOTAK METRIK ATAS (100% SINKRON DENGAN DASHBOARD)
   // =========================================================================
-  const totalDpt = rawVoters ? rawVoters.length : (totalDptCount || 0);
-  const totalSudahMemilih = rawVoters
-    ? rawVoters.filter(
-        (v: any) => v.has_voted === true || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI'
-      ).length
-    : 0;
-  const sisaBelumMemilih = Math.max(0, totalDpt - totalSudahMemilih);
-  const persentasePartisipasi = totalDpt > 0
-    ? ((totalSudahMemilih / totalDpt) * 100).toFixed(1)
-    : '0.0';
+  const totalDpt = metrics.totalDpt;
+  const totalSudahMemilih = metrics.suaraMasuk;
+  const sisaBelumMemilih = metrics.belumMemilih;
+  const persentasePartisipasi = metrics.partisipasi;
 
   // Grouping Bersih & Anti-Bocor untuk HIMA per Fakultas
   const paslonFarmasi = useMemo(() => {
@@ -350,13 +403,20 @@ export default function AdminRekapPage() {
     },
   ], [paslonFTB, paslonFIKES, paslonFarmasi]);
 
-  // Hitung total suara BEM
+  // Hitung total suara sah BEM (dukung kategori BEM fleksibel)
   const totalSuaraBem = useMemo(() => {
+    const directBemVotes = (rawVotes || []).filter((v: any) => {
+      const cat = (v.category || '').toUpperCase();
+      return cat.includes('BEM');
+    }).length;
+
+    if (directBemVotes > 0) return directBemVotes;
+
     return bemList.reduce((sum, c) => {
-      const votes = candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0;
+      const votes = candidateVoteCounts[c.id] ?? candidateVoteCounts[String(c.id)] ?? 0;
       return sum + votes;
     }, 0);
-  }, [bemList, candidateVoteCounts]);
+  }, [rawVotes, bemList, candidateVoteCounts]);
 
   // Normalisasi string pencarian
   const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -611,30 +671,53 @@ export default function AdminRekapPage() {
               </div>
             </div>
 
-            {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] */}
-            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setChartType('BEM')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  chartType === 'BEM'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                }`}
-              >
-                BEM Universitas
-              </button>
-              <button
-                type="button"
-                onClick={() => setChartType('HIMA')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  chartType === 'HIMA'
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-                }`}
-              >
-                HIMA
-              </button>
+            {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] serta Dropdown Prodi HIMA */}
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setChartType('BEM')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    chartType === 'BEM'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  BEM Universitas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChartType('HIMA')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    chartType === 'HIMA'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                  }`}
+                >
+                  HIMA
+                </button>
+              </div>
+
+              {/* Dropdown Pemilihan Prodi/HIMA dari Kelola Paslon saat toggle HIMA aktif */}
+              {chartType === 'HIMA' && (
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={selectedHimaProdi}
+                    onChange={(e) => setSelectedHimaProdi(e.target.value)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-slate-800 border border-slate-300 shadow-2xs hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    {himaProdiList.length === 0 ? (
+                      <option value="">Tidak ada Prodi HIMA</option>
+                    ) : (
+                      himaProdiList.map((prodi) => (
+                        <option key={prodi} value={prodi}>
+                          Prodi: {prodi}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -715,7 +798,7 @@ export default function AdminRekapPage() {
               <span>Realtime Supabase Channel Aktif</span>
             </span>
             <span className="font-mono text-slate-400">
-              Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : 'Himpunan Mahasiswa (HIMA)'}
+              Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : `HIMA (${selectedHimaProdi || 'Semua Prodi'})`}
             </span>
           </div>
         </section>
@@ -743,7 +826,7 @@ export default function AdminRekapPage() {
               </div>
             ) : (
               bemList.map((cand) => {
-                const votes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
+                const votes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
                 const persentasePaslon = totalSuaraBem > 0 ? ((votes / totalSuaraBem) * 100).toFixed(1) : '0.0';
                 const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
                 const photoUrl = cand.image_url || (cand as any).imageUrl || cand.photo_url || cand.photoUrl;
@@ -847,7 +930,7 @@ export default function AdminRekapPage() {
               {facultyHimaSections.map((fac) => {
                 const facCandidates = fac.candidates;
                 const facTotalVotes = facCandidates.reduce((sum, c) => {
-                  return sum + (candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0);
+                  return sum + (candidateVoteCounts[c.id] ?? candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0);
                 }, 0);
 
                 return (
@@ -875,7 +958,7 @@ export default function AdminRekapPage() {
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {facCandidates.map((cand) => {
-                          const candVotes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
+                          const candVotes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
                           const persentasePaslon = facTotalVotes > 0 ? ((candVotes / facTotalVotes) * 100).toFixed(1) : '0.0';
                           const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
                           const candProdi = cand.prodi || cand.prodiId || cand.prodi_id || fac.shortName;
