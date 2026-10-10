@@ -21,12 +21,16 @@ export interface Voter {
   prodiName: string;
   angkatan: string;
   status: 'belum' | 'memilih' | 'selesai';
-  voting_status?: 'BELUM' | 'MENGERJAKAN' | 'SELESAI';
+  has_voted?: boolean;
+  voting_status?: string;
   start_vote_at?: string;
   completed_at?: string;
   duration_seconds?: number;
   votedAt?: string;
   boothId?: string;
+  prodi?: string;
+  prodi_name?: string;
+  nama?: string;
 }
 
 export interface BoothStatus {

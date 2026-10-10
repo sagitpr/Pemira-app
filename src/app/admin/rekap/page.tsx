@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useAdmin } from '@/context/AdminContext';
 import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
@@ -25,10 +27,11 @@ import {
   FileText,
   Search,
   BookOpen,
-  EyeOff,
   ShieldCheck,
   Lock,
 } from 'lucide-react';
+
+const LINE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
 
 export default function AdminRekapPage() {
   const {
@@ -41,19 +44,17 @@ export default function AdminRekapPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isBeritaAcaraOpen, setIsBeritaAcaraOpen] = useState(false);
 
-  // Real-time Stats dari Supabase
-  const [totalDpt, setTotalDpt] = useState(0);
-  const [suaraMasuk, setSuaraMasuk] = useState(0);
-  const [belumMemilih, setBelumMemilih] = useState(0);
-  const [tingkatPartisipasi, setTingkatPartisipasi] = useState(0);
+  // Real-time DPT & Votes State dari Supabase
   const [rawVoters, setRawVoters] = useState<any[]>([]);
+  const [rawVotes, setRawVotes] = useState<any[]>([]);
+  const [totalDptCount, setTotalDptCount] = useState<number>(0);
 
-  // Candidates & Votes Realtime State
+  // Candidates State
   const [bemList, setBemList] = useState<Candidate[]>(contextBem || []);
   const [himaList, setHimaList] = useState<Candidate[]>(contextHima || []);
   const [candidateVoteCounts, setCandidateVoteCounts] = useState<Record<string, number>>({});
 
-  // Timeline Multi-Line Chart State
+  // Chart State
   const [chartType, setChartType] = useState<'BEM' | 'HIMA'>('BEM');
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
@@ -67,20 +68,13 @@ export default function AdminRekapPage() {
         .select('*', { count: 'exact', head: true });
 
       if (count !== null && count !== undefined) {
-        setTotalDpt(count); // Menghasilkan angka 97
+        setTotalDptCount(count);
       }
 
       const { data: votersList, error } = await supabase.from('voters').select('*');
       if (!error && Array.isArray(votersList)) {
         setRawVoters(votersList);
-        const totalDptCount = (count !== null && count !== undefined) ? count : votersList.length;
-        const sudahMemilihCount = votersList.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
-        const belumMemilihCount = Math.max(0, totalDptCount - sudahMemilihCount);
-        const part = totalDptCount > 0 ? Number(((sudahMemilihCount / totalDptCount) * 100).toFixed(1)) : 0;
-        setTotalDpt(totalDptCount);
-        setSuaraMasuk(sudahMemilihCount);
-        setBelumMemilih(belumMemilihCount);
-        setTingkatPartisipasi(part);
+        if (votersList.length > 0) setTotalDptCount(votersList.length);
         return;
       }
     } catch (err) {
@@ -92,16 +86,8 @@ export default function AdminRekapPage() {
       const res = await fetch('/api/admin/stats', { cache: 'no-store' });
       const json = await res.json();
       if (json?.success && Array.isArray(json?.voters)) {
-        const votersData = json.voters;
-        setRawVoters(votersData);
-        const tDpt = json.stats.totalDpt;
-        const sMasuk = json.stats.sudahMemilih;
-        const bMemilih = json.stats.belumMemilih;
-        const part = json.stats.partisipasi;
-        setTotalDpt(tDpt);
-        setSuaraMasuk(sMasuk);
-        setBelumMemilih(bMemilih);
-        setTingkatPartisipasi(part);
+        setRawVoters(json.voters);
+        if (json.stats?.totalDpt) setTotalDptCount(json.stats.totalDpt);
       }
     } catch (e) {
       console.warn('Fetch stats fallback in rekap error:', e);
@@ -118,8 +104,13 @@ export default function AdminRekapPage() {
         setHimaList(candsData.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA'));
       }
 
-      const { data: votesData } = await supabase.from('votes').select('candidate_id');
+      const { data: votesData } = await supabase
+        .from('votes')
+        .select('*')
+        .order('created_at', { ascending: true });
+
       if (votesData) {
+        setRawVotes(votesData);
         const counts: Record<string, number> = {};
         for (const v of votesData) {
           const cid = String(v.candidate_id);
@@ -132,120 +123,276 @@ export default function AdminRekapPage() {
     }
   };
 
-  // 3. Fetch Timeline Suara (Interval 10 Menit)
-  const fetchTimeline = async (type = chartType) => {
-    try {
-      const res = await fetch(`/api/admin/stats/timeline?type=${type}`);
-      const json = await res.json();
-      if (json?.success && Array.isArray(json?.data)) {
-        setTimelineData(json.data);
-      }
-    } catch (err) {
-      console.warn('Gagal memuat timeline suara di rekap:', err);
+  // 3. Generator Chart Data yang Aman & Tidak Merender Kotak Kosong
+  const generateChartData = (votes: any[], candidates: Candidate[], category: 'BEM' | 'HIMA') => {
+    const targetCands = candidates.filter((c: any) => c.type === category || c.category === category);
+    const candLabelMap: Record<string, string> = {};
+    const defaultLabels: string[] = [];
+
+    targetCands.forEach((c, idx) => {
+      const num = c.candidate_number ?? c.candidateNumber ?? c.number ?? idx + 1;
+      const label = `Paslon ${String(num).padStart(2, '0')}`;
+      candLabelMap[String(c.id)] = label;
+      if (!defaultLabels.includes(label)) defaultLabels.push(label);
+    });
+
+    if (defaultLabels.length === 0) {
+      defaultLabels.push('Paslon 01', 'Paslon 02');
     }
+
+    // Filter votes yang sesuai dengan kategori ini
+    const targetVotes = (votes || []).filter((v: any) => {
+      return v.candidate_id && candLabelMap[String(v.candidate_id)];
+    });
+
+    // Jika belum ada votes, sediakan titik awal baseline 0 agar grafik tetap muncul garis horizontal rapi
+    if (targetVotes.length === 0) {
+      const baselineStart: Record<string, any> = { time: '08:00' };
+      const baselineEnd: Record<string, any> = { time: 'Sekarang' };
+      defaultLabels.forEach((lbl) => {
+        baselineStart[lbl] = 0;
+        baselineEnd[lbl] = 0;
+      });
+      return [baselineStart, baselineEnd];
+    }
+
+    // Kelompokkan votes per interval 10 menit
+    const timeMap = new Map<string, Record<string, number>>();
+    timeMap.set('08:00', {});
+
+    for (const v of targetVotes) {
+      const date = new Date(v.created_at || Date.now());
+      const hour = date.getHours().toString().padStart(2, '0');
+      const minSlot = (Math.floor(date.getMinutes() / 10) * 10).toString().padStart(2, '0');
+      const timeSlot = `${hour}:${minSlot}`;
+      const lbl = candLabelMap[String(v.candidate_id)] || `Paslon ${v.candidate_id}`;
+
+      if (!timeMap.has(timeSlot)) {
+        timeMap.set(timeSlot, {});
+      }
+      const current = timeMap.get(timeSlot)!;
+      current[lbl] = (current[lbl] || 0) + 1;
+    }
+
+    const sortedTimes = Array.from(timeMap.keys()).sort();
+    const cumulativeMap: Record<string, number> = {};
+    defaultLabels.forEach((lbl) => {
+      cumulativeMap[lbl] = 0;
+    });
+
+    return sortedTimes.map((t) => {
+      const entry: Record<string, any> = { time: t };
+      const slotCounts = timeMap.get(t) || {};
+      defaultLabels.forEach((lbl) => {
+        cumulativeMap[lbl] = (cumulativeMap[lbl] || 0) + (slotCounts[lbl] || 0);
+        entry[lbl] = cumulativeMap[lbl];
+      });
+      return entry;
+    });
   };
 
+  // Perbarui chart data setiap kali rawVotes, candidates, atau chartType berubah
+  useEffect(() => {
+    const cands = chartType === 'BEM' ? bemList : himaList;
+    const chartRows = generateChartData(rawVotes, cands, chartType);
+    setTimelineData(chartRows);
+  }, [rawVotes, bemList, himaList, chartType]);
+
+  // Initial Load & Interval Fallback
   useEffect(() => {
     setIsMounted(true);
     fetchVotersAndStats();
     fetchCandidatesAndVotes();
-    fetchTimeline(chartType);
 
     const interval = setInterval(() => {
       fetchVotersAndStats();
       fetchCandidatesAndVotes();
-      fetchTimeline(chartType);
-    }, 20000);
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, [chartType]);
+  }, []);
 
-  // Realtime Supabase Listeners
+  // 4. Supabase Realtime Listener (Auto-Update Tanpa Refresh)
   useEffect(() => {
     const supabase = createClient();
 
-    const votersChannel = supabase
-      .channel('realtime_voters_sync_rekap')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+    const channel = supabase
+      .channel('rekap-live-dashboard')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
+        // Panggil ulang data suara & rekapitulasi agar angka, grafik, dan persentase seketika bertambah
+        fetchCandidatesAndVotes();
+        fetchVotersAndStats();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voters' }, () => {
+        // Perbarui status DPT dan persentase partisipasi jika ada pemilih yang selesai
+        fetchVotersAndStats();
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voters' }, () => {
         fetchVotersAndStats();
       })
       .subscribe();
 
-    const votesChannel = supabase
-      .channel('realtime_votes_sync_rekap')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, () => {
-        fetchCandidatesAndVotes();
-        fetchTimeline(chartType);
-      })
-      .subscribe();
-
     return () => {
-      supabase.removeChannel(votersChannel);
-      supabase.removeChannel(votesChannel);
+      supabase.removeChannel(channel);
     };
-  }, [chartType]);
+  }, []);
 
-  // Normalisasi perbandingan string (case-insensitive & alphanumeric only)
-  const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // =========================================================================
+  // 1. KALKULASI PERSENTASE REALTIME DI KARTU ATAS
+  // =========================================================================
+  const totalDpt = rawVoters.length > 0 ? rawVoters.length : (totalDptCount || 97);
+  const totalSudahMemilih = rawVoters.filter(
+    (v: any) => v.has_voted === true || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI'
+  ).length;
+  const sisaBelumMemilih = Math.max(0, totalDpt - totalSudahMemilih);
+  const persentasePartisipasi = totalDpt > 0
+    ? ((totalSudahMemilih / totalDpt) * 100).toFixed(1)
+    : '0.0';
 
-  // Bangun daftar 14 Program Studi secara dinamis dari FACULTIES_DATA & rawVoters
-  const allProdisDetailed = FACULTIES_DATA.flatMap((fac) =>
-    fac.prodis.map((p) => {
-      const pNameNorm = normalizeText(p.name);
-      const pIdNorm = normalizeText(p.id);
+  // Grouping Bersih & Anti-Bocor untuk HIMA per Fakultas
+  const paslonFarmasi = useMemo(() => {
+    return himaList.filter((c: any) => {
+      const f = String(c.faculty || c.faculty_id || c.facultyId || '').toLowerCase();
+      const p = String(c.prodi || c.prodi_id || c.prodiId || c.hima_name || '').toLowerCase();
+      return f.includes('farmasi') || p.includes('farmasi') || p.includes('apoteker') || p.includes('kosmetika');
+    });
+  }, [himaList]);
 
-      // Cari pemilih dari database yang jurusannya cocok secara dinamis
-      const matchedVoters = (rawVoters || []).filter((v: any) => {
-        const vProdiRaw = String(v.prodi || v.prodi_name || v.prodiName || '').toLowerCase().trim();
-        const pNameRaw = String(p.name || '').toLowerCase().trim();
-        const vProdi = normalizeText(vProdiRaw);
-        return (
-          vProdiRaw.includes(pNameRaw) ||
-          pNameRaw.includes(vProdiRaw) ||
-          vProdi === pNameNorm ||
-          vProdi.includes(pNameNorm) ||
-          pNameNorm.includes(vProdi) ||
-          (pIdNorm && vProdi === pIdNorm)
-        );
-      });
+  const paslonFIKES = useMemo(() => {
+    return himaList.filter((c: any) => {
+      const f = String(c.faculty || c.faculty_id || c.facultyId || '').toLowerCase();
+      const p = String(c.prodi || c.prodi_id || c.prodiId || c.hima_name || '').toLowerCase();
+      const isFarm = f.includes('farmasi') || p.includes('farmasi') || p.includes('apoteker') || p.includes('kosmetika');
+      if (isFarm) return false;
+      return (
+        f.includes('fikes') ||
+        f.includes('kesehatan') ||
+        p.includes('keperawatan') ||
+        p.includes('gizi') ||
+        p.includes('laboratorium') ||
+        p.includes('optometri') ||
+        p.includes('rumah sakit')
+      );
+    });
+  }, [himaList]);
 
-      const pTotalDpt = matchedVoters.length;
-      const pSuaraMasuk = matchedVoters.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length;
-      const pBelum = Math.max(0, pTotalDpt - pSuaraMasuk);
-      const pPartisipasi = pTotalDpt > 0 ? Number(((pSuaraMasuk / pTotalDpt) * 100).toFixed(1)) : 0;
+  const paslonFTB = useMemo(() => {
+    return himaList.filter((c: any) => {
+      const f = String(c.faculty || c.faculty_id || c.facultyId || '').toLowerCase();
+      const p = String(c.prodi || c.prodi_id || c.prodiId || c.hima_name || '').toLowerCase();
+      const isFarm = f.includes('farmasi') || p.includes('farmasi') || p.includes('apoteker') || p.includes('kosmetika');
+      const isFik =
+        f.includes('fikes') ||
+        f.includes('kesehatan') ||
+        p.includes('keperawatan') ||
+        p.includes('gizi') ||
+        p.includes('laboratorium') ||
+        p.includes('optometri') ||
+        p.includes('rumah sakit');
+      if (isFarm || isFik) return false;
+      return (
+        f.includes('ftb') ||
+        f.includes('teknik') ||
+        f.includes('bisnis') ||
+        p.includes('bisnis') ||
+        p.includes('informasi') ||
+        p.includes('kewirausahaan') ||
+        p.includes('pangan') ||
+        (!isFarm && !isFik)
+      );
+    });
+  }, [himaList]);
 
-      return {
-        id: p.id,
-        name: p.name,
-        facultyId: p.facultyId,
-        facultyName: p.facultyName,
-        totalDpt: pTotalDpt,
-        suaraMasuk: pSuaraMasuk,
-        belumMemilih: pBelum,
-        sisaBelum: pBelum,
-        partisipasi: pPartisipasi,
-      };
-    })
-  );
-
-  const filteredProdis = allProdisDetailed.filter((p) => {
-    const matchFaculty = activeFacultyFilter === 'ALL' || p.facultyId === activeFacultyFilter;
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchFaculty && matchSearch;
-  });
+  const facultyHimaSections = useMemo(() => [
+    {
+      id: 'FTB',
+      name: 'Fakultas Teknik dan Bisnis (FTB)',
+      shortName: 'FTB',
+      candidates: paslonFTB,
+    },
+    {
+      id: 'FIKES',
+      name: 'Fakultas Ilmu Kesehatan (FIKES)',
+      shortName: 'FIKES',
+      candidates: paslonFIKES,
+    },
+    {
+      id: 'FARMASI',
+      name: 'Fakultas Farmasi',
+      shortName: 'FARMASI',
+      candidates: paslonFarmasi,
+    },
+  ], [paslonFTB, paslonFIKES, paslonFarmasi]);
 
   // Hitung total suara BEM
-  const totalSuaraBem = bemList.reduce((sum, c) => {
-    const votes = candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0;
-    return sum + votes;
-  }, 0);
+  const totalSuaraBem = useMemo(() => {
+    return bemList.reduce((sum, c) => {
+      const votes = candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0;
+      return sum + votes;
+    }, 0);
+  }, [bemList, candidateVoteCounts]);
 
-  // Kunci kandidat pada timeline
-  const candidateKeys = Array.from(
-    new Set(timelineData.flatMap((d) => Object.keys(d).filter((k) => k !== 'time')))
-  );
+  // Normalisasi string pencarian
+  const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // Custom Tooltip Recharts dengan Sensor Mode
+  // Matriks 14 Program Studi
+  const allProdisDetailed = useMemo(() => {
+    return FACULTIES_DATA.flatMap((fac) =>
+      fac.prodis.map((p) => {
+        const pNameNorm = normalizeText(p.name);
+        const pIdNorm = normalizeText(p.id);
+
+        const matchedVoters = (rawVoters || []).filter((v: any) => {
+          const vProdiRaw = String(v.prodi || v.prodi_name || v.prodiName || '').toLowerCase().trim();
+          const pNameRaw = String(p.name || '').toLowerCase().trim();
+          const vProdi = normalizeText(vProdiRaw);
+          return (
+            vProdiRaw.includes(pNameRaw) ||
+            pNameRaw.includes(vProdiRaw) ||
+            vProdi === pNameNorm ||
+            vProdi.includes(pNameNorm) ||
+            pNameNorm.includes(vProdi) ||
+            (pIdNorm && vProdi === pIdNorm)
+          );
+        });
+
+        const pTotalDpt = matchedVoters.length;
+        const pSuaraMasuk = matchedVoters.filter(
+          (v: any) => v.has_voted === true || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI'
+        ).length;
+        const pBelum = Math.max(0, pTotalDpt - pSuaraMasuk);
+        const pPartisipasi = pTotalDpt > 0 ? Number(((pSuaraMasuk / pTotalDpt) * 100).toFixed(1)) : 0;
+
+        return {
+          id: p.id,
+          name: p.name,
+          facultyId: p.facultyId,
+          facultyName: p.facultyName,
+          totalDpt: pTotalDpt,
+          suaraMasuk: pSuaraMasuk,
+          belumMemilih: pBelum,
+          partisipasi: pPartisipasi,
+        };
+      })
+    );
+  }, [rawVoters]);
+
+  const filteredProdis = useMemo(() => {
+    return allProdisDetailed.filter((p) => {
+      const matchFaculty = activeFacultyFilter === 'ALL' || p.facultyId === activeFacultyFilter;
+      const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchFaculty && matchSearch;
+    });
+  }, [allProdisDetailed, activeFacultyFilter, searchQuery]);
+
+  // Kunci kandidat pada grafik
+  const candidateKeys = useMemo(() => {
+    return Array.from(
+      new Set(timelineData.flatMap((d) => Object.keys(d).filter((k) => k !== 'time')))
+    );
+  }, [timelineData]);
+
+  // Custom Tooltip Recharts
   const TimelineTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -306,7 +453,9 @@ export default function AdminRekapPage() {
           </div>
         </div>
 
-        {/* 4 STAT CARDS REAL-TIME */}
+        {/* =========================================================================
+            1. 4 STAT CARDS REAL-TIME DENGAN PERSENTASE PARTISIPASI DINAMIS
+            ========================================================================= */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Total DPT */}
           <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
@@ -321,7 +470,7 @@ export default function AdminRekapPage() {
                 {totalDpt.toLocaleString('id-ID')}
               </div>
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                {totalDpt > 0 ? 'Pemilih Tetap Terdaftar' : 'Belum ada data DPT diinput'}
+                {totalDpt} Pemilih Tetap Terdaftar
               </p>
             </div>
           </div>
@@ -346,11 +495,11 @@ export default function AdminRekapPage() {
                 </div>
               ) : (
                 <div className="text-3xl font-black text-emerald-600 tracking-tight font-mono">
-                  {suaraMasuk.toLocaleString('id-ID')}
+                  {totalSudahMemilih.toLocaleString('id-ID')}
                 </div>
               )}
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                {suaraMasuk > 0 ? 'Suara Sah Terverifikasi' : 'Menunggu suara pertama'}
+                {totalSudahMemilih} Total Suara Masuk
               </p>
             </div>
           </div>
@@ -365,10 +514,10 @@ export default function AdminRekapPage() {
             </div>
             <div>
               <div className="text-3xl font-black text-amber-600 tracking-tight font-mono">
-                {belumMemilih.toLocaleString('id-ID')}
+                {sisaBelumMemilih.toLocaleString('id-ID')}
               </div>
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                {totalDpt > 0 ? 'Sisa DPT Belum Hadir' : 'Menunggu input DPT'}
+                {sisaBelumMemilih} Sisa DPT Belum Hadir
               </p>
             </div>
           </div>
@@ -394,24 +543,26 @@ export default function AdminRekapPage() {
               ) : (
                 <>
                   <div className="text-3xl font-black text-blue-600 tracking-tight font-mono">
-                    {tingkatPartisipasi}%
+                    {persentasePartisipasi}%
                   </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full mt-2.5 overflow-hidden">
+                  <div className="w-full bg-slate-100 h-2 rounded-full mt-2.5 overflow-hidden">
                     <div
                       className="bg-blue-600 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, tingkatPartisipasi)}%` }}
+                      style={{ width: `${Math.min(100, Number(persentasePartisipasi))}%` }}
                     />
                   </div>
                 </>
               )}
               <p className="text-[11px] text-slate-400 font-medium mt-1">
-                Persentase Partisipasi Keseluruhan
+                Persentase Partisipasi: {persentasePartisipasi}%
               </p>
             </div>
           </div>
         </div>
 
-        {/* SECTION: MULTI-LINE CHART DINAMIKA PEROLEHAN SUARA PASLON (INTERVAL 10 MENIT) */}
+        {/* =========================================================================
+            2. GRAFIK DINAMIKA PEROLEHAN SUARA (INTERVAL 10 MENIT DENGAN BASELINE 0)
+            ========================================================================= */}
         <section className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
@@ -461,8 +612,8 @@ export default function AdminRekapPage() {
             </div>
           </div>
 
-          {/* Chart Wrapper Container with Sensor Blur Effect & Overlay */}
-          <div className="relative min-h-[320px] w-full">
+          {/* Wrapper Grafik dengan Tinggi Tetap & SSR Safety */}
+          <div className="relative w-full h-72 sm:h-80">
             {isSensorActive && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/40 backdrop-blur-[2px] pointer-events-none rounded-2xl">
                 <div className="px-5 py-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wider shadow-lg flex items-center gap-2 border border-amber-400">
@@ -476,7 +627,7 @@ export default function AdminRekapPage() {
             )}
 
             <div
-              className={`w-full h-80 transition-all duration-300 ${
+              className={`w-full h-full transition-all duration-300 ${
                 isSensorActive ? 'filter blur-[8px] pointer-events-none select-none' : ''
               }`}
             >
@@ -506,36 +657,19 @@ export default function AdminRekapPage() {
                       iconType="circle"
                     />
 
-                    {/* Render garis setiap paslon */}
-                    <Line
-                      type="monotone"
-                      dataKey="Paslon 01"
-                      name="Paslon 01"
-                      stroke="#2563eb"
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: '#2563eb', strokeWidth: 2, stroke: '#ffffff' }}
-                      activeDot={{ r: 6, stroke: '#2563eb', strokeWidth: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Paslon 02"
-                      name="Paslon 02"
-                      stroke="#10b981"
-                      strokeWidth={3}
-                      dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }}
-                      activeDot={{ r: 6, stroke: '#10b981', strokeWidth: 2 }}
-                    />
-                    {candidateKeys.includes('Paslon 03') && (
+                    {/* Render garis paslon secara dinamis */}
+                    {candidateKeys.map((key, idx) => (
                       <Line
+                        key={key}
                         type="monotone"
-                        dataKey="Paslon 03"
-                        name="Paslon 03"
-                        stroke="#f59e0b"
+                        dataKey={key}
+                        name={key}
+                        stroke={LINE_COLORS[idx % LINE_COLORS.length]}
                         strokeWidth={3}
-                        dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#ffffff' }}
-                        activeDot={{ r: 6, stroke: '#f59e0b', strokeWidth: 2 }}
+                        dot={{ r: 4, fill: LINE_COLORS[idx % LINE_COLORS.length], strokeWidth: 2, stroke: '#ffffff' }}
+                        activeDot={{ r: 6, stroke: LINE_COLORS[idx % LINE_COLORS.length], strokeWidth: 2 }}
                       />
-                    )}
+                    ))}
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
@@ -552,7 +686,7 @@ export default function AdminRekapPage() {
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium mt-2">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Sinkronisasi otomatis per 20 detik &amp; PostgreSQL Realtime</span>
+              <span>Realtime Supabase Channel Aktif</span>
             </span>
             <span className="font-mono text-slate-400">
               Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : 'Himpunan Mahasiswa (HIMA)'}
@@ -560,7 +694,9 @@ export default function AdminRekapPage() {
           </div>
         </section>
 
-        {/* SECTION 1: HASIL SUARA BEM UNIVERSITAS */}
+        {/* =========================================================================
+            3. SECTION 1: HASIL SUARA BEM DENGAN PERSENTASE & PROGRESS BAR
+            ========================================================================= */}
         <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
             <div className="flex items-center gap-2.5">
@@ -582,9 +718,10 @@ export default function AdminRekapPage() {
             ) : (
               bemList.map((cand) => {
                 const votes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
-                const pctString = totalSuaraBem > 0 ? `${((votes / totalSuaraBem) * 100).toFixed(1)}%` : '0.0%';
-                const pctNum = totalSuaraBem > 0 ? Number(((votes / totalSuaraBem) * 100).toFixed(1)) : 0;
+                const persentasePaslon = totalSuaraBem > 0 ? ((votes / totalSuaraBem) * 100).toFixed(1) : '0.0';
                 const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
+                const photoUrl = cand.image_url || (cand as any).imageUrl || cand.photo_url || cand.photoUrl;
+                const candName = `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}`;
 
                 return (
                   <div
@@ -600,38 +737,42 @@ export default function AdminRekapPage() {
                           Paslon Nomor {displayNumber}
                         </span>
                       </div>
+
+                      {/* Foto Paslon BEM */}
+                      <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-100">
+                        {photoUrl ? (
+                          <img
+                            src={photoUrl}
+                            alt={candName}
+                            className="w-full h-full object-cover object-top"
+                          />
+                        ) : (
+                          <div className="text-slate-400 text-xs font-semibold">Foto Tidak Tersedia</div>
+                        )}
+                      </div>
+
                       <h4 className="text-base font-bold text-slate-900">
-                        {cand.leader_name || cand.leaderName || 'Calon Ketua'} &amp; {cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}
+                        {candName}
                       </h4>
                       <p className="text-xs text-slate-500 italic mt-1 line-clamp-1">
                         &ldquo;{cand.slogan || cand.tagline || 'Menuju Kampus BTH Berkemajuan'}&rdquo;
                       </p>
 
+                      {/* Baris Suara, Persentase, dan Progress Bar Paslon */}
                       <div className="mt-5 pt-3 border-t border-slate-100">
-                        <div className="flex justify-between items-baseline mb-2">
-                          {isSensorActive ? (
-                            <>
-                              <span className="text-xl font-black text-amber-600 font-mono filter blur-xs select-none">
-                                ***
-                              </span>
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
-                                Disensor KPUM
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="text-2xl font-black text-slate-900 font-mono">
-                                {votes.toLocaleString('id-ID')}
-                              </span>
-                              <span className="text-xs font-bold text-slate-600 font-mono">{pctString}</span>
-                            </>
-                          )}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xl font-black text-slate-800 font-mono">
+                            {isSensorActive ? '*** Suara' : `${votes.toLocaleString('id-ID')} Suara`}
+                          </span>
+                          <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-md">
+                            {isSensorActive ? '***%' : `${persentasePaslon}%`}
+                          </span>
                         </div>
-
-                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        {/* Progress Bar Persentase */}
+                        <div className="w-full bg-slate-100 h-2 rounded-full mt-2.5 overflow-hidden">
                           <div
-                            className="bg-blue-600 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${isSensorActive ? 50 : pctNum}%` }}
+                            className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
                           />
                         </div>
                       </div>
@@ -643,7 +784,9 @@ export default function AdminRekapPage() {
           </div>
         </section>
 
-        {/* SECTION 2: HASIL SUARA HIMA */}
+        {/* =========================================================================
+            3. SECTION 2: HASIL SUARA HIMA PER FAKULTAS DENGAN PERSENTASE & PROGRESS BAR
+            ========================================================================= */}
         <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
             <div className="flex items-center gap-2.5">
@@ -675,14 +818,11 @@ export default function AdminRekapPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {FACULTIES_DATA.map((fac) => {
-                const facCandidates = himaList.filter((c) => {
-                  const cFac = (c.facultyId || c.faculty_id || '').toUpperCase();
-                  const cProdi = (c.prodiId || c.prodi_id || '').toLowerCase();
-                  return cFac === fac.id || fac.prodis.some((p) => p.id.toLowerCase() === cProdi || p.name.toLowerCase().includes(cProdi));
-                });
-
-                if (facCandidates.length === 0) return null;
+              {facultyHimaSections.map((fac) => {
+                const facCandidates = fac.candidates;
+                const facTotalVotes = facCandidates.reduce((sum, c) => {
+                  return sum + (candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0);
+                }, 0);
 
                 return (
                   <div key={fac.id} className="p-5 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-4">
@@ -692,7 +832,7 @@ export default function AdminRekapPage() {
                           {fac.name}
                         </h4>
                         <span className="text-[11px] text-slate-500 font-semibold">
-                          {facCandidates.length} Pasangan Calon Terdaftar
+                          {facCandidates.length} Pasangan Calon Terdaftar • Total Suara: {isSensorActive ? '***' : facTotalVotes.toLocaleString('id-ID')}
                         </span>
                       </div>
                       <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-slate-200 text-slate-800 uppercase">
@@ -700,56 +840,82 @@ export default function AdminRekapPage() {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {facCandidates.map((cand) => {
-                        const candVotes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
-                        const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
-                        const candProdi = cand.prodiId || cand.prodi_id || fac.shortName;
+                    {facCandidates.length === 0 ? (
+                      <div className="p-6 rounded-2xl bg-white border border-dashed border-slate-200 text-center">
+                        <p className="text-xs font-semibold text-slate-400">
+                          Belum ada pasangan calon terdaftar di fakultas/himpunan ini.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {facCandidates.map((cand) => {
+                          const candVotes = candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
+                          const persentasePaslon = facTotalVotes > 0 ? ((candVotes / facTotalVotes) * 100).toFixed(1) : '0.0';
+                          const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
+                          const candProdi = cand.prodi || cand.prodiId || cand.prodi_id || fac.shortName;
+                          const candPhoto = cand.image_url || (cand as any).imageUrl || cand.photo_url || cand.photoUrl;
+                          const candName = cand.leaderName || cand.leader_name || 'Kandidat';
+                          const candVice = cand.viceLeaderName || cand.vice_leader_name;
 
-                        return (
-                          <div
-                            key={cand.id}
-                            className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
-                          >
-                            <div>
-                              <div className="flex items-center justify-between mb-3">
-                                <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
-                                  {displayNumber}
-                                </span>
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[140px]">
-                                  {candProdi}
-                                </span>
-                              </div>
-                              <h5 className="text-sm font-bold text-slate-900 leading-snug">
-                                {cand.leaderName || cand.leader_name || 'Kandidat'} {cand.viceLeaderName || cand.vice_leader_name ? `& ${cand.viceLeaderName || cand.vice_leader_name}` : ''}
-                              </h5>
-                              <p className="text-[11px] text-slate-400 mt-1 line-clamp-1 italic">
-                                &ldquo;{cand.tagline || cand.slogan || 'Sinergi Bersama Memajukan HIMA'}&rdquo;
-                              </p>
-                            </div>
-
-                            <div className="mt-4 pt-3 border-t border-slate-100">
-                              <div className="flex justify-between items-baseline mb-1.5">
-                                {isSensorActive ? (
-                                  <>
-                                    <span className="text-lg font-black text-amber-600 font-mono filter blur-xs select-none">
-                                      ***
-                                    </span>
-                                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
-                                      Disensor KPUM
-                                    </span>
-                                  </>
-                                ) : (
-                                  <span className="text-lg font-black text-slate-900 font-mono">
-                                    {candVotes.toLocaleString('id-ID')} Suara
+                          return (
+                            <div
+                              key={cand.id}
+                              className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
+                                    {displayNumber}
                                   </span>
-                                )}
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[140px]">
+                                    {candProdi}
+                                  </span>
+                                </div>
+
+                                {/* Foto Paslon HIMA */}
+                                <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-100">
+                                  {candPhoto ? (
+                                    <img
+                                      src={candPhoto}
+                                      alt={candName}
+                                      className="w-full h-full object-cover object-top"
+                                    />
+                                  ) : (
+                                    <div className="text-slate-400 text-xs font-semibold">Foto Tidak Tersedia</div>
+                                  )}
+                                </div>
+
+                                <h5 className="text-sm font-bold text-slate-900 leading-snug">
+                                  {candName} {candVice ? `& ${candVice}` : ''}
+                                </h5>
+                                <p className="text-[11px] text-slate-400 mt-1 line-clamp-1 italic">
+                                  &ldquo;{cand.tagline || cand.slogan || 'Sinergi Bersama Memajukan HIMA'}&rdquo;
+                                </p>
+                              </div>
+
+                              {/* Baris Suara, Persentase, dan Progress Bar Paslon HIMA */}
+                              <div className="mt-4 pt-3 border-t border-slate-100">
+                                <div className="flex items-center justify-between mt-2">
+                                  <span className="text-xl font-black text-slate-800 font-mono">
+                                    {isSensorActive ? '*** Suara' : `${candVotes.toLocaleString('id-ID')} Suara`}
+                                  </span>
+                                  <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                                    {isSensorActive ? '***%' : `${persentasePaslon}%`}
+                                  </span>
+                                </div>
+                                {/* Progress Bar Persentase */}
+                                <div className="w-full bg-slate-100 h-2 rounded-full mt-2 overflow-hidden">
+                                  <div
+                                    className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -787,7 +953,7 @@ export default function AdminRekapPage() {
                   <button
                     key={fac}
                     onClick={() => setActiveFacultyFilter(fac)}
-                    className={`px-3 py-1 rounded-lg transition-all ${
+                    className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                       activeFacultyFilter === fac
                         ? 'bg-blue-600 text-white shadow-2xs'
                         : 'hover:text-slate-900'

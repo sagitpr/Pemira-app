@@ -31,6 +31,14 @@ export interface Candidate {
   tagline?: string;
   photo_url?: string;
   photoUrl?: string;
+  image_url?: string;
+  imageUrl?: string;
+  name?: string;
+  vice_name?: string;
+  category?: string;
+  prodi?: string;
+  hima_name?: string;
+  faculty?: string;
   vision?: string;
   visi?: string;
   mission?: string | string[];

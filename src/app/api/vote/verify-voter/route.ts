@@ -55,16 +55,11 @@ export async function POST(request: Request) {
     }
 
     // 3. Cari record pemilih di DPT berdasarkan NIM
-    let voterQuery = supabaseAdmin
+    const { data: voter, error: voterErr } = await supabaseAdmin
       .from('voters')
       .select('*')
-      .eq('nim', cleanNim);
-
-    if (inputProdi) {
-      voterQuery = voterQuery.or(`prodi.ilike.%${inputProdi}%,prodi_name.ilike.%${inputProdi}%`);
-    }
-
-    const { data: voter, error: voterErr } = await voterQuery.maybeSingle();
+      .eq('nim', cleanNim)
+      .maybeSingle();
 
     if (voterErr) {
       console.error('Database query error in verify-voter:', voterErr);
@@ -79,13 +74,27 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: 'NIM tidak terdaftar dalam DPT PEMIRA UBTH 2026. Silakan hubungi panitia KPUM.',
+          message: 'NIM tidak terdaftar di DPT Pemira UBTH 2026!',
         },
         { status: 404 }
       );
     }
 
-    // Validasi opsional Nama jika disertakan
+    // 4. Validasi Status Hak Suara
+    const isVoted = voter.has_voted === true || 
+      String(voter.voting_status || '').toUpperCase() === 'SELESAI' || 
+      String(voter.voting_status || '').toUpperCase() === 'SUDAH';
+    if (isVoted) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Hak suara untuk NIM ini sudah digunakan!',
+        },
+        { status: 409 }
+      );
+    }
+
+    // Validasi Nama jika disertakan
     if (cleanName) {
       const normInput = normalizeString(cleanName);
       const normDb = normalizeString(voter.name || voter.nama || '');
@@ -93,27 +102,28 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: 'NIM dan nama tidak sesuai dengan data DPT. Periksa kembali informasi yang dimasukkan.',
+            message: 'Nama lengkap tidak sesuai dengan data DPT!',
           },
           { status: 400 }
         );
       }
     }
 
-    // 4. Validasi Status Hak Suara
-    const isVoted = voter.has_voted === true || String(voter.voting_status || '').toUpperCase() === 'SELESAI';
-    if (isVoted) {
-      const completedTime = voter.completed_at
-        ? new Date(voter.completed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB'
-        : 'sesi sebelumnya';
-      return NextResponse.json(
-        {
-          success: false,
-          message: `Hak suara untuk NIM ini sudah digunakan pada ${completedTime}. Anda tidak dapat memilih kembali.`,
-        },
-        { status: 409 }
-      );
+    // Validasi Program Studi jika disertakan
+    if (inputProdi) {
+      const normInputProdi = normalizeString(inputProdi).replace(/\s+/g, '');
+      const normDbProdi = normalizeString(voter.prodi || voter.prodi_name || '').replace(/\s+/g, '');
+      if (normInputProdi !== normDbProdi && !normDbProdi.includes(normInputProdi) && !normInputProdi.includes(normDbProdi)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Program studi yang Anda pilih tidak sesuai dengan data DPT Anda!',
+          },
+          { status: 400 }
+        );
+      }
     }
+
 
     if (String(voter.voting_status || '').toUpperCase() === 'MENGERJAKAN') {
       // Auto-release sesi macet (> 20 menit tanpa submit): anggap browser pemilih crash,

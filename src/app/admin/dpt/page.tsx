@@ -204,7 +204,11 @@ export default function AdminDptPage() {
       v.nim?.toLowerCase().includes(q) ||
       prodiVal.toLowerCase().includes(q) ||
       angkatanVal.toLowerCase().includes(q);
-    const matchStatus = statusFilter === 'ALL' || v.status === statusFilter;
+    const isVoterDone = Boolean(v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai');
+    const matchStatus =
+      statusFilter === 'ALL' ||
+      (statusFilter === 'selesai' && isVoterDone) ||
+      (statusFilter === 'belum' && !isVoterDone);
     const matchProdi =
       selectedProdi === 'ALL' ||
       prodiVal.toLowerCase().includes(selectedProdi.toLowerCase()) ||
@@ -406,8 +410,8 @@ export default function AdminDptPage() {
   const handleProcessImport = handleImportCsv;
 
   const totalDpt = voters.length;
-  const sudahMemilih = voters.filter((v) => v.status === 'selesai').length;
-  const belumMemilih = totalDpt - sudahMemilih;
+  const sudahMemilih = voters.filter((v: any) => v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai').length;
+  const belumMemilih = Math.max(0, totalDpt - sudahMemilih);
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
@@ -621,9 +625,8 @@ export default function AdminDptPage() {
                   </tr>
                 ) : (
                   paginatedVoters.map((v) => {
-                    const rawStatus = v.voting_status || (v.status === 'selesai' ? 'SELESAI' : v.status === 'memilih' ? 'MENGERJAKAN' : 'BELUM');
-                    const isMengerjakan = rawStatus === 'MENGERJAKAN';
-                    const isSelesai = rawStatus === 'SELESAI';
+                    const isSelesai = Boolean(v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai');
+                    const isMengerjakan = !isSelesai && Boolean(v.voting_status === 'SEDANG_MEMILIH' || v.voting_status === 'MENGERJAKAN' || v.status === 'memilih');
                     const isDeletingThis = deletingId === (v.id || v.nim);
 
                     let waktuMemilihDisplay = '-';
