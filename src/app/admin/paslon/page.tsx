@@ -20,6 +20,53 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+// Fungsi Helper Kompresi Gambar Otomatis (Canvas Compressor Anti-Lemot)
+const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.75): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Hitung rasio resize agar proporsional
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+
+        // Gambar ulang dengan ukuran optimal
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Ekspor ke JPEG terkompresi (ukuran turun drastis ke 40-70 KB)
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedBase64);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 export default function AdminPaslonPage() {
   const {
     addCandidate,
@@ -50,6 +97,8 @@ export default function AdminPaslonPage() {
   const [candidatesList, setCandidatesList] = useState<Candidate[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   // Form states
   const [formNumber, setFormNumber] = useState<number>(1);
@@ -125,14 +174,19 @@ export default function AdminPaslonPage() {
   });
   const currentCandidates = activeTab === 'BEM' ? bemCandidatesList : filteredHimaList;
 
-  const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormPhotoUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    try {
+      setIsCompressing(true); // Indikator loading singkat
+      const compressedDataUrl = await compressImage(file, 600, 600, 0.75);
+      setFormPhotoUrl(compressedDataUrl);
+    } catch (err) {
+      console.error('Gagal kompresi foto:', err);
+      alert('Format gambar tidak didukung!');
+    } finally {
+      setIsCompressing(false);
     }
   };
 
@@ -169,14 +223,19 @@ export default function AdminPaslonPage() {
     });
   };
 
-  const handleEditPhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleEditPhotoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setEditForm((prev) => ({ ...prev, image_url: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    try {
+      setIsCompressing(true); // Indikator loading singkat
+      const compressedDataUrl = await compressImage(file, 600, 600, 0.75);
+      setEditForm((prev) => ({ ...prev, image_url: compressedDataUrl }));
+    } catch (err) {
+      console.error('Gagal kompresi foto:', err);
+      alert('Format gambar tidak didukung!');
+    } finally {
+      setIsCompressing(false);
     }
   };
 
@@ -195,6 +254,7 @@ export default function AdminPaslonPage() {
     }
 
     setIsSaving(true);
+    setIsSubmitting(true);
     try {
       const supabase = createClient();
       const leader = editForm.chairman_name.trim();
@@ -253,6 +313,7 @@ export default function AdminPaslonPage() {
       alert('Gagal memperbarui: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
       setIsSaving(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -269,6 +330,7 @@ export default function AdminPaslonPage() {
     }
 
     setIsSaving(true);
+    setIsSubmitting(true);
     const himaVal = formType === 'HIMA' ? (formHimaName.trim() || formProdi) : null;
     const formData = {
       nomorUrut: formNumber,
@@ -346,6 +408,7 @@ export default function AdminPaslonPage() {
       showToast('Gagal menyimpan paslon: ' + (err?.message || 'Error'), 'error');
     } finally {
       setIsSaving(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -732,7 +795,14 @@ export default function AdminPaslonPage() {
                 <div className="flex items-center gap-4">
                   {/* Kotak Preview Rasio 3:4 */}
                   <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
-                    {formPhotoUrl ? (
+                    {isCompressing ? (
+                      <div className="text-center p-2">
+                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                        <span className="text-[9px] font-bold text-blue-600 block">
+                          Mengompres...
+                        </span>
+                      </div>
+                    ) : formPhotoUrl ? (
                       <img
                         src={formPhotoUrl}
                         alt="Preview Foto"
@@ -830,13 +900,18 @@ export default function AdminPaslonPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
+                  disabled={isSubmitting || isSaving || isCompressing}
                   className="w-1/2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  {isSaving ? (
+                  {isSubmitting || isSaving ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Menyimpan...</span>
+                      <span>Menyimpan Data Paslon...</span>
+                    </>
+                  ) : isCompressing ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Mengompres Foto...</span>
                     </>
                   ) : (
                     <span>Simpan Paslon</span>
@@ -960,7 +1035,14 @@ export default function AdminPaslonPage() {
 
                 <div className="flex items-center gap-4">
                   <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
-                    {editForm.image_url ? (
+                    {isCompressing ? (
+                      <div className="text-center p-2">
+                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                        <span className="text-[9px] font-bold text-blue-600 block">
+                          Mengompres...
+                        </span>
+                      </div>
+                    ) : editForm.image_url ? (
                       <img
                         src={editForm.image_url}
                         alt="Preview Foto"
@@ -1057,13 +1139,18 @@ export default function AdminPaslonPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
+                  disabled={isSubmitting || isSaving || isCompressing}
                   className="w-1/2 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  {isSaving ? (
+                  {isSubmitting || isSaving ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Menyimpan...</span>
+                      <span>Menyimpan Data Paslon...</span>
+                    </>
+                  ) : isCompressing ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Mengompres Foto...</span>
                     </>
                   ) : (
                     <span>Perbarui Paslon</span>
