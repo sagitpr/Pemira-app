@@ -120,6 +120,8 @@ function VoteContent() {
 
   // Timers & Audio
   const [timerSeconds, setTimerSeconds] = useState(180); // 03:00 sesi bilik
+  const timeLeft = timerSeconds;
+  const setTimeLeft = setTimerSeconds;
   const [startVoteAt, setStartVoteAt] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [postSubmitSeconds, setPostSubmitSeconds] = useState(60); // 60 detik (1 menit) countdown apresiasi
@@ -497,19 +499,16 @@ function VoteContent() {
 
   // Timer Countdown Sesi Bilik (BEKUKAN TIMER SAAT MASIH PROSES MEMUAT DATA)
   useEffect(() => {
-    if (
-      step === 'BOOTH_ROUTING' ||
-      step === 'SUCCESS' ||
-      step === 'SESSION_EXPIRED' ||
-      isSessionExpired ||
-      isLoadingCandidates
-    )
-      return;
+    // Timer HANYA boleh berjalan jika sudah masuk tahap surat suara DAN data paslon SUDAH SELESAI dimuat!
+    if (step !== 'VOTE_BEM' && step !== 'VOTE_HIMA') return;
 
-    const timer = setInterval(() => {
-      setTimerSeconds((prev) => {
+    // PEMBEKUAN WAKTU: Jangan jalankan interval jika paslon masih loading
+    if (isLoadingCandidates) return;
+
+    const timerInterval = setInterval(() => {
+      setTimeLeft((prev) => {
         if (prev <= 1) {
-          clearInterval(timer);
+          clearInterval(timerInterval);
           handleSessionTimeout();
           return 0;
         }
@@ -517,8 +516,8 @@ function VoteContent() {
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [step, isSessionExpired, isLoadingCandidates, handleSessionTimeout]);
+    return () => clearInterval(timerInterval);
+  }, [step, isLoadingCandidates, handleSessionTimeout]);
 
   // 4. Audio Ucapan Terima Kasih Resmi (Loop 60 Detik di Langkah SUCCESS)
   const playThankYouAudio = useCallback(() => {
@@ -1161,6 +1160,38 @@ function VoteContent() {
     );
   }
 
+  // B. TAMPILAN SKELETON LOADING CARD PASLON
+  const CandidateSkeleton = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full my-4">
+      {[1, 2].map((item) => (
+        <div 
+          key={item} 
+          className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm animate-pulse flex flex-col justify-between"
+        >
+          <div>
+            {/* Skeleton Nomor Paslon & Kategori */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
+              <div className="w-20 h-4 bg-slate-200 rounded-full"></div>
+            </div>
+            
+            {/* Skeleton Gambar Paslon */}
+            <div className="w-full h-44 bg-slate-200 rounded-xl mb-4 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+            </div>
+
+            {/* Skeleton Nama Paslon */}
+            <div className="h-5 bg-slate-200 rounded-md w-4/5 mb-2"></div>
+            <div className="h-4 bg-slate-100 rounded-md w-3/5 mb-4"></div>
+          </div>
+
+          {/* Skeleton Tombol Pilih */}
+          <div className="w-full h-11 bg-slate-200 rounded-xl mt-2"></div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="relative min-h-screen bg-slate-50 flex flex-col justify-between overflow-x-hidden font-sans text-slate-800 select-none">
       {/* FLOATING TOAST */}
@@ -1445,35 +1476,13 @@ function VoteContent() {
             </div>
 
             {/* DAFTAR PASLON BEM */}
-            {isLoadingCandidates && bemCandidates.length === 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                {[1, 2].map((idx) => (
-                  <div
-                    key={`skeleton-bem-${idx}`}
-                    className="rounded-3xl border-2 border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between animate-pulse"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
-                        <div className="space-y-2">
-                          <div className="h-3 w-28 bg-slate-200 rounded-full" />
-                          <div className="h-5 w-44 bg-slate-200 rounded-lg" />
-                          <div className="h-3 w-56 bg-slate-100 rounded-md" />
-                        </div>
-                        <div className="w-10 h-10 rounded-2xl bg-slate-200 shrink-0" />
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                        <div className="w-10 h-10 border-3 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
-                      </div>
-
-                      <div className="h-3.5 w-36 bg-slate-100 rounded-md mx-auto" />
-                    </div>
-
-                    <div className="mt-5">
-                      <div className="w-full h-11 bg-slate-200 rounded-full" />
-                    </div>
-                  </div>
-                ))}
+            {isLoadingCandidates ? (
+              <div className="w-full">
+                <div className="flex items-center justify-center gap-2 text-indigo-600 text-xs font-semibold mb-2">
+                  <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Menyiapkan Surat Suara Resmi...</span>
+                </div>
+                <CandidateSkeleton />
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
@@ -1637,35 +1646,13 @@ function VoteContent() {
             </div>
 
             {/* JIKA SEDANG LOADING ATAU TIDAK ADA PASLON HIMA TERDAFTAR */}
-            {isLoadingCandidates && himaCandidates.length === 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                {[1, 2].map((idx) => (
-                  <div
-                    key={`skeleton-hima-${idx}`}
-                    className="rounded-3xl border-2 border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between animate-pulse"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-4">
-                        <div className="space-y-2">
-                          <div className="h-3 w-32 bg-slate-200 rounded-full" />
-                          <div className="h-5 w-44 bg-slate-200 rounded-lg" />
-                          <div className="h-3 w-56 bg-slate-100 rounded-md" />
-                        </div>
-                        <div className="w-10 h-10 rounded-2xl bg-slate-200 shrink-0" />
-                      </div>
-
-                      <div className="rounded-2xl border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
-                        <div className="w-10 h-10 border-3 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
-                      </div>
-
-                      <div className="h-3.5 w-36 bg-slate-100 rounded-md mx-auto" />
-                    </div>
-
-                    <div className="mt-5">
-                      <div className="w-full h-11 bg-slate-200 rounded-full" />
-                    </div>
-                  </div>
-                ))}
+            {isLoadingCandidates ? (
+              <div className="w-full">
+                <div className="flex items-center justify-center gap-2 text-indigo-600 text-xs font-semibold mb-2">
+                  <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Menyiapkan Surat Suara Resmi...</span>
+                </div>
+                <CandidateSkeleton />
               </div>
             ) : himaCandidates.length === 0 ? (
               <div className="p-8 sm:p-12 rounded-3xl bg-blue-50/70 border-2 border-dashed border-blue-200 text-center space-y-3">

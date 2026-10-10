@@ -71,7 +71,7 @@ function BoothCard({
 }: {
   booth: BoothItem;
   isResetting: boolean;
-  onReset: (boothId: string) => void;
+  onReset: (booth: any) => void;
 }) {
   const st = (booth.status || '').toUpperCase();
   const isAvailable = st === 'AVAILABLE' || st === 'TERSEDIA' || st === 'KOSONG';
@@ -123,7 +123,7 @@ function BoothCard({
           </div>
         </div>
         <button
-          onClick={() => onReset(String(booth.id || booth.booth_number))}
+          onClick={() => onReset(booth)}
           disabled={isResetting}
           className="w-full py-1.5 text-xs text-slate-400 border border-slate-200 hover:bg-slate-50 hover:text-slate-600 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
@@ -158,7 +158,7 @@ function BoothCard({
         </div>
 
         <button
-          onClick={() => onReset(String(booth.id || booth.booth_number))}
+          onClick={() => onReset(booth)}
           disabled={isResetting}
           className="w-full py-1.5 text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
         >
@@ -196,7 +196,7 @@ function BoothCard({
       </div>
 
       <button
-        onClick={() => onReset(String(booth.id || booth.booth_number))}
+        onClick={() => onReset(booth)}
         disabled={isResetting}
         className="w-full py-1.5 text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
       >
@@ -573,53 +573,76 @@ export default function AdminDashboardPage() {
     };
   }, []);
 
-  // 1. Batalkan Alokasi & Kill-switch Sesi Bilik Pemilih Seketika
-  const handleCancelAllocation = async (boothId: string) => {
+  // 1. Batalkan Sesi Bilik Otomatis Rollback DPT ke "BELUM"
+  const handleCancelSession = async (booth: any) => {
     try {
+      const voterName = booth.current_voter_name || booth.voter_name || 'pemilih';
+      const voterNim = booth.current_voter_nim || booth.voter_nim;
+      const boothNum = booth.booth_number || booth.id;
+
       const confirmCancel = window.confirm(
-        "Yakin ingin membatalkan alokasi bilik ini? Sesi di HP pemilih akan langsung dibatalkan dan dikunci."
+        `Yakin ingin membatalkan sesi ${voterName} di Bilik ${boothNum}? Status DPT pemilih ini akan dikembalikan menjadi 'BELUM'.`
       );
       if (!confirmCancel) return;
 
       const supabase = createClient();
-      // Reset bilik dan hanguskan token sesi seketika di Supabase
+
+      // 1. ROLLBACK STATUS DPT PEMILIH KE 'BELUM' DI TABEL 'voters'
+      if (voterNim) {
+        const { error: voterErr } = await supabase
+          .from('voters')
+          .update({
+            voting_status: 'BELUM',
+            has_voted: false
+          })
+          .eq('nim', voterNim)
+          .eq('has_voted', false); // Hanya rollback jika memang belum pernah submit suara resmi
+
+        if (voterErr) console.error("Gagal rollback voter:", voterErr.message);
+      }
+
+      // 2. KOSONGKAN BILIK DI TABEL 'booths'
       const updatePayload = {
         status: 'AVAILABLE',
-        session_token: null,
         current_voter_name: null,
         current_voter_nim: null,
         current_voter_prodi: null,
         voter_name: null,
         voter_nim: null,
         voter_prodi: null,
+        session_token: null,
         started_at: null,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
-      let { error } = await supabase
+      let { error: boothErr } = await supabase
         .from('booths')
         .update(updatePayload)
-        .eq('id', boothId);
+        .eq('id', booth.id);
 
-      if (error && !isNaN(Number(boothId))) {
+      if (boothErr && booth.booth_number) {
         const fallbackRes = await supabase
           .from('booths')
           .update(updatePayload)
-          .eq('booth_number', Number(boothId));
-        error = fallbackRes.error;
+          .eq('booth_number', booth.booth_number);
+        boothErr = fallbackRes.error;
       }
 
-      if (error) {
-        alert("Gagal membatalkan alokasi: " + error.message);
-      } else {
-        showToast("Alokasi bilik berhasil dibatalkan dan sesi di HP pemilih dikunci.", "success");
-        // Refresh state lokal dashboard
-        fetchBooths();
+      if (boothErr) {
+        alert("Gagal reset bilik: " + boothErr.message);
+        return;
       }
+
+      showToast?.(`Sesi di Bilik ${boothNum} berhasil dibatalkan dan status DPT telah di-rollback.`, 'success');
+
+      // Refresh data dashboard lokal
+      fetchBooths();
+      fetchVotersStats();
     } catch (err) {
-      console.error(err);
+      console.error("Crash saat cancel session:", err);
     }
   };
+  const handleCancelAllocation = handleCancelSession;
 
   const countTersedia = booths.filter((b) => {
     const st = (b.status || '').toUpperCase();
@@ -957,7 +980,7 @@ export default function AdminDashboardPage() {
                   key={booth.id || booth.booth_number}
                   booth={booth}
                   isResetting={resettingBoothId === booth.booth_number}
-                  onReset={handleCancelAllocation}
+                  onReset={handleCancelSession}
                 />
               ))
             )}

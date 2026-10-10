@@ -163,14 +163,16 @@ export default function AdminDptPage() {
     } catch {}
   };
 
+  const fetchVotersList = fetchSupabaseVoters;
+
   useEffect(() => {
-    fetchSupabaseVoters();
+    fetchVotersList();
 
     const supabase = createClient();
     const channel = supabase
-      .channel('dpt_realtime_changes')
+      .channel('dpt-status-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchSupabaseVoters();
+        fetchVotersList(); // Otomatis refresh status tabel DPT seketika saat ada perubahan
       })
       .subscribe();
 
