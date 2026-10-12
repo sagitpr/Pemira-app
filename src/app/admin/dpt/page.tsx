@@ -37,6 +37,23 @@ const MASTER_PRODI = [
   'S1 Teknologi Pangan'
 ];
 
+// A. Komponen Skeleton Table Shimmer
+const TableSkeleton = () => (
+  <div className="w-full space-y-3 py-2 animate-pulse">
+    {[...Array(8)].map((_, i) => (
+      <div key={i} className="flex items-center justify-between px-6 py-4 bg-white/70 border border-[#EFECE6] rounded-xl gap-4">
+        <div className="h-4 bg-slate-200 rounded w-24"></div>
+        <div className="h-4 bg-slate-200 rounded w-44"></div>
+        <div className="h-4 bg-slate-200 rounded w-36"></div>
+        <div className="h-4 bg-slate-100 rounded w-16"></div>
+        <div className="h-6 bg-slate-200 rounded-full w-20"></div>
+        <div className="h-4 bg-slate-100 rounded w-16"></div>
+        <div className="h-6 w-6 bg-slate-100 rounded"></div>
+      </div>
+    ))}
+  </div>
+);
+
 export default function AdminDptPage() {
   const { voters: fallbackVoters, addVoter: addVoterContext, deleteVoter: deleteVoterContext, showToast } = useAdmin();
 
@@ -128,14 +145,14 @@ export default function AdminDptPage() {
   };
 
   // B. Fungsi Batch Fetching untuk Mengambil Seluruh Pemilih (> 1.000 baris)
-  const fetchAllVotersData = async () => {
+  const fetchAllVotersData = async (isBackground = false) => {
     let allVoters: any[] = [];
     let from = 0;
     const step = 1000;
     let hasMore = true;
 
     try {
-      setIsLoading(true);
+      if (!isBackground) setIsLoading(true);
       const supabase = createClient();
       while (hasMore) {
         const { data, error } = await supabase
@@ -184,6 +201,9 @@ export default function AdminDptPage() {
         });
 
         setVoters(mapped); // Menampung seluruh 2.096 pemilih
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(mapped));
+        }
       }
     } catch (err) {
       console.error(err);
@@ -198,14 +218,105 @@ export default function AdminDptPage() {
 
   const fetchVotersList = fetchSupabaseVoters;
 
+  // B. Caching Cerdas dengan sessionStorage & Realtime Invalidation
   useEffect(() => {
-    fetchVotersList();
+    fetchDptMetrics(); // Ambil count akurat 2096 dari server
+
+    let hasCache = false;
+    if (typeof window !== 'undefined') {
+      const cachedVoters = sessionStorage.getItem('pemira_admin_voters_cache');
+      if (cachedVoters) {
+        try {
+          const parsed = JSON.parse(cachedVoters);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setVoters(parsed);
+            setIsLoading(false);
+            hasCache = true;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Jika cache belum ada, ambil seluruh data via batch range
+    // Jika ada cache, fetch di background tanpa flicker
+    fetchAllVotersData(hasCache);
 
     const supabase = createClient();
     const channel = supabase
       .channel('dpt-status-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchVotersList(); // Otomatis refresh status tabel DPT seketika saat ada perubahan
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voters' }, (payload: any) => {
+        const updatedRow = payload.new;
+        if (!updatedRow) return;
+        fetchDptMetrics();
+        setVoters((prev) => {
+          const updated = prev.map((v) => {
+            if (v.id === String(updatedRow.id) || v.nim === updatedRow.nim) {
+              const rawStatus = (updatedRow.voting_status || (updatedRow.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
+              const status: 'belum' | 'selesai' | 'memilih' = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
+              return {
+                ...v,
+                has_voted: Boolean(updatedRow.has_voted),
+                voting_status: rawStatus as any,
+                status,
+                start_vote_at: updatedRow.start_vote_at,
+                completed_at: updatedRow.completed_at,
+                duration_seconds: updatedRow.duration_seconds,
+                votedAt: updatedRow.completed_at || updatedRow.voted_at || undefined,
+              } as Voter;
+            }
+            return v;
+          });
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(updated));
+          }
+          return updated;
+        });
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voters' }, (payload: any) => {
+        const newRow = payload.new;
+        if (!newRow) return;
+        fetchDptMetrics();
+        setVoters((prev) => {
+          const rawStatus = (newRow.voting_status || (newRow.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
+          const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
+          const prodiResolved = newRow.prodi || newRow.prodi_name || 'Kewirausahaan';
+          const newVoterItem: Voter = {
+            id: String(newRow.id || newRow.nim),
+            nim: newRow.nim,
+            name: newRow.name || newRow.nama,
+            facultyId: (newRow.faculty_id || 'FTB') as any,
+            prodiId: newRow.prodi_id || 'general',
+            prodiName: prodiResolved,
+            prodi: prodiResolved,
+            prodi_name: prodiResolved,
+            angkatan: newRow.angkatan || '2024',
+            status,
+            voting_status: rawStatus as any,
+            has_voted: Boolean(newRow.has_voted),
+            start_vote_at: newRow.start_vote_at,
+            completed_at: newRow.completed_at,
+            duration_seconds: newRow.duration_seconds,
+            votedAt: newRow.completed_at || undefined,
+            boothId: newRow.booth_id || undefined,
+          } as any;
+          const updated = [newVoterItem, ...prev.filter(v => v.nim !== newRow.nim)];
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(updated));
+          }
+          return updated;
+        });
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'voters' }, (payload: any) => {
+        const oldRow = payload.old;
+        if (!oldRow) return;
+        fetchDptMetrics();
+        setVoters((prev) => {
+          const updated = prev.filter(v => v.id !== String(oldRow.id) && v.nim !== oldRow.nim);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(updated));
+          }
+          return updated;
+        });
       })
       .subscribe();
 
@@ -418,6 +529,7 @@ export default function AdminDptPage() {
       }
 
       // Upsert langsung per batch 100 baris
+      const supabase = createClient();
       const CHUNK_SIZE = 100;
       for (let i = 0; i < parsedList.length; i += CHUNK_SIZE) {
         const chunk = parsedList.slice(i, i + CHUNK_SIZE);
@@ -620,45 +732,36 @@ export default function AdminDptPage() {
 
           {/* TABEL DATA: NIM | NAMA MAHASISWA | PROGRAM STUDI | ANGKATAN | STATUS HAK SUARA | WAKTU MEMILIH | AKSI */}
           <div className="w-full overflow-x-auto rounded-xl border-t border-[#EFECE6]">
-            <table className="w-full min-w-[640px] text-xs text-left">
-              <thead>
-                <tr className="bg-[#FAF8F4] text-slate-700 border-b border-[#EFECE6] text-[11px] font-bold uppercase tracking-wider">
-                  <th className="py-3 px-5 w-32">NIM</th>
-                  <th className="py-3 px-5">Nama Mahasiswa</th>
-                  <th className="py-3 px-5">Program Studi</th>
-                  <th className="py-3 px-4 text-center w-28">Angkatan</th>
-                  <th className="py-3 px-4 text-center w-36">Status Hak Suara</th>
-                  <th className="py-3 px-5 text-right w-44">Waktu Memilih</th>
-                  <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 w-24">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#EFECE6]">
-                {isLoading ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
-                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-400" />
-                      <span>Memuat data DPT dari server...</span>
-                    </td>
+            {isLoading && voters.length === 0 ? (
+              <div className="p-4 bg-white">
+                <TableSkeleton />
+              </div>
+            ) : (
+              <table className="w-full min-w-[640px] text-xs text-left">
+                <thead>
+                  <tr className="bg-[#FAF8F4] text-slate-700 border-b border-[#EFECE6] text-[11px] font-bold uppercase tracking-wider">
+                    <th className="py-3 px-5 w-32">NIM</th>
+                    <th className="py-3 px-5">Nama Mahasiswa</th>
+                    <th className="py-3 px-5">Program Studi</th>
+                    <th className="py-3 px-4 text-center w-28">Angkatan</th>
+                    <th className="py-3 px-4 text-center w-36">Status Hak Suara</th>
+                    <th className="py-3 px-5 text-right w-44">Waktu Memilih</th>
+                    <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 w-24">Aksi</th>
                   </tr>
-                ) : paginatedVoters.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
-                      <div className="flex flex-col items-center justify-center gap-1.5">
-                        <Users className="w-8 h-8 text-slate-300 mb-1" />
-                        <span className="font-semibold text-slate-600">
-                          {voters.length === 0
-                            ? 'Belum ada data DPT. Silakan tambahkan DPT atau impor file CSV.'
-                            : 'Tidak ada data pemilih yang sesuai dengan kriteria pencarian atau filter.'}
-                        </span>
-                        {voters.length === 0 && (
-                          <span className="text-[11px] text-slate-400">
-                            Gunakan tombol "+ Tambah DPT" atau "Import CSV" di atas untuk memasukkan data DPT.
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
+                </thead>
+                <tbody className="divide-y divide-[#EFECE6]">
+                  {paginatedVoters.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-16 text-center text-slate-400">
+                        <div className="flex flex-col items-center justify-center gap-1.5">
+                          <Users className="w-8 h-8 text-slate-300 mb-1" />
+                          <p className="text-sm font-medium text-slate-600">
+                            Tidak ada data pemilih yang sesuai kriteria pencarian atau filter.
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
                   paginatedVoters.map((v) => {
                     const isSelesai = Boolean(v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai');
                     const isMengerjakan = !isSelesai && Boolean(v.voting_status === 'SEDANG_MEMILIH' || v.voting_status === 'MENGERJAKAN' || v.status === 'memilih');
@@ -745,7 +848,8 @@ export default function AdminDptPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          )}
+        </div>
 
           {/* KONTROL PAGINASI ELEGAN */}
           <div className="p-4 sm:p-5 border-t border-[#EFECE6] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-white">

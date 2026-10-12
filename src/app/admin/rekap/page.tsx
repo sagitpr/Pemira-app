@@ -81,6 +81,37 @@ const calculateProdiMatrix = (voters: any[]) => {
   });
 };
 
+// A. Komponen Skeleton Shimmer untuk Matriks Program Studi
+const MatrixTableSkeleton = () => (
+  <tbody className="divide-y divide-[#EFECE6] animate-pulse">
+    {[...Array(8)].map((_, i) => (
+      <tr key={i} className="bg-white/70">
+        <td className="py-3.5 px-4 text-center">
+          <div className="h-4 bg-slate-200 rounded w-6 mx-auto"></div>
+        </td>
+        <td className="py-3.5 px-4">
+          <div className="h-4 bg-slate-200 rounded w-44"></div>
+        </td>
+        <td className="py-3.5 px-3 text-center">
+          <div className="h-5 bg-slate-100 rounded w-16 mx-auto"></div>
+        </td>
+        <td className="py-3.5 px-3 text-right">
+          <div className="h-4 bg-slate-200 rounded w-12 ml-auto"></div>
+        </td>
+        <td className="py-3.5 px-3 text-right">
+          <div className="h-4 bg-slate-200 rounded w-12 ml-auto"></div>
+        </td>
+        <td className="py-3.5 px-3 text-right">
+          <div className="h-4 bg-slate-100 rounded w-12 ml-auto"></div>
+        </td>
+        <td className="py-3.5 px-3 text-center">
+          <div className="h-4 bg-slate-200 rounded w-14 mx-auto"></div>
+        </td>
+      </tr>
+    ))}
+  </tbody>
+);
+
 export default function AdminRekapPage() {
   const {
     isSensorActive,
@@ -104,6 +135,7 @@ export default function AdminRekapPage() {
   const [rawVoters, setRawVoters] = useState<any[]>([]);
   const [rawVotes, setRawVotes] = useState<any[]>([]);
   const [totalDptCount, setTotalDptCount] = useState<number>(0);
+  const [isLoadingMatrix, setIsLoadingMatrix] = useState<boolean>(true);
 
   // Candidates State
   const [allCandidates, setAllCandidates] = useState<any[]>([]);
@@ -147,8 +179,14 @@ export default function AdminRekapPage() {
       // Kalkulasi matriks 14 prodi menggunakan allVoters (panjang 2.096)
       setRawVoters(allVoters);
       calculateProdiMatrix(allVoters);
+      setIsLoadingMatrix(false);
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pemira_admin_rekap_raw_voters', JSON.stringify(allVoters));
+      }
     } catch (err) {
       console.error('Error fetching voters for matrix:', err);
+      setIsLoadingMatrix(false);
     }
   };
 
@@ -172,13 +210,19 @@ export default function AdminRekapPage() {
       const sisa = Math.max(0, total - masuk);
       const pct = total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0';
 
-      setMetrics({
+      const newMetrics = {
         totalDpt: total,
         suaraMasuk: masuk,
         belumMemilih: sisa,
         partisipasi: pct,
-      });
+      };
+
+      setMetrics(newMetrics);
       setTotalDptCount(total);
+
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pemira_admin_rekap_metrics', JSON.stringify(newMetrics));
+      }
 
       // Ambil seluruh pemilih untuk matriks prodi
       await fetchVotersForMatrix();
@@ -201,6 +245,9 @@ export default function AdminRekapPage() {
         setAllCandidates(data);
         setBemList(data.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
         setHimaList(data.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM')));
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_admin_rekap_candidates', JSON.stringify(data));
+        }
       }
     } catch (err) {
       console.error('Error fetching candidates in rekap:', err);
@@ -217,6 +264,9 @@ export default function AdminRekapPage() {
 
       if (votesData) {
         setRawVotes(votesData);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_admin_rekap_votes', JSON.stringify(votesData));
+        }
       }
     } catch (err) {
       console.warn('Fetch rekap votes error:', err);
@@ -390,6 +440,51 @@ export default function AdminRekapPage() {
   // 4. Supabase Realtime Listener (Update Instan < 0.5 Detik Tanpa Delay)
   useEffect(() => {
     setIsMounted(true);
+
+    // Initial check dari sessionStorage untuk zero-latency tab navigation
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedMetrics = sessionStorage.getItem('pemira_admin_rekap_metrics');
+        if (cachedMetrics) {
+          const parsed = JSON.parse(cachedMetrics);
+          if (parsed && typeof parsed.totalDpt === 'number') {
+            setMetrics(parsed);
+            setTotalDptCount(parsed.totalDpt);
+          }
+        }
+
+        const cachedVoters = sessionStorage.getItem('pemira_admin_rekap_raw_voters');
+        if (cachedVoters) {
+          const parsed = JSON.parse(cachedVoters);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setRawVoters(parsed);
+            calculateProdiMatrix(parsed);
+            setIsLoadingMatrix(false);
+          }
+        }
+
+        const cachedCands = sessionStorage.getItem('pemira_admin_rekap_candidates') || sessionStorage.getItem('pemira_admin_paslon_cache');
+        if (cachedCands) {
+          const parsed = JSON.parse(cachedCands);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAllCandidates(parsed);
+            setBemList(parsed.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
+            setHimaList(parsed.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM')));
+          }
+        }
+
+        const cachedVotes = sessionStorage.getItem('pemira_admin_rekap_votes');
+        if (cachedVotes) {
+          const parsed = JSON.parse(cachedVotes);
+          if (Array.isArray(parsed)) {
+            setRawVotes(parsed);
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading rekap cache:', e);
+      }
+    }
+
     fetchMetricData();
     fetchCandidates();
     fetchVotes();
@@ -1168,37 +1263,49 @@ export default function AdminRekapPage() {
                   <th className="py-3 px-3 text-center">Partisipasi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#EFECE6]">
-                {filteredProdis.map((pr, idx) => (
-                  <tr key={pr.no || idx} className="hover:bg-[#FAF8F4]/60 transition-colors">
-                    <td className="py-3.5 px-4 text-center font-mono text-slate-400">
-                      {pr.no}
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      {pr.name}
-                    </td>
-                    <td className="py-3.5 px-3 text-center">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC]">
-                        {pr.faculty}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-800">
-                      {pr.totalDpt}
-                    </td>
-                    <td className="py-3.5 px-3 text-right font-mono font-bold text-emerald-700">
-                      {isSensorActive ? '***' : pr.suaraMasuk}
-                    </td>
-                    <td className="py-3.5 px-3 text-right font-mono text-slate-500">
-                      {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.sisaBelum) : '-'}
-                    </td>
-                    <td className="py-3.5 px-3 text-center">
-                      <span className="font-mono font-bold text-slate-900">
-                        {pr.totalDpt > 0 ? (isSensorActive ? '***%' : pr.partisipasi) : '-'}
-                      </span>
+              {isLoadingMatrix && rawVoters.length === 0 ? (
+                <MatrixTableSkeleton />
+              ) : filteredProdis.length === 0 ? (
+                <tbody className="divide-y divide-[#EFECE6]">
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-slate-400">
+                      <p className="text-xs font-medium">Tidak ada program studi yang sesuai kriteria pencarian atau filter.</p>
                     </td>
                   </tr>
-                ))}
-              </tbody>
+                </tbody>
+              ) : (
+                <tbody className="divide-y divide-[#EFECE6]">
+                  {filteredProdis.map((pr, idx) => (
+                    <tr key={pr.no || idx} className="hover:bg-[#FAF8F4]/60 transition-colors">
+                      <td className="py-3.5 px-4 text-center font-mono text-slate-400">
+                        {pr.no}
+                      </td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">
+                        {pr.name}
+                      </td>
+                      <td className="py-3.5 px-3 text-center">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC]">
+                          {pr.faculty}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 text-right font-mono font-bold text-slate-800">
+                        {pr.totalDpt}
+                      </td>
+                      <td className="py-3.5 px-3 text-right font-mono font-bold text-emerald-700">
+                        {isSensorActive ? '***' : pr.suaraMasuk}
+                      </td>
+                      <td className="py-3.5 px-3 text-right font-mono text-slate-500">
+                        {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.sisaBelum) : '-'}
+                      </td>
+                      <td className="py-3.5 px-3 text-center">
+                        <span className="font-mono font-bold text-slate-900">
+                          {pr.totalDpt > 0 ? (isSensorActive ? '***%' : pr.partisipasi) : '-'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              )}
             </table>
           </div>
         </section>

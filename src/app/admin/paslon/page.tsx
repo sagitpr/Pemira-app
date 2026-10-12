@@ -67,6 +67,24 @@ const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.
   });
 };
 
+// A. Komponen PaslonCardSkeleton
+const PaslonCardSkeleton = () => (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
+    {[1, 2, 3].map((item) => (
+      <div key={item} className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs">
+        <div className="flex justify-between items-center mb-4">
+          <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
+          <div className="w-16 h-4 bg-slate-100 rounded"></div>
+        </div>
+        <div className="w-full h-52 bg-slate-200 rounded-xl mb-4"></div>
+        <div className="h-5 bg-slate-200 rounded w-3/4 mb-2"></div>
+        <div className="h-4 bg-slate-100 rounded w-1/2 mb-4"></div>
+        <div className="w-full h-9 bg-slate-100 rounded-lg"></div>
+      </div>
+    ))}
+  </div>
+);
+
 export default function AdminPaslonPage() {
   const {
     addCandidate,
@@ -95,7 +113,7 @@ export default function AdminPaslonPage() {
 
   // Persistent candidates state dari Supabase
   const [candidatesList, setCandidatesList] = useState<Candidate[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -114,7 +132,6 @@ export default function AdminPaslonPage() {
   const [formMission, setFormMission] = useState('');
 
   const fetchCandidates = async () => {
-    setIsLoading(true);
     try {
       const supabase = createClient();
       const { data, error } = await supabase
@@ -125,6 +142,9 @@ export default function AdminPaslonPage() {
       if (error) throw error;
       if (Array.isArray(data)) {
         setCandidatesList(data);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_admin_paslon_cache', JSON.stringify(data));
+        }
       }
     } catch (err: any) {
       console.warn('Fetch candidates direct Supabase fallback note:', err?.message);
@@ -133,6 +153,9 @@ export default function AdminPaslonPage() {
         const json = await res.json();
         if (json?.success && Array.isArray(json?.candidates)) {
           setCandidatesList(json.candidates);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_paslon_cache', JSON.stringify(json.candidates));
+          }
         }
       } catch {}
     } finally {
@@ -141,6 +164,20 @@ export default function AdminPaslonPage() {
   };
 
   useEffect(() => {
+    // Zero-latency check from sessionStorage
+    if (typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('pemira_admin_paslon_cache');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setCandidatesList(parsed);
+            setIsLoading(false);
+          }
+        } catch (e) {}
+      }
+    }
+
     fetchCandidates();
 
     const supabase = createClient();
@@ -494,7 +531,9 @@ export default function AdminPaslonPage() {
         </div>
 
         {/* CANDIDATES GRID */}
-        {currentCandidates.length === 0 ? (
+        {isLoading && candidatesList.length === 0 ? (
+          <PaslonCardSkeleton />
+        ) : currentCandidates.length === 0 ? (
           <div className="bg-white rounded-2xl p-12 border border-[#EFECE6] shadow-sm text-center flex flex-col items-center">
             <div className="w-14 h-14 rounded-2xl bg-[#FAF8F4] text-slate-700 flex items-center justify-center mb-3 border border-[#EFECE6]">
               <User className="w-7 h-7" />
