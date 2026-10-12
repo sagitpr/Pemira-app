@@ -1617,15 +1617,15 @@ function VoteContent() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                    Surat Suara 2 dari 2: Pemilihan HIMA ({voterFaculty})
+                    Surat Suara 2 dari 2: Pemilihan Himpunan Mahasiswa (HIMA)
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Fakultas: <span className="font-semibold text-slate-700">{voterFaculty}</span> • Jurusan Anda:{' '}
-                    <span className="font-semibold text-indigo-600">{verifiedVoter?.prodi || voterProdi}</span>
+                    Program Studi:{' '}
+                    <span className="font-semibold text-slate-700">{verifiedVoter?.prodi || voterProdi}</span>
                   </p>
                 </div>
-                <span className="self-start sm:self-center text-xs font-black px-3 py-1.5 rounded-full bg-blue-600 text-white uppercase tracking-wider">
-                  HIMA {voterFaculty}
+                <span className="self-start sm:self-center text-xs font-bold px-3 py-1.5 rounded-full bg-[#0F172A] text-white tracking-wider">
+                  HIMA {verifiedVoter?.prodi || voterProdi}
                 </span>
               </div>
             </div>
