@@ -181,13 +181,33 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     try {
       const { createClient } = await import('@/lib/supabase/client');
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from('voters')
-        .select('*')
-        .order('created_at', { ascending: false });
+      let allData: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
 
-      if (!error && Array.isArray(data)) {
-        const mapped: Voter[] = data.map((d: any) => {
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('voters')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .range(from, from + step - 1);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        allData = [...allData, ...data];
+        if (data.length < step) {
+          hasMore = false;
+        } else {
+          from += step;
+        }
+      }
+
+      if (allData.length > 0) {
+        const mapped: Voter[] = allData.map((d: any) => {
           const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
           const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
           return {
@@ -200,6 +220,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
             angkatan: d.angkatan || '2026',
             status,
             voting_status: rawStatus as any,
+            has_voted: Boolean(d.has_voted),
             start_vote_at: d.start_vote_at,
             completed_at: d.completed_at,
             duration_seconds: d.duration_seconds,

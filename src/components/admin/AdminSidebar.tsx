@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
+import { createClient } from '@/lib/supabase/client';
 import {
   LayoutGrid,
   Clock,
@@ -17,11 +18,44 @@ import {
 export default function AdminSidebar() {
   const pathname = usePathname();
   const { voters, isMobileSidebarOpen, setIsMobileSidebarOpen } = useAdmin();
+  const [dptBadgeCount, setDptBadgeCount] = useState<number>(voters?.length || 0);
+
+  useEffect(() => {
+    const fetchBadgeCount = async () => {
+      try {
+        const supabase = createClient();
+        const { count } = await supabase
+          .from('voters')
+          .select('*', { count: 'exact', head: true });
+        if (count !== null && count !== undefined) {
+          setDptBadgeCount(count);
+        }
+      } catch (err) {
+        console.warn('Gagal fetch badge DPT count di sidebar:', err);
+      }
+    };
+
+    fetchBadgeCount();
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel('sidebar-dpt-count-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
+        fetchBadgeCount();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const badgeValue = (dptBadgeCount || voters.length || 0).toString();
 
   const MENU_ITEMS = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { href: '/admin/rekap', label: 'Rekap Suara', icon: Clock },
-    { href: '/admin/dpt', label: 'DPT & Pemilih', icon: Users, badge: voters.length.toString() },
+    { href: '/admin/dpt', label: 'DPT & Pemilih', icon: Users, badge: badgeValue },
     { href: '/admin/paslon', label: 'Kelola Paslon', icon: UserCheck },
     { href: '/admin/pengaturan', label: 'Pengaturan', icon: Settings },
   ];

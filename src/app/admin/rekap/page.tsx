@@ -116,29 +116,72 @@ export default function AdminRekapPage() {
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
+  // B. Ambil Seluruh Data Pemilih untuk Matriks 14 Program Studi (> 1.000 data)
+  const fetchVotersForMatrix = async () => {
+    try {
+      const supabase = createClient();
+      let allVoters: any[] = [];
+      let from = 0;
+      const step = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('voters')
+          .select('id, prodi, has_voted')
+          .range(from, from + step - 1);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        allVoters = [...allVoters, ...data];
+        if (data.length < step) {
+          hasMore = false;
+        } else {
+          from += step;
+        }
+      }
+
+      // Kalkulasi matriks 14 prodi menggunakan allVoters (panjang 2.096)
+      setRawVoters(allVoters);
+      calculateProdiMatrix(allVoters);
+    } catch (err) {
+      console.error('Error fetching voters for matrix:', err);
+    }
+  };
+
   // 1. Fetch DPT & Realtime Metric Data (Sinkron 100% dengan Dashboard)
   const fetchMetricData = async () => {
     try {
       const supabase = createClient();
-      const { data: votersData, error } = await supabase
+
+      // A. Sinkronkan Metrik 4 Kotak Teratas ({ count: 'exact', head: true }):
+      const { count: totalCount } = await supabase
         .from('voters')
-        .select('id, prodi, has_voted');
+        .select('*', { count: 'exact', head: true });
 
-      if (!error && votersData) {
-        const total = votersData.length;
-        const masuk = votersData.filter((v: any) => v.has_voted === true).length;
-        const sisa = total - masuk;
-        const pct = total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0';
+      const { count: suaraMasukCount } = await supabase
+        .from('voters')
+        .select('*', { count: 'exact', head: true })
+        .eq('has_voted', true);
 
-        setMetrics({
-          totalDpt: total,
-          suaraMasuk: masuk,
-          belumMemilih: sisa,
-          partisipasi: pct,
-        });
-        setRawVoters(votersData);
-        setTotalDptCount(total);
-      }
+      const total = totalCount || 0;
+      const masuk = suaraMasukCount || 0;
+      const sisa = Math.max(0, total - masuk);
+      const pct = total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0';
+
+      setMetrics({
+        totalDpt: total,
+        suaraMasuk: masuk,
+        belumMemilih: sisa,
+        partisipasi: pct,
+      });
+      setTotalDptCount(total);
+
+      // Ambil seluruh pemilih untuk matriks prodi
+      await fetchVotersForMatrix();
     } catch (e) {
       console.error('Fetch metric data error in rekap:', e);
     }

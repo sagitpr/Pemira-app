@@ -91,18 +91,74 @@ export default function AdminDptPage() {
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch dari tabel Supabase 'voters' (Single Source of Truth)
-  const fetchSupabaseVoters = async () => {
-    setIsLoading(true);
+  // Metrik Ringkas Atas (Server-Side Exact Count)
+  const [metrics, setMetrics] = useState({
+    totalDpt: 0,
+    sudahMemilih: 0,
+    belumMemilih: 0,
+  });
+
+  // A. Perbaiki Hitungan Metrik Atas (Gunakan { count: 'exact' } Server-Side)
+  const fetchDptMetrics = async () => {
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
+      // 1. Total DPT
+      const { count: totalCount, error: err1 } = await supabase
         .from('voters')
-        .select('id, nim, name, nama, prodi, prodi_name, prodi_id, faculty_id, angkatan, has_voted, voting_status, start_vote_at, completed_at, duration_seconds, voted_at, booth_id')
-        .order('created_at', { ascending: false });
+        .select('*', { count: 'exact', head: true });
 
-      if (!error && Array.isArray(data)) {
-        const mapped: Voter[] = data.map((d: any) => {
+      // 2. Sudah Memilih
+      const { count: sudahCount, error: err2 } = await supabase
+        .from('voters')
+        .select('*', { count: 'exact', head: true })
+        .eq('has_voted', true);
+
+      const total = totalCount || 0;
+      const sudah = sudahCount || 0;
+      const belum = Math.max(0, total - sudah);
+
+      setMetrics({
+        totalDpt: total,       // Menghasilkan 2096
+        sudahMemilih: sudah,
+        belumMemilih: belum,
+      });
+    } catch (e) {
+      console.error("Gagal fetch DPT metrics:", e);
+    }
+  };
+
+  // B. Fungsi Batch Fetching untuk Mengambil Seluruh Pemilih (> 1.000 baris)
+  const fetchAllVotersData = async () => {
+    let allVoters: any[] = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
+
+    try {
+      setIsLoading(true);
+      const supabase = createClient();
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('voters')
+          .select('id, nim, name, nama, prodi, prodi_name, prodi_id, faculty_id, angkatan, has_voted, voting_status, start_vote_at, completed_at, duration_seconds, voted_at, booth_id, updated_at')
+          .range(from, from + step - 1);
+
+        if (error || !data || data.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        allVoters = [...allVoters, ...data];
+
+        if (data.length < step) {
+          hasMore = false;
+        } else {
+          from += step;
+        }
+      }
+
+      if (allVoters.length > 0) {
+        const mapped: Voter[] = allVoters.map((d: any) => {
           const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
           const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
           const prodiResolved = d.prodi || d.prodi_name || d.prodiName || 'Kewirausahaan';
@@ -118,6 +174,7 @@ export default function AdminDptPage() {
             angkatan: d.angkatan || '2024',
             status,
             voting_status: rawStatus as any,
+            has_voted: Boolean(d.has_voted),
             start_vote_at: d.start_vote_at,
             completed_at: d.completed_at,
             duration_seconds: d.duration_seconds,
@@ -125,42 +182,18 @@ export default function AdminDptPage() {
             boothId: d.booth_id || d.boothId || undefined,
           } as any;
         });
-        setVoters(mapped);
-        return;
+
+        setVoters(mapped); // Menampung seluruh 2.096 pemilih
       }
-    } catch (err: any) {
-      console.warn('Fetch voters direct Supabase fallback note:', err?.message);
+    } catch (err) {
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
+  };
 
-    try {
-      const res = await fetch('/api/admin/dpt');
-      const json = await res.json();
-      if (json?.success && Array.isArray(json?.voters)) {
-        const mapped: Voter[] = json.voters.map((d: any) => {
-          const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
-          const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
-          return {
-            id: String(d.id || d.nim),
-            nim: d.nim,
-            name: d.name || d.nama,
-            facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
-            prodiId: d.prodi_id || d.prodiId || 'general',
-            prodiName: d.prodi_name || d.prodi || d.prodiName || 'Program Studi',
-            angkatan: d.angkatan || '2024',
-            status,
-            voting_status: rawStatus as any,
-            start_vote_at: d.start_vote_at,
-            completed_at: d.completed_at,
-            duration_seconds: d.duration_seconds,
-            votedAt: d.voted_at || d.votedAt || undefined,
-            boothId: d.booth_id || d.boothId || undefined,
-          };
-        });
-        setVoters(mapped);
-      }
-    } catch {}
+  const fetchSupabaseVoters = async () => {
+    await Promise.all([fetchDptMetrics(), fetchAllVotersData()]);
   };
 
   const fetchVotersList = fetchSupabaseVoters;
@@ -411,9 +444,9 @@ export default function AdminDptPage() {
 
   const handleProcessImport = handleImportCsv;
 
-  const totalDpt = voters.length;
-  const sudahMemilih = voters.filter((v: any) => v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai').length;
-  const belumMemilih = Math.max(0, totalDpt - sudahMemilih);
+  const totalDpt = metrics.totalDpt || voters.length;
+  const sudahMemilih = metrics.sudahMemilih;
+  const belumMemilih = metrics.belumMemilih;
 
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
