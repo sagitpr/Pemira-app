@@ -281,7 +281,7 @@ export default function AdminDptPage() {
     };
   }, []);
 
-  // Daftar program studi: MASTER_PRODI + pilihan yang ada di database
+  // Daftar program studi: MASTER_PRODI + pilihan yang ada di database dengan label seragam
   const allProdiList = Array.from(
     new Set([
       ...MASTER_PRODI,
@@ -290,6 +290,21 @@ export default function AdminDptPage() {
         .filter(Boolean),
     ])
   );
+
+  const normalizedProdiOptions = Array.from(
+    new Set([
+      ...MASTER_PRODI,
+      ...voters
+        .map((v) => (v as any).prodi || v.prodiName || (v as any).prodi_name)
+        .filter(Boolean),
+    ])
+  ).map((p) => {
+    const isRo = p.toLowerCase().includes('optometri') || p.toLowerCase().includes('refraksi');
+    return {
+      value: isRo ? 'D3 Optometri' : p,
+      label: isRo ? 'D3 Refraksi Optisi / Optometri (RO)' : p,
+    };
+  }).filter((item, index, self) => index === self.findIndex((t) => t.value === item.value));
 
   // Reset halaman aktif ke 1 saat filter atau pencarian berubah
   useEffect(() => {
@@ -313,10 +328,17 @@ export default function AdminDptPage() {
       statusFilter === 'ALL' ||
       (statusFilter === 'selesai' && isVoterDone) ||
       (statusFilter === 'belum' && !isVoterDone);
-    const matchProdi =
-      selectedProdi === 'ALL' ||
-      prodiVal.includes(selectedProdi.toLowerCase()) ||
-      selectedProdi.toLowerCase().includes(prodiVal);
+
+    let matchProdi = selectedProdi === 'ALL';
+    if (!matchProdi) {
+      const sel = selectedProdi.toLowerCase();
+      if (sel.includes('optometri') || sel.includes('refraksi') || sel.includes('optisi') || sel.includes('ro')) {
+        matchProdi = prodiVal.includes('optometri') || prodiVal.includes('refraksi') || prodiVal.includes('optisi') || prodiVal.includes('ro');
+      } else {
+        matchProdi = prodiVal.includes(sel) || sel.includes(prodiVal);
+      }
+    }
+
     return matchSearch && matchStatus && matchProdi;
   });
 
@@ -635,9 +657,9 @@ export default function AdminDptPage() {
                   className="w-full px-3 py-2 rounded-xl border border-[#E2DDD5] text-xs font-semibold text-slate-800 bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 focus:bg-white transition-colors cursor-pointer"
                 >
                   <option value="ALL">Semua Program Studi (14 Prodi)</option>
-                  {allProdiList.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
+                  {normalizedProdiOptions.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
                     </option>
                   ))}
                 </select>

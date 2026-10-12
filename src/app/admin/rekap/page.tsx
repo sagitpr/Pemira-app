@@ -36,14 +36,20 @@ const LINE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06
 // Daftar Master 14 Program Studi UBTH & Fakultas
 const MASTER_PRODI_MATRIX = [
   { no: 1, name: 'Bisnis Digital', faculty: 'FTB', matchKeys: ['bisnis digital'] },
-  { no: 2, name: 'Sistem Informasi', faculty: 'FTB', matchKeys: ['sistem informasi'] }, // JANGAN pakai 'si' atau 'ti'
+  { no: 2, name: 'Sistem Informasi', faculty: 'FTB', matchKeys: ['sistem informasi'] },
   { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', matchKeys: ['teknologi pangan', 'tekpang'] },
   { no: 4, name: 'Kewirausahaan', faculty: 'FTB', matchKeys: ['kewirausahaan'] },
   { no: 5, name: 'S1 Administrasi Rumah Sakit (ARS)', faculty: 'FIKES', matchKeys: ['administrasi rumah sakit', 'ars'] },
   { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', matchKeys: ['s1 keperawatan', 'keperawatan'] },
   { no: 7, name: 'S1 Gizi', faculty: 'FIKES', matchKeys: ['gizi'] },
   { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', matchKeys: ['d3 keperawatan'] },
-  { no: 9, name: 'D3 Refraksi Optisi (RO)', faculty: 'FIKES', matchKeys: ['refraksi optisi'] }, // JANGAN pakai 'ro'
+  {
+    no: 9,
+    name: 'D3 Refraksi Optisi / Optometri (RO)',
+    faculty: 'FIKES',
+    // Tambahkan kata kunci 'optometri', 'refraksi', dan 'optisi' (unik dan tidak tabrakan dengan prodi lain)
+    matchKeys: ['optometri', 'refraksi', 'optisi', 'refraksi optisi', 'ro']
+  },
   { no: 10, name: 'D3 Teknologi Laboratorium Medis (TLM)', faculty: 'FIKES', matchKeys: ['teknologi laboratorium medis', 'tlm', 'analis kesehatan'] },
   { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', matchKeys: ['farmasi'] },
   { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', matchKeys: ['rekayasa kosmetik', 'kosmetik'] },
@@ -52,17 +58,17 @@ const MASTER_PRODI_MATRIX = [
 ];
 
 // Fungsi Agregasi Matriks Per Prodi
-const calculateProdiMatrix = (voters: any[]) => {
+const calculateProdiMatrix = (votersList: any[]) => {
   return MASTER_PRODI_MATRIX.map(item => {
-    const matchingVoters = (voters || []).filter(v => {
+    const matchingVoters = (votersList || []).filter(v => {
       // Bersihkan string dari spasi berlebih dan samakan huruf kecil
-      const rawProdi = (v.prodi || '').toLowerCase().trim();
+      const rawProdi = (v.prodi || v.study_program || v.prodi_name || '').toLowerCase().trim();
       
-      // Khusus D3 vs S1 Keperawatan agar tidak tertukar:
-      if (item.name === 'S1 Keperawatan' && rawProdi.includes('d3')) return false;
-      if (item.name === 'D3 Keperawatan' && !rawProdi.includes('d3')) return false;
+      // Khusus Keperawatan agar S1 dan D3 tidak tertukar:
+      if (item.name.includes('S1 Keperawatan') && rawProdi.includes('d3')) return false;
+      if (item.name.includes('D3 Keperawatan') && !rawProdi.includes('d3')) return false;
 
-      // Pencocokan ketat menggunakan frasa utuh
+      // Pencocokan Nomor 9 & prodi lainnya
       return item.matchKeys.some(key => rawProdi.includes(key));
     });
 
@@ -160,7 +166,7 @@ export default function AdminRekapPage() {
       while (hasMore) {
         const { data, error } = await supabase
           .from('voters')
-          .select('id, prodi, has_voted')
+          .select('*')
           .range(from, from + step - 1);
 
         if (error || !data || data.length === 0) {
