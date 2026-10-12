@@ -35,29 +35,35 @@ const LINE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06
 
 // Daftar Master 14 Program Studi UBTH & Fakultas
 const MASTER_PRODI_MATRIX = [
-  { no: 1, name: 'Bisnis Digital', faculty: 'FTB', matchKeys: ['bisnis digital', 'bid'] },
-  { no: 2, name: 'Sistem Informasi', faculty: 'FTB', matchKeys: ['sistem informasi', 'si', 'ti'] },
-  { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', matchKeys: ['teknologi pangan', 'pangan', 'tp'] },
-  { no: 4, name: 'Kewirausahaan', faculty: 'FTB', matchKeys: ['kewirausahaan', 'kwu'] },
+  { no: 1, name: 'Bisnis Digital', faculty: 'FTB', matchKeys: ['bisnis digital'] },
+  { no: 2, name: 'Sistem Informasi', faculty: 'FTB', matchKeys: ['sistem informasi'] }, // JANGAN pakai 'si' atau 'ti'
+  { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', matchKeys: ['teknologi pangan', 'tekpang'] },
+  { no: 4, name: 'Kewirausahaan', faculty: 'FTB', matchKeys: ['kewirausahaan'] },
   { no: 5, name: 'S1 Administrasi Rumah Sakit (ARS)', faculty: 'FIKES', matchKeys: ['administrasi rumah sakit', 'ars'] },
-  { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', matchKeys: ['s1 keperawatan', 'keperawatan s1'] },
+  { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', matchKeys: ['s1 keperawatan', 'keperawatan'] },
   { no: 7, name: 'S1 Gizi', faculty: 'FIKES', matchKeys: ['gizi'] },
-  { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', matchKeys: ['d3 keperawatan', 'keperawatan d3'] },
-  { no: 9, name: 'D3 Refraksi Optisi (RO)', faculty: 'FIKES', matchKeys: ['refraksi optisi', 'ro', 'optometri'] },
+  { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', matchKeys: ['d3 keperawatan'] },
+  { no: 9, name: 'D3 Refraksi Optisi (RO)', faculty: 'FIKES', matchKeys: ['refraksi optisi'] }, // JANGAN pakai 'ro'
   { no: 10, name: 'D3 Teknologi Laboratorium Medis (TLM)', faculty: 'FIKES', matchKeys: ['teknologi laboratorium medis', 'tlm', 'analis kesehatan'] },
-  { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', matchKeys: ['s1 farmasi', 'farmasi s1'] },
-  { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', matchKeys: ['rekayasa kosmetik', 'kosmetik', 'rekos'] },
-  { no: 13, name: 'Pendidikan Profesi Apoteker', faculty: 'FARMASI', matchKeys: ['apoteker', 'profesi apoteker'] },
-  { no: 14, name: 'Pendidikan Profesi Ners', faculty: 'FIKES', matchKeys: ['ners', 'profesi ners'] }
+  { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', matchKeys: ['farmasi'] },
+  { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', matchKeys: ['rekayasa kosmetik', 'kosmetik'] },
+  { no: 13, name: 'Pendidikan Profesi Apoteker', faculty: 'FARMASI', matchKeys: ['apoteker'] },
+  { no: 14, name: 'Pendidikan Profesi Ners', faculty: 'FIKES', matchKeys: ['ners'] }
 ];
 
 // Fungsi Agregasi Matriks Per Prodi
 const calculateProdiMatrix = (voters: any[]) => {
   return MASTER_PRODI_MATRIX.map(item => {
-    // Cari pemilih yang prodinya cocok dengan salah satu matchKeys
     const matchingVoters = (voters || []).filter(v => {
-      const vp = (v.prodi || '').toLowerCase();
-      return item.matchKeys.some(key => vp.includes(key));
+      // Bersihkan string dari spasi berlebih dan samakan huruf kecil
+      const rawProdi = (v.prodi || '').toLowerCase().trim();
+      
+      // Khusus D3 vs S1 Keperawatan agar tidak tertukar:
+      if (item.name === 'S1 Keperawatan' && rawProdi.includes('d3')) return false;
+      if (item.name === 'D3 Keperawatan' && !rawProdi.includes('d3')) return false;
+
+      // Pencocokan ketat menggunakan frasa utuh
+      return item.matchKeys.some(key => rawProdi.includes(key));
     });
 
     const totalDpt = matchingVoters.length;
@@ -144,7 +150,9 @@ export default function AdminRekapPage() {
   const fetchRekapVotes = async () => {
     try {
       const supabase = createClient();
-      const { data: candsData } = await supabase.from('candidates').select('*');
+      const { data: candsData } = await supabase
+        .from('candidates')
+        .select('id, name, candidate_number, category, prodi');
       if (candsData && candsData.length > 0) {
         setAllCandidates(candsData);
         setBemList(candsData.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
@@ -153,7 +161,7 @@ export default function AdminRekapPage() {
 
       const { data: votesData } = await supabase
         .from('votes')
-        .select('*')
+        .select('candidate_id, category, created_at')
         .order('created_at', { ascending: true });
 
       if (votesData) {
@@ -361,15 +369,9 @@ export default function AdminRekapPage() {
       })
       .subscribe();
 
-    const interval = setInterval(() => {
-      fetchMetricData();
-      fetchRekapVotes();
-    }, 10000);
-
     return () => {
       supabase.removeChannel(channel);
       supabase.removeChannel(matrixChannel);
-      clearInterval(interval);
     };
   }, []);
 
@@ -675,8 +677,8 @@ export default function AdminRekapPage() {
                 <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                   <span>Dinamika Perolehan Suara Paslon (Interval 10 Menit)</span>
                   {isSensorActive && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 flex items-center gap-1">
-                      <Lock className="w-3 h-3" />
+                    <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
                       <span>Mode Sensor Aktif</span>
                     </span>
                   )}

@@ -98,7 +98,7 @@ export default function AdminDptPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('voters')
-        .select('*')
+        .select('id, nim, name, nama, prodi, prodi_name, prodi_id, faculty_id, angkatan, has_voted, voting_status, start_vote_at, completed_at, duration_seconds, voted_at, booth_id')
         .order('created_at', { ascending: false });
 
       if (!error && Array.isArray(data)) {
@@ -665,26 +665,26 @@ export default function AdminDptPage() {
                           {(v as any).angkatan || '-'}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                          <div
+                            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
                               isSelesai
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                ? 'text-emerald-600'
                                 : isMengerjakan
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                                ? 'text-amber-600'
+                                : 'text-slate-500'
                             }`}
                           >
                             <span
-                              className={`w-1.5 h-1.5 rounded-full ${
+                              className={`w-2 h-2 rounded-full ${
                                 isSelesai
                                   ? 'bg-emerald-500'
                                   : isMengerjakan
                                   ? 'bg-amber-500 animate-pulse'
-                                  : 'bg-slate-400'
+                                  : 'bg-slate-300'
                               }`}
                             />
-                            {isSelesai ? 'Selesai' : isMengerjakan ? 'Mengerjakan' : 'Belum'}
-                          </span>
+                            <span>{isSelesai ? 'Selesai' : isMengerjakan ? 'Mengerjakan' : 'Belum'}</span>
+                          </div>
                         </td>
                         <td className="py-3 px-5 text-right font-mono text-[11px]">
                           {isMengerjakan ? (

@@ -104,17 +104,17 @@ function BoothCard({
     return () => clearInterval(timer);
   }, [isAvailable, isOccupied, booth.started_at]);
 
-  // STATUS HIJAU: AVAILABLE (Tersedia / Kosong)
+  // STATUS HIJAU: AVAILABLE (Tersedia)
   if (isAvailable) {
     return (
-      <div className="rounded-2xl border border-emerald-200/90 bg-white p-4 shadow-sm flex flex-col justify-between transition-all hover:border-emerald-400">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs flex flex-col justify-between transition-all hover:border-slate-300">
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="font-bold text-slate-800">Bilik {boothNumStr}</span>
-            <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Tersedia / Kosong
-            </span>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Tersedia</span>
+            </div>
           </div>
           <div className="py-4 text-center">
             <p className="text-xs text-slate-400 font-medium">
@@ -134,20 +134,20 @@ function BoothCard({
     );
   }
 
-  // STATUS KUNING: OCCUPIED (Pemilih Menuju Bilik)
+  // STATUS KUNING: OCCUPIED (Sedang Memilih)
   if (isOccupied) {
     return (
-      <div className="rounded-2xl border border-amber-300 bg-amber-50/40 p-4 shadow-sm flex flex-col justify-between ring-1 ring-amber-200 transition-all">
+      <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-xs flex flex-col justify-between transition-all">
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-            <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1.5 animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              Pemilih Menuju Bilik
-            </span>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>Sedang Memilih</span>
+            </div>
           </div>
 
-          <div className="py-3 px-3 rounded-xl bg-white/95 border border-amber-200 shadow-2xs space-y-1 mb-3 text-center">
+          <div className="py-3 px-3 rounded-xl bg-amber-50/50 border border-amber-100 space-y-1 mb-3 text-center">
             <p className="font-bold text-amber-900 text-xs">
               Alokasi Bilik Berhasil
             </p>
@@ -160,7 +160,7 @@ function BoothCard({
         <button
           onClick={() => onReset(booth)}
           disabled={isResetting}
-          className="w-full py-1.5 text-xs bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
+          className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
           <span>↺ Batalkan Alokasi</span>
@@ -169,26 +169,26 @@ function BoothCard({
     );
   }
 
-  // STATUS MERAH: VOTING / DIGUNAKAN (Sedang Memilih)
+  // STATUS SEDANG MEMILIH (VOTING)
   return (
-    <div className="rounded-2xl border border-rose-300 bg-rose-50/40 p-4 shadow-sm flex flex-col justify-between ring-1 ring-rose-200 transition-all">
+    <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-xs flex flex-col justify-between transition-all">
       <div>
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-          <span className="text-xs px-2.5 py-1 rounded-full font-bold bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1.5 animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-            Sedang Memilih
-          </span>
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            <span>Sedang Memilih</span>
+          </div>
         </div>
 
-        <div className="py-2.5 px-3 rounded-xl bg-white/90 border border-rose-100 shadow-2xs space-y-1 mb-3">
+        <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1 mb-3">
           <p className="font-bold text-slate-900 text-xs truncate" title={voterName}>
             {voterName}
           </p>
           <p className="text-[10px] text-slate-600 font-semibold truncate">
             {voterNim !== '-' ? `(${voterNim})` : ''} - {voterProdi}
           </p>
-          <div className="pt-1 flex items-center gap-1 text-[11px] font-mono font-bold text-rose-600">
+          <div className="pt-1 flex items-center gap-1 text-[11px] font-mono font-bold text-amber-600">
             <Clock className="w-3 h-3" />
             <span>Durasi: {elapsed}</span>
           </div>
@@ -198,7 +198,7 @@ function BoothCard({
       <button
         onClick={() => onReset(booth)}
         disabled={isResetting}
-        className="w-full py-1.5 text-xs bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
+        className="w-full py-1.5 text-xs bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
       >
         <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
         <span>↺ Batalkan Sesi</span>
@@ -239,11 +239,11 @@ export default function AdminDashboardPage() {
       const supabase = createClient();
       const { count: totalCount } = await supabase
         .from('voters')
-        .select('*', { count: 'exact', head: true });
+        .select('id, prodi, has_voted', { count: 'exact', head: true });
 
       const { count: votedCount } = await supabase
         .from('voters')
-        .select('*', { count: 'exact', head: true })
+        .select('id, prodi, has_voted', { count: 'exact', head: true })
         .eq('has_voted', true);
 
       if (totalCount !== null && totalCount !== undefined) {
@@ -370,7 +370,7 @@ export default function AdminDashboardPage() {
       const supabase = createClient();
       const { data: logsData, error } = await supabase
         .from('activity_logs')
-        .select('*')
+        .select('id, message, description, text, event_type, type, created_at')
         .order('created_at', { ascending: false })
         .limit(10);
 
@@ -414,7 +414,7 @@ export default function AdminDashboardPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('booths')
-        .select('*')
+        .select('id, booth_number, status, current_voter_name, current_voter_nim, current_voter_prodi')
         .order('booth_number', { ascending: true });
 
       if (error) {
@@ -551,23 +551,7 @@ export default function AdminDashboardPage() {
       )
       .subscribe();
 
-    const interval = setInterval(async () => {
-      if (inFlightRef.current) return;
-      inFlightRef.current = true;
-      try {
-        await Promise.allSettled([
-          fetchStats(),
-          fetchBooths(),
-          fetchActivityLogs(),
-          fetchTrafficData(),
-        ]);
-      } finally {
-        inFlightRef.current = false;
-      }
-    }, 15000);
-
     return () => {
-      clearInterval(interval);
       supabase.removeChannel(channel);
       supabase.removeChannel(trafficChannel);
     };
@@ -821,8 +805,8 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-3 py-1 rounded-xl bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 self-start sm:self-auto">
-              <Activity className="w-3.5 h-3.5 text-blue-600" />
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 self-start sm:self-auto">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
               <span>Realtime Sensor Kehadiran</span>
             </div>
           </div>
@@ -883,7 +867,7 @@ export default function AdminDashboardPage() {
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium mt-2">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Sinkronisasi otomatis per 20 detik &amp; PostgreSQL Realtime</span>
+              <span>PostgreSQL Realtime Terhubung</span>
             </span>
             <span className="font-mono text-slate-400">
               Interval: 10 Menit
@@ -903,13 +887,13 @@ export default function AdminDashboardPage() {
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs font-semibold">
-              <span className="flex items-center gap-1.5 text-emerald-700">
+              <span className="flex items-center gap-1.5 text-emerald-600">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 Tersedia ({countTersedia})
               </span>
-              <span className="flex items-center gap-1.5 text-rose-700">
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                Digunakan ({countDigunakan})
+              <span className="flex items-center gap-1.5 text-amber-600">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                Sedang Memilih ({countDigunakan})
               </span>
             </div>
           </div>
@@ -998,9 +982,9 @@ export default function AdminDashboardPage() {
                   </h3>
                 </div>
 
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-black tracking-wide shadow-2xs">
+                <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>● LIVE REALTIME FEED</span>
+                  <span>Live Realtime Feed</span>
                 </div>
               </div>
 
