@@ -233,24 +233,63 @@ export default function AdminRekapPage() {
 
   const fetchVotersAndRefreshMatrix = fetchMetricData;
 
-  // 2. Fetch Candidates & Votes
+  // 2. Fetch Candidates & Votes (Aman Menggunakan select('*') & Caching)
   const fetchCandidates = async () => {
+    // 1. Cek cache sessionStorage terlebih dahulu
+    const cached = typeof window !== 'undefined'
+      ? (sessionStorage.getItem('pemira_admin_candidates_cache') || sessionStorage.getItem('pemira_admin_rekap_candidates'))
+      : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setAllCandidates(parsed);
+          const bem = parsed.filter((c: any) => {
+            const cat = (c.category || c.type || '').toUpperCase();
+            return cat.includes('BEM');
+          });
+          const hima = parsed.filter((c: any) => {
+            const cat = (c.category || c.type || '').toUpperCase();
+            return !cat.includes('BEM');
+          });
+          setBemList(bem);
+          setHimaList(hima);
+          return;
+        }
+      } catch (e) {}
+    }
+
+    // 2. Fetch aman dari Supabase dengan select('*')
     try {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('candidates')
-        .select('id, name, candidate_number, paslon_number, category, prodi, hima_name, vision, mission, image_url, slogan');
+        .select('*');
 
-      if (!error && data) {
+      if (error) {
+        console.error("Gagal mengambil data paslon:", error.message);
+        return;
+      }
+
+      if (data && data.length > 0) {
         setAllCandidates(data);
-        setBemList(data.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
-        setHimaList(data.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM')));
+        const bem = data.filter((c: any) => {
+          const cat = (c.category || c.type || '').toUpperCase();
+          return cat.includes('BEM');
+        });
+        const hima = data.filter((c: any) => {
+          const cat = (c.category || c.type || '').toUpperCase();
+          return !cat.includes('BEM');
+        });
+        setBemList(bem);
+        setHimaList(hima);
         if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_admin_candidates_cache', JSON.stringify(data));
           sessionStorage.setItem('pemira_admin_rekap_candidates', JSON.stringify(data));
         }
       }
     } catch (err) {
-      console.error('Error fetching candidates in rekap:', err);
+      console.error("Crash saat fetch paslon:", err);
     }
   };
 
@@ -993,9 +1032,10 @@ export default function AdminRekapPage() {
               bemList.map((cand) => {
                 const votes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
                 const persentasePaslon = totalSuaraBem > 0 ? ((votes / totalSuaraBem) * 100).toFixed(1) : '0.0';
-                const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
-                const photoUrl = cand.image_url || (cand as any).imageUrl || cand.photo_url || cand.photoUrl;
-                const candName = cand.name || `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}`;
+                const displayNumber = cand.candidate_number || (cand as any).paslon_number || cand.number || (cand as any).no_urut || cand.candidateNumber || '1';
+                const photoUrl = cand.image_url || cand.photo_url || (cand as any).foto || (cand as any).imageUrl || (cand as any).photoUrl || null;
+                const candName = cand.name || (cand as any).nama || (cand as any).candidate_name || `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}` || 'Nama Paslon';
+                const candSlogan = cand.slogan || cand.vision || (cand as any).visi || cand.tagline || 'Menuju Kampus BTH Berkemajuan';
 
                 return (
                   <div
@@ -1125,11 +1165,11 @@ export default function AdminRekapPage() {
                         {facCandidates.map((cand: any) => {
                           const candVotes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? cand.votes ?? cand.vote_count ?? 0;
                           const persentasePaslon = facTotalVotes > 0 ? ((candVotes / facTotalVotes) * 100).toFixed(1) : '0.0';
-                          const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.paslon_number ?? cand.number ?? '01';
+                          const displayNumber = cand.candidate_number || cand.paslon_number || cand.number || cand.no_urut || cand.candidateNumber || '1';
                           const candProdi = cand.prodi || cand.prodiId || cand.prodi_id || fac.shortName;
-                          const candidatePhoto = cand.image_url || cand.photo_url || cand.foto;
-                          const candidateName = cand.name || cand.ketua_name || cand.candidate_name || cand.leaderName || cand.leader_name || `Paslon ${cand.candidate_number || cand.paslon_number || ''}`;
-                          const candidateSlogan = cand.slogan || cand.vision || cand.tagline || 'Sinergi Bersama Memajukan HIMA';
+                          const candidatePhoto = cand.image_url || cand.photo_url || cand.foto || cand.imageUrl || cand.photoUrl || null;
+                          const candidateName = cand.name || cand.nama || cand.candidate_name || cand.ketua_name || cand.leaderName || cand.leader_name || `Paslon ${displayNumber}` || 'Nama Paslon';
+                          const candidateSlogan = cand.slogan || cand.vision || cand.visi || cand.tagline || 'Sinergi Bersama Memajukan HIMA';
 
                           return (
                             <div
