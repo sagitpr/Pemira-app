@@ -1285,13 +1285,8 @@ function VoteContent() {
             ========================================================================= */}
         {step === 'BOOTH_ROUTING' && (
           <div className="w-full max-w-xl mx-auto bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 text-blue-700 text-xs font-bold border border-blue-200">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-              <span>ALOKASI BILIK PEMILIH RESMI</span>
-            </div>
-
-            <div className="space-y-3 py-2">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+            <div>
+              <p className="text-[11px] font-bold tracking-widest text-slate-400 uppercase text-center mb-4">
                 ARAHAN BILIK SUARA FISIK
               </p>
               <div className="relative py-6 px-6 rounded-3xl bg-linear-to-b from-blue-50/80 to-slate-50 border-2 border-blue-300 shadow-inner">

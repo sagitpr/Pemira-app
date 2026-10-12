@@ -146,19 +146,27 @@ export default function AdminRekapPage() {
 
   const fetchVotersAndRefreshMatrix = fetchMetricData;
 
-  // 2. Fetch Candidates & Realtime Rekap Votes
-  const fetchRekapVotes = async () => {
+  // 2. Fetch Candidates & Votes
+  const fetchCandidates = async () => {
     try {
       const supabase = createClient();
-      const { data: candsData } = await supabase
+      const { data, error } = await supabase
         .from('candidates')
-        .select('id, name, candidate_number, category, prodi');
-      if (candsData && candsData.length > 0) {
-        setAllCandidates(candsData);
-        setBemList(candsData.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
-        setHimaList(candsData.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM')));
-      }
+        .select('id, name, candidate_number, paslon_number, category, prodi, hima_name, vision, mission, image_url, slogan');
 
+      if (!error && data) {
+        setAllCandidates(data);
+        setBemList(data.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM')));
+        setHimaList(data.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM')));
+      }
+    } catch (err) {
+      console.error('Error fetching candidates in rekap:', err);
+    }
+  };
+
+  const fetchVotes = async () => {
+    try {
+      const supabase = createClient();
       const { data: votesData } = await supabase
         .from('votes')
         .select('candidate_id, category, created_at')
@@ -340,14 +348,15 @@ export default function AdminRekapPage() {
   useEffect(() => {
     setIsMounted(true);
     fetchMetricData();
-    fetchRekapVotes();
+    fetchCandidates();
+    fetchVotes();
 
     const supabase = createClient();
     const channel = supabase
       .channel('rekap-instant-stream')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
-        // Begitu suara baru masuk, langsung hitung ulang seketika
-        fetchRekapVotes();
+        // Begitu suara baru masuk, cukup refresh suara & metrik seketika (tanpa re-fetch candidates)
+        fetchVotes();
         fetchMetricData();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voters' }, () => {
@@ -848,7 +857,7 @@ export default function AdminRekapPage() {
                 const persentasePaslon = totalSuaraBem > 0 ? ((votes / totalSuaraBem) * 100).toFixed(1) : '0.0';
                 const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
                 const photoUrl = cand.image_url || (cand as any).imageUrl || cand.photo_url || cand.photoUrl;
-                const candName = `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}`;
+                const candName = cand.name || `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}`;
 
                 return (
                   <div
@@ -975,14 +984,14 @@ export default function AdminRekapPage() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {facCandidates.map((cand) => {
-                          const candVotes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
+                        {facCandidates.map((cand: any) => {
+                          const candVotes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? cand.votes ?? cand.vote_count ?? 0;
                           const persentasePaslon = facTotalVotes > 0 ? ((candVotes / facTotalVotes) * 100).toFixed(1) : '0.0';
-                          const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.number ?? '01';
+                          const displayNumber = cand.candidate_number ?? cand.candidateNumber ?? cand.paslon_number ?? cand.number ?? '01';
                           const candProdi = cand.prodi || cand.prodiId || cand.prodi_id || fac.shortName;
-                          const candPhoto = cand.image_url || (cand as any).imageUrl || cand.photo_url || cand.photoUrl;
-                          const candName = cand.leaderName || cand.leader_name || 'Kandidat';
-                          const candVice = cand.viceLeaderName || cand.vice_leader_name;
+                          const candidatePhoto = cand.image_url || cand.photo_url || cand.foto;
+                          const candidateName = cand.name || cand.ketua_name || cand.candidate_name || cand.leaderName || cand.leader_name || `Paslon ${cand.candidate_number || cand.paslon_number || ''}`;
+                          const candidateSlogan = cand.slogan || cand.vision || cand.tagline || 'Sinergi Bersama Memajukan HIMA';
 
                           return (
                             <div
@@ -1000,23 +1009,26 @@ export default function AdminRekapPage() {
                                 </div>
 
                                 {/* Foto Paslon HIMA */}
-                                <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-100">
-                                  {candPhoto ? (
-                                    <img
-                                      src={candPhoto}
-                                      alt={candName}
+                                {candidatePhoto ? (
+                                  <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-slate-100 flex items-center justify-center">
+                                    <img 
+                                      src={candidatePhoto} 
+                                      alt={candidateName || 'Paslon HIMA'} 
                                       className="w-full h-full object-cover object-top"
+                                      loading="lazy"
                                     />
-                                  ) : (
-                                    <div className="text-slate-400 text-xs font-semibold">Foto Tidak Tersedia</div>
-                                  )}
-                                </div>
+                                  </div>
+                                ) : (
+                                  <div className="w-full h-44 rounded-xl bg-slate-100 border border-dashed border-slate-200 flex items-center justify-center text-xs text-slate-400 font-medium mb-3">
+                                    Foto Belum Diunggah
+                                  </div>
+                                )}
 
-                                <h5 className="text-sm font-bold text-slate-900 leading-snug">
-                                  {candName} {candVice ? `& ${candVice}` : ''}
-                                </h5>
-                                <p className="text-[11px] text-slate-400 mt-1 line-clamp-1 italic">
-                                  &ldquo;{cand.tagline || cand.slogan || 'Sinergi Bersama Memajukan HIMA'}&rdquo;
+                                <h3 className="font-bold text-slate-800 text-sm leading-snug line-clamp-1">
+                                  {candidateName}
+                                </h3>
+                                <p className="text-[11px] text-slate-400 italic mt-0.5 line-clamp-1">
+                                  &ldquo;{candidateSlogan}&rdquo;
                                 </p>
                               </div>
 
