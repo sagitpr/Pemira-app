@@ -32,7 +32,7 @@ export default function VisiMisiModal({
             </span>
             <div>
               <h2 className="text-lg font-bold text-slate-900">
-                {candidate.leaderName || candidate.leader_name || 'Kandidat'}
+                {(candidate as any).name || candidate.leaderName || candidate.leader_name || 'Kandidat'}
                 {(candidate.viceLeaderName || candidate.vice_leader_name) ? ` & ${candidate.viceLeaderName || candidate.vice_leader_name}` : ''}
               </h2>
               <p className="text-xs text-slate-500 font-medium">

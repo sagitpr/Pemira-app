@@ -83,6 +83,10 @@ function VoteContent() {
   const [isSessionExpired, setIsSessionExpired] = useState(false);
   const [isAccessRevoked, setIsAccessRevoked] = useState(false);
 
+  // Penanda status submit berhasil & ref channel realtime bilik
+  const isVoteFinishedRef = useRef(false);
+  const boothChannelRef = useRef<any>(null);
+
   const [assignedBooth, setAssignedBooth] = useState<any>(null);
   const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 01');
   const [assignedBoothNumber, setAssignedBoothNumber] = useState<number>(1);
@@ -234,57 +238,58 @@ function VoteContent() {
     }
   }, [recordBoothVisit]);
 
-  // 1. CACHE DATA PASLON DI HP PEMILIH (LOCALSTORAGE: pemira_candidates_cache)
-  const getOrFetchCandidates = useCallback(async () => {
-    const CACHE_KEY = 'pemira_candidates_cache';
-    // 1. Cek apakah sudah ada di cache lokal HP
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
+  // 1. INSTANT CACHE & ZERO-EGRESS SUPABASE FETCHING (0ms load dari pemira_candidates_master)
+  useEffect(() => {
+    async function loadCandidates() {
+      // 1. Prioritaskan pembacaan instan dari localStorage
+      const localData = typeof window !== 'undefined' ? localStorage.getItem('pemira_candidates_master') : null;
+      if (localData) {
         try {
-          const parsed = JSON.parse(cached);
+          const parsed = JSON.parse(localData);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setAllCandidates(parsed);
             setDbCandidatesLoaded(true);
             setIsLoadingCandidates(false);
-            // Selesai: Gunakan cache lokal, TIDAK PERLU request ulang ke Supabase
-            return;
+            return; // Langsung selesai dalam 0ms tanpa request ke Supabase!
           }
         } catch (e) {
-          console.warn('Cache parsing note:', e);
+          console.error("Gagal parse cache paslon:", e);
         }
       }
-    }
 
-    // 2. Fetch sekali saja dari Supabase jika belum ada di cache
-    try {
-      const { data, error } = await supabase.from('candidates').select('*');
+      // 2. Jika memori kosong, baru ambil dari Supabase sekali saja
+      try {
+        setIsLoadingCandidates(true);
+        const { data, error } = await supabase
+          .from('candidates')
+          .select('id, name, candidate_number, paslon_number, category, prodi, hima_name, vision, mission, image_url, slogan');
 
-      if (data && data.length > 0) {
-        setAllCandidates(data);
-        setDbCandidatesLoaded(true);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        if (!error && data && data.length > 0) {
+          setAllCandidates(data);
+          setDbCandidatesLoaded(true);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('pemira_candidates_master', JSON.stringify(data));
+          }
+        } else {
+          const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
+          setAllCandidates(fallback);
+          setDbCandidatesLoaded(true);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('pemira_candidates_master', JSON.stringify(fallback));
+          }
         }
-      } else {
+      } catch (err) {
+        console.error("Gagal mengambil paslon:", err);
         const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
-        setAllCandidates((prev) => (prev.length > 0 ? prev : fallback));
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(CACHE_KEY, JSON.stringify(fallback));
-        }
+        setAllCandidates(fallback);
+        setDbCandidatesLoaded(true);
+      } finally {
+        setIsLoadingCandidates(false);
       }
-    } catch (err) {
-      console.error('Error fetch candidates:', err);
-      setAllCandidates((prev) => (prev.length > 0 ? prev : [...BEM_CANDIDATES, ...HIMA_CANDIDATES]));
-    } finally {
-      setIsLoadingCandidates(false);
     }
-  }, []);
 
-  // Prefetch paslon segera sejak detik pertama halaman /vote dimuat
-  useEffect(() => {
-    getOrFetchCandidates();
-  }, [getOrFetchCandidates]);
+    loadCandidates();
+  }, []);
 
   // 1. Initial Session Check & Auto-Booth Allocation
   useEffect(() => {
@@ -403,6 +408,11 @@ function VoteContent() {
           filter: `id=eq.${targetBoothId}`,
         },
         (payload: any) => {
+          if (isVoteFinishedRef.current) {
+            // Abaikan seluruh event perubahan status bilik jika suara sedang atau sudah disubmit!
+            return;
+          }
+
           const updatedBooth = payload?.new;
           if (!updatedBooth) return;
 
@@ -427,6 +437,8 @@ function VoteContent() {
         }
       )
       .subscribe();
+
+    boothChannelRef.current = boothChannel;
 
     return () => {
       supabase.removeChannel(boothChannel);
@@ -487,16 +499,16 @@ function VoteContent() {
 
   // Timer Countdown Sesi Bilik (BEKUKAN TIMER SAAT MASIH PROSES MEMUAT DATA)
   useEffect(() => {
-    // Timer HANYA boleh berjalan jika sudah masuk tahap surat suara DAN data paslon SUDAH SELESAI dimuat!
+    // Hanya jalankan timer jika sudah masuk tahap surat suara
     if (step !== 'VOTE_BEM' && step !== 'VOTE_HIMA') return;
 
-    // PEMBEKUAN WAKTU: Jangan jalankan interval jika paslon masih loading
-    if (isLoadingCandidates) return;
+    // JANGAN jalankan interval jika paslon masih loading atau data masih kosong
+    if (isLoadingCandidates || allCandidates.length === 0) return;
 
-    const timerInterval = setInterval(() => {
+    const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          clearInterval(timerInterval);
+          clearInterval(interval);
           handleSessionTimeout();
           return 0;
         }
@@ -504,8 +516,8 @@ function VoteContent() {
       });
     }, 1000);
 
-    return () => clearInterval(timerInterval);
-  }, [step, isLoadingCandidates, handleSessionTimeout]);
+    return () => clearInterval(interval);
+  }, [step, isLoadingCandidates, allCandidates.length, handleSessionTimeout]);
 
   // 4. Audio Ucapan Terima Kasih Resmi (Loop 60 Detik di Langkah SUCCESS)
   const playThankYouAudio = useCallback(() => {
@@ -760,147 +772,117 @@ function VoteContent() {
     }
   };
 
-  // TAHAP 4: SUBMIT SUARA, RESET BILIK OTOMATIS, & AUDIO TERIMA KASIH
-  const handleFinalConfirmVote = async () => {
-    if (!selectedBem) {
-      showToast('Silakan pilih salah satu pasangan calon BEM.', 'error');
-      setStep('VOTE_BEM');
-      return;
-    }
-
+  // TAHAP 4: SUBMIT SUARA, RESET BILIK OTOMATIS, & REDIRECT KE /selesai
+  const handleSubmitVote = async () => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setIsConfirmModalOpen(false);
 
-    // C. PERLINDUNGAN SUBMIT GANDA & VALIDASI SAAT KLIK KIRIM SUARA:
-    // Sebelum menyimpan suara ke tabel 'votes', lakukan pengecekan terakhir ke tabel 'booths'
     try {
-      const targetBoothIdentifier = assignedBoothId || assignedBooth?.id;
-      let boothQuery = supabase.from('booths').select('id, status, session_token');
-      if (targetBoothIdentifier) {
-        boothQuery = boothQuery.eq('id', targetBoothIdentifier);
-      } else {
-        boothQuery = boothQuery.eq('booth_number', assignedBoothNumber || 1);
+      // 1. Validasi pilihan BEM
+      if (!selectedBem) {
+        alert("Silakan pilih pasangan calon Presiden BEM terlebih dahulu.");
+        setIsSubmitting(false);
+        return;
       }
 
-      const { data: latestBoothData } = await boothQuery.maybeSingle();
+      // 2. Tandai bahwa proses submit dimulai agar Realtime Listener tidak memicu 'CANCELLED'
+      isVoteFinishedRef.current = true;
 
-      if (latestBoothData) {
-        const latestStatus = String(latestBoothData.status || '').toUpperCase();
-        const isBoothAvailable = latestStatus === 'AVAILABLE' || latestStatus === 'TERSEDIA' || latestStatus === 'KOSONG';
-
-        if (isBoothAvailable || !latestBoothData.session_token) {
-          setIsSubmitting(false);
-          if (typeof window !== 'undefined') {
-            sessionStorage.clear();
-            localStorage.removeItem('pemira_session');
-            localStorage.removeItem('pemira_session_token');
-            localStorage.removeItem('pemira_voter_session');
-            localStorage.removeItem('pemira_booth');
-          }
-          setIsAccessRevoked(true);
-          alert('Sesi pemilihan Anda sudah kedaluwarsa atau dibatalkan!');
-          return;
-        }
-      }
-    } catch (checkErr) {
-      console.warn('Pengecekan status bilik sebelum vote note:', checkErr);
-    }
-
-    const voterNim = detectedVoter?.nim || inputNim.trim();
-    const voterName = detectedVoter?.name || inputName.trim() || 'Pemilih';
-    const voterProdi = detectedVoter?.prodi || detectedVoter?.prodi_name || inputProdi.trim();
-    let durationSeconds = 0;
-    if (startVoteAt) {
-      durationSeconds = Math.max(1, Math.round((Date.now() - new Date(startVoteAt).getTime()) / 1000));
-    }
-
-    try {
-      const nowIso = new Date().toISOString();
-
-      // 1. Catat suara ke tabel 'votes' (Secara anonim)
-      const votesToInsert: any[] = [];
-      if (selectedBem?.id) {
-        votesToInsert.push({
-          candidate_id: String(selectedBem.id),
+      // 3. Simpan suara BEM ke tabel votes
+      const votesPayload: any[] = [
+        {
+          candidate_id: selectedBem.id,
           category: 'BEM',
-          type: 'BEM',
-          created_at: nowIso,
-        });
-      }
-      if (selectedHima?.id && selectedHima.id !== 'none') {
-        votesToInsert.push({
-          candidate_id: String(selectedHima.id),
-          category: 'HIMA',
-          type: 'HIMA',
-          prodi: voterProdi,
-          created_at: nowIso,
-        });
-      }
-
-      if (votesToInsert.length > 0) {
-        const { error: directVoteErr } = await supabase.from('votes').insert(votesToInsert);
-        if (directVoteErr) {
-          console.warn('Direct votes insert note, fallback to API:', directVoteErr);
-          await fetch('/api/vote/submit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              nim: voterNim,
-              name: voterName,
-              boothNumber: assignedBoothNumber,
-              bemCandidateId: selectedBem?.id,
-              himaCandidateId: selectedHima?.id || 'none',
-              durationSeconds,
-            }),
-          });
+          booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
         }
+      ];
+
+      // Jika ada pilihan HIMA, tambahkan ke payload
+      if (selectedHima && selectedHima.id !== 'none') {
+        votesPayload.push({
+          candidate_id: selectedHima.id,
+          category: 'HIMA',
+          booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
+        });
       }
 
-      // 2. Kunci DPT pemilih menjadi "SUDAH":
-      await supabase
-        .from('voters')
-        .update({
-          has_voted: true,
-          voting_status: 'SUDAH',
-          completed_at: nowIso,
-          updated_at: nowIso,
-        })
-        .eq('nim', voterNim);
+      const { error: voteErr } = await supabase.from('votes').insert(votesPayload);
+      if (voteErr) throw voteErr;
 
-      // 3. Kosongkan bilik:
-      await supabase
-        .from('booths')
-        .update({
-          status: 'AVAILABLE',
-          current_voter_name: null,
-          current_voter_nim: null,
-          current_voter_prodi: null,
-          voter_name: null,
-          voter_nim: null,
-          voter_prodi: null,
-          started_at: null,
-          session_token: null,
-          updated_at: nowIso,
-        })
-        .or(`id.eq.${assignedBoothId || assignedBooth?.id || '0'},booth_number.eq.${assignedBoothNumber || 1}`);
-
-      // 4. Hanguskan token di sessionStorage
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('pemira_session_token');
-        sessionStorage.setItem('pemira_session_completed', 'true');
+      // 4. Update status voter menjadi SUDAH
+      const voterNimToUpdate = verifiedVoter?.nim || detectedVoter?.nim || inputNim.trim();
+      if (voterNimToUpdate) {
+        await supabase
+          .from('voters')
+          .update({
+            has_voted: true,
+            voting_status: 'SUDAH',
+            updated_at: new Date().toISOString()
+          })
+          .eq('nim', voterNimToUpdate);
       }
 
-      // 5. Pindah ke TAHAP SUCCESS (Layar Sukses & Audio Loop 60 Detik)
-      setIsSubmitting(false);
-      setPostSubmitSeconds(60);
-      setStep('SUCCESS');
-      playThankYouAudio();
+      // 5. Simpan identitas pemilih ke sessionStorage untuk dibaca di halaman /selesai
+      sessionStorage.setItem('pemira_completed_voter', JSON.stringify({
+        name: verifiedVoter?.name || detectedVoter?.name || inputName.trim() || 'Mahasiswa UBTH',
+        nim: voterNimToUpdate || '-',
+        prodi: verifiedVoter?.prodi || detectedVoter?.prodi || inputProdi.trim() || '-',
+        booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
+        voted_at: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+      }));
+
+      // 6. Matikan channel realtime di HP ini agar tidak mendengarkan event bilik lagi
+      if (boothChannelRef.current) {
+        supabase.removeChannel(boothChannelRef.current);
+      }
+
+      // 7. Reset bilik menjadi AVAILABLE
+      const targetBoothId = assignedBooth?.id || assignedBoothId;
+      if (targetBoothId) {
+        await supabase
+          .from('booths')
+          .update({
+            status: 'AVAILABLE',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            session_token: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', targetBoothId);
+      } else {
+        await supabase
+          .from('booths')
+          .update({
+            status: 'AVAILABLE',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            session_token: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('booth_number', assignedBoothNumber || 1);
+      }
+
+      // 8. Hapus cache lokal bilik dan alihkan ke halaman selesai
+      localStorage.removeItem('pemira_booth_session');
+      localStorage.removeItem('pemira_session');
+      localStorage.removeItem('pemira_session_token');
+      localStorage.removeItem('pemira_voter_session');
+      localStorage.removeItem('pemira_booth');
+      sessionStorage.removeItem('pemira_session_token');
+      router.replace('/selesai');
+
     } catch (err: any) {
-      console.error('Error fatal submit suara:', err);
+      console.error("Gagal submit suara:", err);
+      isVoteFinishedRef.current = false;
+      alert("Terjadi kendala saat merekam suara: " + (err.message || 'Silakan coba lagi'));
       setIsSubmitting(false);
-      showToast('Kendala jaringan saat mengirim suara. Silakan coba lagi.', 'error');
     }
   };
+
+  const handleFinalConfirmVote = handleSubmitVote;
 
   const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -1163,37 +1145,36 @@ function VoteContent() {
     );
   }
 
-  // B. TAMPILAN SKELETON LOADING CARD PASLON
-  const CandidateSkeleton = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full my-4">
-      {[1, 2].map((item) => (
-        <div 
-          key={item} 
-          className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-sm animate-pulse flex flex-col justify-between"
-        >
-          <div>
-            {/* Skeleton Nomor Paslon & Kategori */}
+  // B. TAMPILAN SKELETON LOADING CARD PASLON (CANDIDATE SKELETON)
+  function CandidateSkeleton() {
+    return (
+      <div className="w-full space-y-4 my-3">
+        {[1, 2].map((i) => (
+          <div
+            key={i}
+            className="bg-white border border-[#EFECE6] rounded-2xl p-4 shadow-xs animate-pulse flex flex-col justify-between"
+          >
             <div className="flex items-center justify-between mb-3">
-              <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
-              <div className="w-20 h-4 bg-slate-200 rounded-full"></div>
+              <div className="w-7 h-7 bg-slate-200 rounded-lg"></div>
+              <div className="w-24 h-4 bg-slate-100 rounded-full"></div>
             </div>
             
-            {/* Skeleton Gambar Paslon */}
-            <div className="w-full h-44 bg-slate-200 rounded-xl mb-4 relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+            {/* Skeleton Foto Paslon */}
+            <div className="w-full h-44 bg-slate-200 rounded-xl mb-3 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
             </div>
 
-            {/* Skeleton Nama Paslon */}
-            <div className="h-5 bg-slate-200 rounded-md w-4/5 mb-2"></div>
-            <div className="h-4 bg-slate-100 rounded-md w-3/5 mb-4"></div>
-          </div>
+            {/* Skeleton Teks Nama & Visi */}
+            <div className="h-5 bg-slate-200 rounded-md w-3/4 mb-2"></div>
+            <div className="h-3.5 bg-slate-100 rounded-md w-1/2 mb-4"></div>
 
-          {/* Skeleton Tombol Pilih */}
-          <div className="w-full h-11 bg-slate-200 rounded-xl mt-2"></div>
-        </div>
-      ))}
-    </div>
-  );
+            {/* Skeleton Tombol Pilih */}
+            <div className="w-full h-11 bg-slate-200 rounded-xl mt-2"></div>
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-slate-50 flex flex-col justify-between overflow-x-hidden font-sans text-slate-800 select-none">
@@ -1468,9 +1449,9 @@ function VoteContent() {
             {/* DAFTAR PASLON BEM */}
             {isLoadingCandidates ? (
               <div className="w-full">
-                <div className="flex items-center justify-center gap-2 text-indigo-600 text-xs font-semibold mb-2">
-                  <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span>Menyiapkan Surat Suara Resmi...</span>
+                <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-2">
+                  <div className="w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Memuat Surat Suara Resmi...</span>
                 </div>
                 <CandidateSkeleton />
               </div>
@@ -1478,8 +1459,8 @@ function VoteContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
                 {bemCandidates.map((cand: any) => {
                   const isSelected = selectedBem && String(selectedBem.id) === String(cand.id);
-                  const displayPhoto = cand?.photoUrl || cand?.photo_url;
-                  const displayName = cand?.leaderName || cand?.leader_name || 'Kandidat';
+                  const displayPhoto = cand?.photoUrl || cand?.photo_url || cand?.image_url;
+                  const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
                   const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
                   const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
 
@@ -1633,9 +1614,9 @@ function VoteContent() {
             {/* JIKA SEDANG LOADING ATAU TIDAK ADA PASLON HIMA TERDAFTAR */}
             {isLoadingCandidates ? (
               <div className="w-full">
-                <div className="flex items-center justify-center gap-2 text-indigo-600 text-xs font-semibold mb-2">
-                  <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                  <span>Menyiapkan Surat Suara Resmi...</span>
+                <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-2">
+                  <div className="w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Memuat Surat Suara Resmi...</span>
                 </div>
                 <CandidateSkeleton />
               </div>
@@ -1830,9 +1811,9 @@ function VoteContent() {
 
                   <div className="flex items-center gap-4">
                     <div className="w-20 h-24 rounded-2xl overflow-hidden border border-slate-200 bg-white shrink-0 flex items-center justify-center shadow-xs">
-                      {selectedBem?.photoUrl || selectedBem?.photo_url ? (
+                      {selectedBem?.photoUrl || selectedBem?.photo_url || selectedBem?.image_url ? (
                         <img
-                          src={selectedBem?.photoUrl || selectedBem?.photo_url}
+                          src={selectedBem?.photoUrl || selectedBem?.photo_url || selectedBem?.image_url}
                           alt="Foto BEM"
                           className="w-full h-full object-cover"
                         />
@@ -1847,13 +1828,13 @@ function VoteContent() {
                         Nomor Urut {selectedBem?.candidate_number ?? selectedBem?.candidateNumber ?? selectedBem?.number ?? '01'}
                       </span>
                       <h4 className="text-base font-black text-slate-900 leading-snug">
-                        {selectedBem?.leaderName || selectedBem?.leader_name || 'Kandidat BEM'}
+                        {selectedBem?.leaderName || selectedBem?.leader_name || selectedBem?.name || 'Kandidat BEM'}
                         {selectedBem?.viceLeaderName || selectedBem?.vice_leader_name
                           ? ` & ${selectedBem?.viceLeaderName || selectedBem?.vice_leader_name}`
                           : ''}
                       </h4>
                       <p className="text-xs text-slate-500 italic line-clamp-2">
-                        &ldquo;{selectedBem?.tagline || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
+                        &ldquo;{selectedBem?.tagline || selectedBem?.slogan || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
                       </p>
                     </div>
                   </div>
@@ -1885,9 +1866,9 @@ function VoteContent() {
                   {selectedHima && selectedHima.id !== 'none' ? (
                     <div className="flex items-center gap-4">
                       <div className="w-20 h-24 rounded-2xl overflow-hidden border border-blue-200 bg-white shrink-0 flex items-center justify-center shadow-xs">
-                        {selectedHima?.photoUrl || selectedHima?.photo_url ? (
+                        {selectedHima?.photoUrl || selectedHima?.photo_url || selectedHima?.image_url ? (
                           <img
-                            src={selectedHima?.photoUrl || selectedHima?.photo_url}
+                            src={selectedHima?.photoUrl || selectedHima?.photo_url || selectedHima?.image_url}
                             alt="Foto HIMA"
                             className="w-full h-full object-cover"
                           />
@@ -1902,13 +1883,13 @@ function VoteContent() {
                           Nomor Urut {selectedHima?.candidate_number ?? selectedHima?.candidateNumber ?? selectedHima?.number ?? '01'}
                         </span>
                         <h4 className="text-base font-black text-slate-900 leading-snug">
-                          {selectedHima?.leaderName || selectedHima?.leader_name || 'Kandidat HIMA'}
+                          {selectedHima?.leaderName || selectedHima?.leader_name || selectedHima?.name || 'Kandidat HIMA'}
                           {selectedHima?.viceLeaderName || selectedHima?.vice_leader_name
                             ? ` & ${selectedHima?.viceLeaderName || selectedHima?.vice_leader_name}`
                             : ''}
                         </h4>
                         <p className="text-xs text-slate-500 italic line-clamp-2">
-                          &ldquo;{selectedHima?.tagline || 'Sinergi dan Prestasi untuk Program Studi'}&rdquo;
+                          &ldquo;{selectedHima?.tagline || selectedHima?.slogan || 'Sinergi dan Prestasi untuk Program Studi'}&rdquo;
                         </p>
                       </div>
                     </div>
