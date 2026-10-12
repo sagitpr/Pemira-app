@@ -26,7 +26,6 @@ const MASTER_PRODI = [
   'S2 Farmasi',
   'S1 Keperawatan',
   'D3 Keperawatan',
-  'Pendidikan Profesi Ners',
   'S1 Administrasi Rumah Sakit',
   'D3 Teknologi Laboratorium Medis',
   'D3 Optometri',
@@ -332,8 +331,8 @@ export default function AdminDptPage() {
     let matchProdi = selectedProdi === 'ALL';
     if (!matchProdi) {
       const sel = selectedProdi.toLowerCase();
-      if (sel.includes('optometri') || sel.includes('refraksi') || sel.includes('optisi') || sel.includes('ro')) {
-        matchProdi = prodiVal.includes('optometri') || prodiVal.includes('refraksi') || prodiVal.includes('optisi') || prodiVal.includes('ro');
+      if (sel.includes('optometri') || sel.includes('refraksi') || sel.includes('optisi')) {
+        matchProdi = prodiVal.includes('optometri') || prodiVal.includes('refraksi') || prodiVal.includes('optisi');
       } else {
         matchProdi = prodiVal.includes(sel) || sel.includes(prodiVal);
       }
@@ -416,6 +415,31 @@ export default function AdminDptPage() {
       const supabase = createClient();
       const prodiVal = String(newProdi || '').trim() || 'S1 Kewirausahaan';
       const angkatanVal = String(newAngkatan || '').trim() || '2026';
+
+      let autoFaculty: 'FTB' | 'FIKES' | 'FARMASI' = newFaculty;
+      const lowerP = prodiVal.toLowerCase();
+      if (lowerP.includes('farmasi') || lowerP.includes('apoteker') || lowerP.includes('kosmetik')) {
+        autoFaculty = 'FARMASI';
+      } else if (
+        lowerP.includes('keperawatan') ||
+        lowerP.includes('rumah sakit') ||
+        lowerP.includes('ars') ||
+        lowerP.includes('gizi') ||
+        lowerP.includes('optometri') ||
+        lowerP.includes('refraksi') ||
+        lowerP.includes('laboratorium') ||
+        lowerP.includes('tlm')
+      ) {
+        autoFaculty = 'FIKES';
+      } else if (
+        lowerP.includes('bisnis') ||
+        lowerP.includes('sistem informasi') ||
+        lowerP.includes('pangan') ||
+        lowerP.includes('kewirausahaan')
+      ) {
+        autoFaculty = 'FTB';
+      }
+
       const payloadVoter = {
         nim: String(newNim).trim(),
         name: String(newName).trim(),
@@ -423,8 +447,8 @@ export default function AdminDptPage() {
         prodi: prodiVal,
         prodi_name: prodiVal,
         prodi_id: prodiOptions.find((p) => p.name === newProdi)?.id ?? null,
-        faculty: newFaculty,
-        faculty_id: newFaculty,
+        faculty: autoFaculty,
+        faculty_id: autoFaculty,
         angkatan: angkatanVal,
         has_voted: false,
         voting_status: 'BELUM',

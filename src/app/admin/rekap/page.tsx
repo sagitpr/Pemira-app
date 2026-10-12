@@ -37,39 +37,47 @@ const LINE_COLORS = ['#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06
 const MASTER_PRODI_MATRIX = [
   { no: 1, name: 'Bisnis Digital', faculty: 'FTB', matchKeys: ['bisnis digital'] },
   { no: 2, name: 'Sistem Informasi', faculty: 'FTB', matchKeys: ['sistem informasi'] },
-  { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', matchKeys: ['teknologi pangan', 'tekpang'] },
-  { no: 4, name: 'Kewirausahaan', faculty: 'FTB', matchKeys: ['kewirausahaan'] },
+  { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', matchKeys: ['teknologi pangan', 'pangan', 'tekpang'] },
+  { no: 4, name: 'Kewirausahaan', faculty: 'FTB', matchKeys: ['kewirausahaan', 'kwu'] },
   { no: 5, name: 'S1 Administrasi Rumah Sakit (ARS)', faculty: 'FIKES', matchKeys: ['administrasi rumah sakit', 'ars'] },
-  { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', matchKeys: ['s1 keperawatan', 'keperawatan'] },
+  { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', matchKeys: ['s1 keperawatan', 'keperawatan s1'] },
   { no: 7, name: 'S1 Gizi', faculty: 'FIKES', matchKeys: ['gizi'] },
-  { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', matchKeys: ['d3 keperawatan'] },
-  {
-    no: 9,
-    name: 'D3 Refraksi Optisi / Optometri (RO)',
-    faculty: 'FIKES',
-    // Tambahkan kata kunci 'optometri', 'refraksi', dan 'optisi' (unik dan tidak tabrakan dengan prodi lain)
-    matchKeys: ['optometri', 'refraksi', 'optisi', 'refraksi optisi', 'ro']
+  { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', matchKeys: ['d3 keperawatan', 'keperawatan d3'] },
+  { 
+    no: 9, 
+    name: 'D3 Refraksi Optisi / Optometri (RO)', 
+    faculty: 'FIKES', 
+    // HAPUS 'ro'! Hanya gunakan frasa kata utuh agar mahasiswa Apoteker tidak terseret
+    matchKeys: ['optometri', 'refraksi optisi', 'refraksi', 'optisi'] 
   },
-  { no: 10, name: 'D3 Teknologi Laboratorium Medis (TLM)', faculty: 'FIKES', matchKeys: ['teknologi laboratorium medis', 'tlm', 'analis kesehatan'] },
-  { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', matchKeys: ['farmasi'] },
-  { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', matchKeys: ['rekayasa kosmetik', 'kosmetik'] },
-  { no: 13, name: 'Pendidikan Profesi Apoteker', faculty: 'FARMASI', matchKeys: ['apoteker'] },
-  { no: 14, name: 'Pendidikan Profesi Ners', faculty: 'FIKES', matchKeys: ['ners'] }
+  { no: 10, name: 'D3 Teknologi Laboratorium Medis (TLM)', faculty: 'FIKES', matchKeys: ['laboratorium medis', 'tlm', 'analis kesehatan'] },
+  { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', matchKeys: ['s1 farmasi', 'farmasi s1'] },
+  { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', matchKeys: ['rekayasa kosmetik', 'kosmetik', 'rekos'] },
+  { no: 13, name: 'Pendidikan Profesi Apoteker', faculty: 'FARMASI', matchKeys: ['apoteker', 'psppa'] },
+  { 
+    no: 14, 
+    name: 'S2 Farmasi', 
+    faculty: 'FARMASI', 
+    matchKeys: ['s2 farmasi', 'magister farmasi', 'farmasi s2'] 
+  }
 ];
 
 // Fungsi Agregasi Matriks Per Prodi
 const calculateProdiMatrix = (votersList: any[]) => {
   return MASTER_PRODI_MATRIX.map(item => {
     const matchingVoters = (votersList || []).filter(v => {
-      // Bersihkan string dari spasi berlebih dan samakan huruf kecil
-      const rawProdi = (v.prodi || v.study_program || v.prodi_name || '').toLowerCase().trim();
-      
-      // Khusus Keperawatan agar S1 dan D3 tidak tertukar:
-      if (item.name.includes('S1 Keperawatan') && rawProdi.includes('d3')) return false;
-      if (item.name.includes('D3 Keperawatan') && !rawProdi.includes('d3')) return false;
+      const raw = (v.prodi || v.study_program || '').toLowerCase().trim();
 
-      // Pencocokan Nomor 9 & prodi lainnya
-      return item.matchKeys.some(key => rawProdi.includes(key));
+      // Filter ketat Keperawatan agar S1 dan D3 tidak tertukar:
+      if (item.name === 'S1 Keperawatan' && raw.includes('d3')) return false;
+      if (item.name === 'D3 Keperawatan' && (raw.includes('s1') || !raw.includes('d3'))) return false;
+
+      // Filter S1 Farmasi vs S2 Farmasi:
+      if (item.name === 'S1 Farmasi' && (raw.includes('s2') || raw.includes('magister') || raw.includes('apoteker') || raw.includes('psppa'))) return false;
+      if (item.name === 'S2 Farmasi' && (raw.includes('s1') || !raw.includes('s2') && !raw.includes('magister'))) return false;
+
+      // Match berdasarkan matchKeys
+      return item.matchKeys.some(key => raw.includes(key));
     });
 
     const totalDpt = matchingVoters.length;

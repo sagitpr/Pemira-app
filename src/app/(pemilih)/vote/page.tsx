@@ -25,6 +25,27 @@ import {
   BookOpen,
 } from 'lucide-react';
 
+const getFacultyByProdi = (prodi: string = ''): 'FTB' | 'FIKES' | 'FARMASI' => {
+  const p = prodi.toLowerCase();
+  if (p.includes('farmasi') || p.includes('apoteker') || p.includes('kosmetik') || p.includes('s2 farmasi')) {
+    return 'FARMASI';
+  }
+  if (
+    p.includes('keperawatan') ||
+    p.includes('administrasi rumah sakit') ||
+    p.includes('ars') ||
+    p.includes('gizi') ||
+    p.includes('optometri') ||
+    p.includes('refraksi') ||
+    p.includes('optisi') ||
+    p.includes('laboratorium') ||
+    p.includes('tlm')
+  ) {
+    return 'FIKES';
+  }
+  return 'FTB';
+};
+
 const MASTER_PRODI = [
   'S1 Farmasi',
   'Pendidikan Profesi Apoteker',
@@ -32,7 +53,6 @@ const MASTER_PRODI = [
   'S2 Farmasi',
   'S1 Keperawatan',
   'D3 Keperawatan',
-  'Pendidikan Profesi Ners',
   'S1 Administrasi Rumah Sakit',
   'D3 Teknologi Laboratorium Medis',
   'D3 Optometri',
@@ -40,17 +60,31 @@ const MASTER_PRODI = [
   'S1 Sistem Informasi',
   'S1 Bisnis Digital',
   'S1 Kewirausahaan',
+  'S1 Teknologi Pangan'
 ];
 
 
 // Helper Pencocokan Program Studi & HIMA Resmi (Fuzzy Matching Anti-Meleset)
 const isProdiMatching = (candidateProdi: string = '', voterProdi: string = '') => {
+  const rawC = candidateProdi.toLowerCase();
+  const rawV = voterProdi.toLowerCase();
+
+  // Strict separator for S1 vs S2 Farmasi
+  if (rawV.includes('s2') && !rawC.includes('s2') && !rawC.includes('magister')) return false;
+  if (!rawV.includes('s2') && !rawV.includes('magister') && (rawC.includes('s2') || rawC.includes('magister'))) return false;
+
+  // Strict separator for S1 Keperawatan vs D3 Keperawatan
+  if (rawV.includes('s1') && rawV.includes('keperawatan') && rawC.includes('d3')) return false;
+  if (rawV.includes('d3') && rawV.includes('keperawatan') && rawC.includes('s1')) return false;
+
   const clean = (str: string) =>
     str
       .toLowerCase()
       .replace(/^s1\s+/i, '')
       .replace(/^d3\s+/i, '')
       .replace(/^d4\s+/i, '')
+      .replace(/^s2\s+/i, '')
+      .replace(/^magister\s+/i, '')
       .replace(/^hima\s+/i, '')
       .replace(/himasi/i, 'sistem informasi')
       .replace(/himabid/i, 'bisnis digital')
@@ -922,6 +956,17 @@ function VoteContent() {
     const cat = (c.category || c.type || '').toUpperCase().trim();
     if (cat.includes('BEM')) return false;
     
+    const rawC = (c.prodi || c.hima_name || c.prodi_name || '').toLowerCase();
+    const rawV = (verifiedVoter?.prodi || voterProdi || '').toLowerCase();
+
+    // Strict separator for S1 vs S2 Farmasi
+    if (rawV.includes('s2') && !rawC.includes('s2') && !rawC.includes('magister')) return false;
+    if (!rawV.includes('s2') && !rawV.includes('magister') && (rawC.includes('s2') || rawC.includes('magister'))) return false;
+
+    // Strict separator for S1 Keperawatan vs D3 Keperawatan
+    if (rawV.includes('s1') && rawV.includes('keperawatan') && rawC.includes('d3')) return false;
+    if (rawV.includes('d3') && rawV.includes('keperawatan') && rawC.includes('s1')) return false;
+
     const candidateProdiClean = normalizeProdi(c.prodi || c.hima_name || c.prodi_name || '');
     if (!candidateProdiClean || !voterProdiClean) return false;
     return candidateProdiClean.includes(voterProdiClean) || voterProdiClean.includes(candidateProdiClean);
