@@ -809,6 +809,11 @@ export default function AdminDptPage() {
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                               Selesai
                             </span>
+                          ) : String(v.voting_status || '').toUpperCase() === 'MENGERJAKAN' || String(v.voting_status || '').toUpperCase() === 'SEDANG_MEMILIH' ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                              Mengerjakan
+                            </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400">
                               <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>

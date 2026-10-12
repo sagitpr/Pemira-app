@@ -296,7 +296,7 @@ function VoteContent() {
         setIsLoadingCandidates(true);
         const { data, error } = await supabase
           .from('candidates')
-          .select('id, name, candidate_number, paslon_number, category, prodi, hima_name, vision, mission, image_url, slogan');
+          .select('*');
 
         if (!error && data && data.length > 0) {
           setAllCandidates(data);
@@ -758,32 +758,65 @@ function VoteContent() {
       setStartVoteAt(nowIso);
       setDetectedVoter(voter);
 
-      // Update 'voters': set voting_status = 'SEDANG_MEMILIH'
-      await supabase
+      // 2. KIRIM UPDATE KE TABEL 'voters' (UBAH STATUS JADI MENGERJAKAN)
+      // Ini agar di halaman Admin DPT statusnya langsung berubah kuning "Mengerjakan"
+      const { error: updateVoterErr } = await supabase
         .from('voters')
         .update({
-          voting_status: 'SEDANG_MEMILIH',
+          voting_status: 'MENGERJAKAN',
           start_vote_at: nowIso,
           updated_at: nowIso,
         })
         .eq('nim', cleanNim);
 
-      // Update 'booths': set status = 'VOTING', current_voter_name, current_voter_nim, current_voter_prodi
+      if (updateVoterErr) {
+        console.warn('Gagal update status voter:', updateVoterErr.message);
+      }
+
+      // 3. KIRIM UPDATE KE TABEL 'booths' (UBAH BILIK JADI OCCUPIED)
+      // Ini agar di Dashboard Admin bilik langsung berubah merah "Sedang Memilih"
       const voterProdiVal = voter.prodi || voter.prodi_name || selectedProdi;
-      await supabase
-        .from('booths')
-        .update({
-          status: 'VOTING',
-          current_voter_name: voter.name || voter.nama || cleanName,
-          current_voter_nim: voter.nim || cleanNim,
-          current_voter_prodi: voterProdiVal,
-          voter_name: voter.name || voter.nama || cleanName,
-          voter_nim: voter.nim || cleanNim,
-          voter_prodi: voterProdiVal,
-          started_at: nowIso,
-          updated_at: nowIso,
-        })
-        .eq('booth_number', assignedBoothNumber);
+      const targetBoothId = assignedBoothId || assignedBooth?.id;
+
+      if (targetBoothId) {
+        const { error: updateBoothErr } = await supabase
+          .from('booths')
+          .update({
+            status: 'OCCUPIED',
+            current_voter_name: voter.name || voter.nama || cleanName,
+            current_voter_nim: voter.nim || cleanNim,
+            current_voter_prodi: voterProdiVal,
+            voter_name: voter.name || voter.nama || cleanName,
+            voter_nim: voter.nim || cleanNim,
+            voter_prodi: voterProdiVal,
+            started_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('id', targetBoothId);
+
+        if (updateBoothErr) {
+          console.warn('Gagal update bilik:', updateBoothErr.message);
+        }
+      } else {
+        const { error: updateBoothErr } = await supabase
+          .from('booths')
+          .update({
+            status: 'OCCUPIED',
+            current_voter_name: voter.name || voter.nama || cleanName,
+            current_voter_nim: voter.nim || cleanNim,
+            current_voter_prodi: voterProdiVal,
+            voter_name: voter.name || voter.nama || cleanName,
+            voter_nim: voter.nim || cleanNim,
+            voter_prodi: voterProdiVal,
+            started_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq('booth_number', assignedBoothNumber || 1);
+
+        if (updateBoothErr) {
+          console.warn('Gagal update bilik:', updateBoothErr.message);
+        }
+      }
 
       // Catat log aktivitas
       try {
@@ -1204,16 +1237,13 @@ function VoteContent() {
               <div className="w-24 h-4 bg-slate-100 rounded-full"></div>
             </div>
             
-            {/* Skeleton Foto Paslon */}
             <div className="w-full h-44 bg-slate-200 rounded-xl mb-3 relative overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent -translate-x-full animate-[shimmer_1.5s_infinite]"></div>
             </div>
 
-            {/* Skeleton Teks Nama & Visi */}
             <div className="h-5 bg-slate-200 rounded-md w-3/4 mb-2"></div>
             <div className="h-3.5 bg-slate-100 rounded-md w-1/2 mb-4"></div>
 
-            {/* Skeleton Tombol Pilih */}
             <div className="w-full h-11 bg-slate-200 rounded-xl mt-2"></div>
           </div>
         ))}
@@ -1492,9 +1522,9 @@ function VoteContent() {
             </div>
 
             {/* DAFTAR PASLON BEM */}
-            {isLoadingCandidates ? (
+            {isLoadingCandidates || allCandidates.length === 0 ? (
               <div className="w-full">
-                <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-2">
+                <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-3">
                   <div className="w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
                   <span>Memuat Surat Suara Resmi...</span>
                 </div>
@@ -1657,9 +1687,9 @@ function VoteContent() {
             </div>
 
             {/* JIKA SEDANG LOADING ATAU TIDAK ADA PASLON HIMA TERDAFTAR */}
-            {isLoadingCandidates ? (
+            {isLoadingCandidates || allCandidates.length === 0 ? (
               <div className="w-full">
-                <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-2">
+                <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-3">
                   <div className="w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
                   <span>Memuat Surat Suara Resmi...</span>
                 </div>

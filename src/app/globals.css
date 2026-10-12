@@ -39,3 +39,9 @@
 .animate-scan-beam {
   animation: scanBeam 2.6s ease-in-out infinite;
 }
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
