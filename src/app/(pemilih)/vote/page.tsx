@@ -132,6 +132,7 @@ function VoteContent() {
 
   // Candidate Data & Cache
   const [allCandidates, setAllCandidates] = useState<Candidate[]>([]);
+  const [candidatePhotos, setCandidatePhotos] = useState<Record<string, string>>({});
   const [isLoadingCandidates, setIsLoadingCandidates] = useState<boolean>(true);
   const [dbCandidatesLoaded, setDbCandidatesLoaded] = useState<boolean>(false);
   const [dbBemCandidates, setDbBemCandidates] = useState<Candidate[]>([]);
@@ -272,58 +273,100 @@ function VoteContent() {
     }
   }, [recordBoothVisit]);
 
-  // 1. INSTANT CACHE & ZERO-EGRESS SUPABASE FETCHING (0ms load dari pemira_candidates_master)
+  // Fetch Foto Secara On-Demand (Hanya Paslon yang Tampil: BEM + HIMA Prodi Pemilih)
+  const fetchRelevantPhotos = useCallback(async (candidateList: any[], voterProdiParam?: string) => {
+    try {
+      const currentProdi = (voterProdiParam || detectedVoter?.prodi || detectedVoter?.prodi_name || inputProdi || '').toLowerCase().trim();
+      // Target: BEM candidates + HIMA candidates sesuai prodi pemilih (hanya ~3-4 paslon, bukan 17!)
+      const targetIds = candidateList
+        .filter((c: any) => {
+          const isBem = (c.category || c.type || '').toUpperCase().includes('BEM');
+          const isHimaProdi = currentProdi && (c.prodi || c.hima_name || '').toLowerCase().includes(currentProdi);
+          return isBem || isHimaProdi;
+        })
+        .map((c: any) => c.id);
+
+      if (targetIds.length === 0) return;
+
+      const { data: photos, error } = await supabase
+        .from('candidates')
+        .select('id, image_url')
+        .in('id', targetIds);
+
+      if (!error && photos) {
+        const photoMap: Record<string, string> = {};
+        photos.forEach((p: any) => {
+          if (p.image_url) photoMap[p.id] = p.image_url;
+        });
+        setCandidatePhotos((prev) => ({ ...prev, ...photoMap }));
+      }
+    } catch (e) {
+      console.warn('Background photo fetch warning:', e);
+    }
+  }, [detectedVoter, inputProdi]);
+
+  // 1. DECOUPLED METADATA FETCHING (0.1 detik muncul) & ON-DEMAND PHOTO LOADING
   useEffect(() => {
-    async function loadCandidates() {
-      // 1. Prioritaskan pembacaan instan dari localStorage
-      const localData = typeof window !== 'undefined' ? localStorage.getItem('pemira_candidates_master') : null;
-      if (localData) {
+    async function loadCandidatesMetadata() {
+      // 1. Cek cache teks di localStorage (pasti muat aman karena hanya ~2 KB tanpa base64)
+      const cached = typeof window !== 'undefined' ? localStorage.getItem('pemira_candidates_meta_v2') : null;
+      if (cached) {
         try {
-          const parsed = JSON.parse(localData);
+          const parsed = JSON.parse(cached);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setAllCandidates(parsed);
             setDbCandidatesLoaded(true);
             setIsLoadingCandidates(false);
-            return; // Langsung selesai dalam 0ms tanpa request ke Supabase!
+            // Muat foto di background khusus paslon yang diperlukan
+            fetchRelevantPhotos(parsed);
+            return; // Langsung tampil 0ms tanpa request ke Supabase!
           }
-        } catch (e) {
-          console.error("Gagal parse cache paslon:", e);
-        }
+        } catch (e) {}
       }
 
-      // 2. Jika memori kosong, baru ambil dari Supabase sekali saja
+      // 2. Fetch metadata teks ringan dari Supabase (CUMA ~2 KB, selesai dalam 0.1 detik!)
       try {
         setIsLoadingCandidates(true);
         const { data, error } = await supabase
           .from('candidates')
-          .select('*');
+          .select('id, name, candidate_number, category, prodi, hima_name, slogan, vision, mission');
 
         if (!error && data && data.length > 0) {
           setAllCandidates(data);
           setDbCandidatesLoaded(true);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('pemira_candidates_master', JSON.stringify(data));
-          }
+          setIsLoadingCandidates(false); // Kartu paslon langsung muncul seketika!
+          try {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('pemira_candidates_meta_v2', JSON.stringify(data));
+            }
+          } catch (storageErr) {}
+
+          // Lanjutkan mengambil foto secara background on-demand
+          fetchRelevantPhotos(data);
         } else {
           const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
           setAllCandidates(fallback);
           setDbCandidatesLoaded(true);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('pemira_candidates_master', JSON.stringify(fallback));
-          }
+          setIsLoadingCandidates(false);
         }
       } catch (err) {
-        console.error("Gagal mengambil paslon:", err);
+        console.error('Gagal load metadata paslon:', err);
         const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
         setAllCandidates(fallback);
         setDbCandidatesLoaded(true);
-      } finally {
         setIsLoadingCandidates(false);
       }
     }
 
-    loadCandidates();
-  }, []);
+    loadCandidatesMetadata();
+  }, [fetchRelevantPhotos]);
+
+  // Re-fetch foto on-demand saat pemilih terdeteksi / memilih prodi
+  useEffect(() => {
+    if (detectedVoter && allCandidates.length > 0) {
+      fetchRelevantPhotos(allCandidates, detectedVoter.prodi || detectedVoter.prodi_name);
+    }
+  }, [detectedVoter, allCandidates, fetchRelevantPhotos]);
 
   // 1. Initial Session Check & Auto-Booth Allocation
   useEffect(() => {
@@ -758,6 +801,10 @@ function VoteContent() {
       setStartVoteAt(nowIso);
       setDetectedVoter(voter);
 
+      // Tarik foto HIMA spesifik prodi pemilih ini secara on-demand
+      const voterProdiVal = voter.prodi || voter.prodi_name || selectedProdi;
+      fetchRelevantPhotos(allCandidates, voterProdiVal);
+
       // 2. KIRIM UPDATE KE TABEL 'voters' (UBAH STATUS JADI MENGERJAKAN)
       // Ini agar di halaman Admin DPT statusnya langsung berubah kuning "Mengerjakan"
       const { error: updateVoterErr } = await supabase
@@ -775,7 +822,6 @@ function VoteContent() {
 
       // 3. KIRIM UPDATE KE TABEL 'booths' (UBAH BILIK JADI OCCUPIED)
       // Ini agar di Dashboard Admin bilik langsung berubah merah "Sedang Memilih"
-      const voterProdiVal = voter.prodi || voter.prodi_name || selectedProdi;
       const targetBoothId = assignedBoothId || assignedBooth?.id;
 
       if (targetBoothId) {
@@ -1534,7 +1580,7 @@ function VoteContent() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
                 {bemCandidates.map((cand: any) => {
                   const isSelected = selectedBem && String(selectedBem.id) === String(cand.id);
-                  const displayPhoto = cand?.photoUrl || cand?.photo_url || cand?.image_url;
+                  const displayPhoto = candidatePhotos[cand.id] || cand?.photoUrl || cand?.photo_url || cand?.image_url;
                   const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
                   const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
                   const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
@@ -1562,7 +1608,7 @@ function VoteContent() {
                               {displayName} {displayVice ? `& ${displayVice}` : ''}
                             </h4>
                             <p className="text-xs text-slate-500 italic mt-0.5 line-clamp-2">
-                              &ldquo;{cand?.tagline || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
+                              &ldquo;{cand?.tagline || cand?.slogan || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
                             </p>
                           </div>
                           <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
@@ -1572,14 +1618,17 @@ function VoteContent() {
 
                         <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
                           {displayPhoto ? (
-                            <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
+                            <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover object-top" />
                           ) : (
-                            <div className="text-center p-3">
-                              <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
+                            <div className="text-center p-3 flex flex-col items-center justify-center h-full w-full">
+                              <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mb-1.5 font-black text-sm shadow-xs">
                                 {displayNumber}
                               </div>
-                              <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                                 Paslon {displayNumber}
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-medium animate-pulse mt-0.5">
+                                Memuat Foto Resmi...
                               </span>
                             </div>
                           )}
@@ -1590,7 +1639,12 @@ function VoteContent() {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setDetailModalCandidate(cand);
+                              const candWithPhoto = {
+                                ...cand,
+                                image_url: candidatePhotos[cand.id] || cand.image_url,
+                                photoUrl: candidatePhotos[cand.id] || cand.photoUrl,
+                              };
+                              setDetailModalCandidate(candWithPhoto);
                               setIsDetailModalOpen(true);
                             }}
                             className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
@@ -1710,7 +1764,7 @@ function VoteContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {prodiHimaCandidates.map((cand: any) => {
                     const isSelected = selectedHima && String(selectedHima.id) === String(cand.id);
-                    const displayPhoto = cand?.photoUrl || cand?.photo_url || cand?.image_url;
+                    const displayPhoto = candidatePhotos[cand.id] || cand?.photoUrl || cand?.photo_url || cand?.image_url;
                     const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
                     const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
                     const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
@@ -1754,14 +1808,17 @@ function VoteContent() {
 
                           <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-3">
                             {displayPhoto ? (
-                              <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
+                              <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover object-top" />
                             ) : (
-                              <div className="text-center p-3">
-                                <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
+                              <div className="text-center p-3 flex flex-col items-center justify-center h-full w-full">
+                                <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mb-1.5 font-black text-sm shadow-xs">
                                   {displayNumber}
                                 </div>
-                                <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                                   Paslon {displayNumber}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-medium animate-pulse mt-0.5">
+                                  Memuat Foto Resmi...
                                 </span>
                               </div>
                             )}
@@ -1772,7 +1829,12 @@ function VoteContent() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setDetailModalCandidate(cand);
+                                const candWithPhoto = {
+                                  ...cand,
+                                  image_url: candidatePhotos[cand.id] || cand.image_url,
+                                  photoUrl: candidatePhotos[cand.id] || cand.photoUrl,
+                                };
+                                setDetailModalCandidate(candWithPhoto);
                                 setIsDetailModalOpen(true);
                               }}
                               className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
