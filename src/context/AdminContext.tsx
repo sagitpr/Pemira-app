@@ -237,11 +237,16 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const fetchCandidatesFromDb = async () => {
     try {
+      // Lewati penarikan data candidates jika sedang membuka halaman /admin/dpt
+      if (typeof window !== 'undefined' && window.location.pathname.includes('/admin/dpt')) {
+        return;
+      }
       const { createClient } = await import('@/lib/supabase/client');
       const supabase = createClient();
+      // Tarik hanya metadata penting tanpa mentransfer foto base64 8MB
       const { data, error } = await supabase
         .from('candidates')
-        .select('*')
+        .select('id, candidate_number, paslon_number, name, leader_name, vice_leader_name, category, type, faculty_id, prodi, prodi_id, hima_name, slogan')
         .order('candidate_number', { ascending: true });
 
       if (!error && Array.isArray(data)) {

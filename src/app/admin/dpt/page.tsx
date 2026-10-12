@@ -55,9 +55,9 @@ const TableSkeleton = () => (
 );
 
 export default function AdminDptPage() {
-  const { voters: fallbackVoters, addVoter: addVoterContext, deleteVoter: deleteVoterContext, showToast } = useAdmin();
+  const { showToast } = useAdmin();
 
-  const [voters, setVoters] = useState<Voter[]>([]);
+  const [voters, setVoters] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'belum' | 'selesai'>('ALL');
@@ -155,12 +155,19 @@ export default function AdminDptPage() {
       if (!isBackground) setIsLoading(true);
       const supabase = createClient();
       while (hasMore) {
+        // Gunakan select('*') yang terbukti sukses status 200/206 (hanya 47 KB teks)
         const { data, error } = await supabase
           .from('voters')
-          .select('id, nim, name, nama, prodi, prodi_name, prodi_id, faculty_id, angkatan, has_voted, voting_status, start_vote_at, completed_at, duration_seconds, voted_at, booth_id, updated_at')
+          .select('*')
           .range(from, from + step - 1);
 
-        if (error || !data || data.length === 0) {
+        if (error) {
+          console.error("Supabase error fetching voters:", error.message);
+          hasMore = false;
+          break;
+        }
+
+        if (!data || data.length === 0) {
           hasMore = false;
           break;
         }
@@ -175,38 +182,16 @@ export default function AdminDptPage() {
       }
 
       if (allVoters.length > 0) {
-        const mapped: Voter[] = allVoters.map((d: any) => {
-          const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
-          const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
-          const prodiResolved = d.prodi || d.prodi_name || d.prodiName || 'Kewirausahaan';
-          return {
-            id: String(d.id || d.nim),
-            nim: d.nim,
-            name: d.name || d.nama,
-            facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
-            prodiId: d.prodi_id || d.prodiId || 'general',
-            prodiName: prodiResolved,
-            prodi: prodiResolved,
-            prodi_name: prodiResolved,
-            angkatan: d.angkatan || '2024',
-            status,
-            voting_status: rawStatus as any,
-            has_voted: Boolean(d.has_voted),
-            start_vote_at: d.start_vote_at,
-            completed_at: d.completed_at,
-            duration_seconds: d.duration_seconds,
-            votedAt: d.voted_at || d.votedAt || undefined,
-            boothId: d.booth_id || d.boothId || undefined,
-          } as any;
-        });
-
-        setVoters(mapped); // Menampung seluruh 2.096 pemilih
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(mapped));
-        }
+        setVoters(allVoters);
+        // Simpan di sessionStorage agar tidak perlu request berulang saat pindah menu
+        try {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(allVoters));
+          }
+        } catch (e) {}
       }
     } catch (err) {
-      console.error(err);
+      console.error("Crash fetch voters:", err);
     } finally {
       setIsLoading(false);
     }
@@ -251,18 +236,11 @@ export default function AdminDptPage() {
         setVoters((prev) => {
           const updated = prev.map((v) => {
             if (v.id === String(updatedRow.id) || v.nim === updatedRow.nim) {
-              const rawStatus = (updatedRow.voting_status || (updatedRow.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
-              const status: 'belum' | 'selesai' | 'memilih' = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
               return {
                 ...v,
+                ...updatedRow,
                 has_voted: Boolean(updatedRow.has_voted),
-                voting_status: rawStatus as any,
-                status,
-                start_vote_at: updatedRow.start_vote_at,
-                completed_at: updatedRow.completed_at,
-                duration_seconds: updatedRow.duration_seconds,
-                votedAt: updatedRow.completed_at || updatedRow.voted_at || undefined,
-              } as Voter;
+              };
             }
             return v;
           });
@@ -277,29 +255,7 @@ export default function AdminDptPage() {
         if (!newRow) return;
         fetchDptMetrics();
         setVoters((prev) => {
-          const rawStatus = (newRow.voting_status || (newRow.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
-          const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
-          const prodiResolved = newRow.prodi || newRow.prodi_name || 'Kewirausahaan';
-          const newVoterItem: Voter = {
-            id: String(newRow.id || newRow.nim),
-            nim: newRow.nim,
-            name: newRow.name || newRow.nama,
-            facultyId: (newRow.faculty_id || 'FTB') as any,
-            prodiId: newRow.prodi_id || 'general',
-            prodiName: prodiResolved,
-            prodi: prodiResolved,
-            prodi_name: prodiResolved,
-            angkatan: newRow.angkatan || '2024',
-            status,
-            voting_status: rawStatus as any,
-            has_voted: Boolean(newRow.has_voted),
-            start_vote_at: newRow.start_vote_at,
-            completed_at: newRow.completed_at,
-            duration_seconds: newRow.duration_seconds,
-            votedAt: newRow.completed_at || undefined,
-            boothId: newRow.booth_id || undefined,
-          } as any;
-          const updated = [newVoterItem, ...prev.filter(v => v.nim !== newRow.nim)];
+          const updated = [{ ...newRow, has_voted: Boolean(newRow.has_voted) }, ...prev.filter((v) => v.nim !== newRow.nim)];
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(updated));
           }
@@ -311,7 +267,7 @@ export default function AdminDptPage() {
         if (!oldRow) return;
         fetchDptMetrics();
         setVoters((prev) => {
-          const updated = prev.filter(v => v.id !== String(oldRow.id) && v.nim !== oldRow.nim);
+          const updated = prev.filter((v) => v.id !== String(oldRow.id) && v.nim !== oldRow.nim);
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('pemira_admin_voters_cache', JSON.stringify(updated));
           }
@@ -343,22 +299,24 @@ export default function AdminDptPage() {
   // Filter DPT
   const filteredVoters = voters.filter((v) => {
     const q = searchQuery.toLowerCase();
-    const prodiVal = (v as any).prodi || v.prodiName || (v as any).prodi_name || '';
-    const angkatanVal = String((v as any).angkatan || '');
+    const nameVal = String(v.name || v.nama || '').toLowerCase();
+    const nimVal = String(v.nim || '').toLowerCase();
+    const prodiVal = String(v.prodi || v.study_program || v.prodi_name || v.prodiName || '').toLowerCase();
+    const angkatanVal = String(v.angkatan || (v.nim ? String(v.nim).substring(4, 8) : ''));
     const matchSearch =
-      v.name?.toLowerCase().includes(q) ||
-      v.nim?.toLowerCase().includes(q) ||
-      prodiVal.toLowerCase().includes(q) ||
-      angkatanVal.toLowerCase().includes(q);
-    const isVoterDone = Boolean(v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai');
+      nameVal.includes(q) ||
+      nimVal.includes(q) ||
+      prodiVal.includes(q) ||
+      angkatanVal.includes(q);
+    const isVoterDone = Boolean(v.has_voted);
     const matchStatus =
       statusFilter === 'ALL' ||
       (statusFilter === 'selesai' && isVoterDone) ||
       (statusFilter === 'belum' && !isVoterDone);
     const matchProdi =
       selectedProdi === 'ALL' ||
-      prodiVal.toLowerCase().includes(selectedProdi.toLowerCase()) ||
-      selectedProdi.toLowerCase().includes(prodiVal.toLowerCase());
+      prodiVal.includes(selectedProdi.toLowerCase()) ||
+      selectedProdi.toLowerCase().includes(prodiVal);
     return matchSearch && matchStatus && matchProdi;
   });
 
@@ -390,7 +348,6 @@ export default function AdminDptPage() {
       }
 
       setVoters((prev) => prev.filter((v) => v.id !== voter.id && v.nim !== voter.nim));
-      deleteVoterContext(voter.id || voter.nim);
       showToast(`Pemilih ${voter.name} (${voter.nim}) berhasil dihapus dari DPT.`, 'info');
       await fetchSupabaseVoters();
     } catch (err: any) {
@@ -763,69 +720,58 @@ export default function AdminDptPage() {
                     </tr>
                   ) : (
                   paginatedVoters.map((v) => {
-                    const isSelesai = Boolean(v.has_voted || v.voting_status === 'SUDAH' || v.voting_status === 'SELESAI' || v.status === 'selesai');
-                    const isMengerjakan = !isSelesai && Boolean(v.voting_status === 'SEDANG_MEMILIH' || v.voting_status === 'MENGERJAKAN' || v.status === 'memilih');
                     const isDeletingThis = deletingId === (v.id || v.nim);
+                    const displayName = v.name || v.nama || '-';
+                    const displayProdi = v.prodi || v.study_program || v.prodi_name || '-';
+                    const displayAngkatan = v.angkatan || (v.nim ? String(v.nim).substring(4, 8) : '-');
+                    const isSelesai = Boolean(v.has_voted);
 
                     let waktuMemilihDisplay = '-';
-                    if (isMengerjakan) {
-                      waktuMemilihDisplay = 'Sedang di Bilik...';
-                    } else if (isSelesai) {
+                    if (isSelesai) {
                       if (typeof v.duration_seconds === 'number' && v.duration_seconds > 0) {
                         const m = Math.floor(v.duration_seconds / 60);
                         const s = v.duration_seconds % 60;
                         const mm = m.toString().padStart(2, '0');
                         const ss = s.toString().padStart(2, '0');
                         waktuMemilihDisplay = `${mm}:${ss} (${(v.duration_seconds / 60).toFixed(1)} mnt)`;
-                      } else if (v.votedAt) {
-                        waktuMemilihDisplay = v.votedAt;
                       } else if (v.completed_at) {
                         waktuMemilihDisplay = new Date(v.completed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+                      } else if (v.voted_at || v.votedAt) {
+                        waktuMemilihDisplay = v.voted_at || v.votedAt;
                       } else {
                         waktuMemilihDisplay = 'Selesai';
                       }
                     }
 
                     return (
-                      <tr key={v.id} className="hover:bg-[#FAF8F4]/60 transition-colors">
+                      <tr key={v.id || v.nim} className="hover:bg-[#FAF8F4]/60 transition-colors">
                         <td className="py-3 px-5 font-mono font-bold text-slate-900">
                           {v.nim}
                         </td>
                         <td className="py-3 px-5 font-bold text-slate-900">
-                          {v.name}
+                          {displayName}
                         </td>
                         <td className="py-3 px-5 text-slate-600 font-medium">
-                          {(v as any).prodi || (v as any).prodi_name || v.prodiName || '-'}
+                          {displayProdi}
                         </td>
                         <td className="py-3 px-4 text-center font-mono font-semibold text-slate-700">
-                          {(v as any).angkatan || '-'}
+                          {displayAngkatan}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <div
-                            className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
-                              isSelesai
-                                ? 'text-emerald-600'
-                                : isMengerjakan
-                                ? 'text-amber-600'
-                                : 'text-slate-500'
-                            }`}
-                          >
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                isSelesai
-                                  ? 'bg-emerald-500'
-                                  : isMengerjakan
-                                  ? 'bg-amber-500 animate-pulse'
-                                  : 'bg-slate-300'
-                              }`}
-                            />
-                            <span>{isSelesai ? 'Selesai' : isMengerjakan ? 'Mengerjakan' : 'Belum'}</span>
-                          </div>
+                          {v.has_voted ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Selesai
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                              Belum
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-5 text-right font-mono text-[11px]">
-                          {isMengerjakan ? (
-                            <span className="text-amber-600 font-bold animate-pulse">{waktuMemilihDisplay}</span>
-                          ) : isSelesai ? (
+                          {isSelesai ? (
                             <span className="text-emerald-700 font-semibold">{waktuMemilihDisplay}</span>
                           ) : (
                             <span className="text-slate-400">-</span>
