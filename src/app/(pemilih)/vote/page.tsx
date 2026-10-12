@@ -42,42 +42,6 @@ const MASTER_PRODI = [
   'S1 Kewirausahaan',
 ];
 
-const PRODI_FACULTY_MAP: Record<string, string> = {
-  // FTB
-  'bisnis digital': 'FTB',
-  'sistem informasi': 'FTB',
-  'teknologi pangan': 'FTB',
-  'kewirausahaan': 'FTB',
-  // FIKES
-  'administrasi rumah sakit': 'FIKES',
-  's1 administrasi rumah sakit (ars)': 'FIKES',
-  's1 keperawatan': 'FIKES',
-  'd3 keperawatan': 'FIKES',
-  's1 gizi': 'FIKES',
-  'd3 refraksi optisi (ro)': 'FIKES',
-  'refraksi optisi': 'FIKES',
-  'd3 teknologi laboratorium medis (tlm)': 'FIKES',
-  'teknologi laboratorium medis': 'FIKES',
-  'ners': 'FIKES',
-  'profesi ners': 'FIKES',
-  // FARMASI
-  'farmasi': 'FARMASI',
-  's1 farmasi': 'FARMASI',
-  'rekayasa kosmetik': 'FARMASI',
-  's1 rekayasa kosmetik': 'FARMASI',
-  'apoteker': 'FARMASI',
-  'pendidikan profesi apoteker': 'FARMASI',
-};
-
-const getFacultyFromProdi = (prodiName: string = ''): string => {
-  const clean = prodiName.toLowerCase().replace(/^(s1|d3|d4)\s+/i, '').trim();
-  for (const [key, faculty] of Object.entries(PRODI_FACULTY_MAP)) {
-    if (clean.includes(key) || key.includes(clean)) {
-      return faculty;
-    }
-  }
-  return 'FTB'; // Default fallback jika tidak terdeteksi
-};
 
 // Helper Pencocokan Program Studi & HIMA Resmi (Fuzzy Matching Anti-Meleset)
 const isProdiMatching = (candidateProdi: string = '', voterProdi: string = '') => {
@@ -951,7 +915,6 @@ function VoteContent() {
   // Helper Data Pemilih & Program Studi
   const verifiedVoter = detectedVoter;
   const voterProdi = verifiedVoter?.prodi || verifiedVoter?.prodi_name || inputProdi.trim();
-  const voterFaculty = getFacultyFromProdi(voterProdi || '');
 
   // B. PENYARINGAN PASLON (FUZZY BEM CATEGORY MATCH):
   const candidatesPool = allCandidates.length > 0 ? allCandidates : [...safeBemList, ...safeHimaList];
@@ -962,30 +925,27 @@ function VoteContent() {
     return cat.includes('BEM');
   });
 
-  // - Ambil seluruh kandidat non-BEM yang berada di fakultas yang sama
-  const facultyHimaCandidates = candidatesPool.filter((c: any) => {
+  // - Paslon HIMA Khusus Per-Prodi:
+  const normalizeProdi = (str: string = '') => 
+    str.toLowerCase()
+      .replace(/^(s1|d3|d4)\s+/i, '')
+      .replace(/^program studi\s+/i, '')
+      .replace(/^hima\s+/i, '')
+      .replace(/[\(\)]/g, '')
+      .trim();
+
+  const voterProdiClean = normalizeProdi(verifiedVoter?.prodi || voterProdi || '');
+
+  const prodiHimaCandidates = candidatesPool.filter((c: any) => {
     const cat = (c.category || c.type || '').toUpperCase().trim();
     if (cat.includes('BEM')) return false;
-
-    // Cek kesesuaian fakultas kandidat
-    const candidateFaculty = c.faculty || getFacultyFromProdi(c.prodi || c.hima_name || c.prodi_name || '');
-    return candidateFaculty.toUpperCase() === voterFaculty.toUpperCase();
+    
+    const candidateProdiClean = normalizeProdi(c.prodi || c.hima_name || c.prodi_name || '');
+    if (!candidateProdiClean || !voterProdiClean) return false;
+    return candidateProdiClean.includes(voterProdiClean) || voterProdiClean.includes(candidateProdiClean);
   });
 
-  // Pisahkan menjadi: Rekomendasi Jurusan Sendiri vs Paslon Fakultas Lainnya
-  const cleanVoterProdi = (voterProdi || '').toLowerCase().replace(/^(s1|d3|d4)\s+/i, '').trim();
-
-  const recommendedCandidates = facultyHimaCandidates.filter((c: any) => {
-    const cp = (c.prodi || c.hima_name || c.prodi_name || '').toLowerCase();
-    return cp.includes(cleanVoterProdi) || cleanVoterProdi.includes(cp);
-  });
-
-  const otherFacultyCandidates = facultyHimaCandidates.filter((c: any) => {
-    const cp = (c.prodi || c.hima_name || c.prodi_name || '').toLowerCase();
-    return !(cp.includes(cleanVoterProdi) || cleanVoterProdi.includes(cp));
-  });
-
-  const himaCandidates = facultyHimaCandidates;
+  const himaCandidates = prodiHimaCandidates;
 
   // Loading State
   if (!mounted || loading) {
@@ -1679,245 +1639,117 @@ function VoteContent() {
                 </div>
                 <CandidateSkeleton />
               </div>
-            ) : facultyHimaCandidates.length === 0 ? (
-              <div className="p-8 sm:p-12 rounded-3xl bg-blue-50/70 border-2 border-dashed border-blue-200 text-center space-y-3">
-                <Info className="w-12 h-12 text-blue-600 mx-auto" />
-                <h4 className="text-base sm:text-lg font-black text-slate-900">
-                  Tidak ada pasangan calon HIMA terdaftar untuk fakultas Anda ({voterFaculty})
-                </h4>
-                <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
-                  Tidak ditemukan pasangan calon Himpunan Mahasiswa yang terdaftar untuk Fakultas{' '}
-                  <strong>{voterFaculty}</strong> di database. Anda dapat langsung melanjutkan untuk meninjau suara BEM Anda.
+            ) : prodiHimaCandidates.length === 0 ? (
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 text-center my-6">
+                <p className="text-xs font-bold tracking-widest text-slate-400 uppercase mb-2">Informasi Surat Suara HIMA</p>
+                <h3 className="text-sm font-semibold text-slate-700 mb-1">
+                  Tidak Ada Pasangan Calon HIMA Terdaftar
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+                  Untuk Program Studi {verifiedVoter?.prodi || voterProdi}, tidak terdapat pasangan calon Himpunan Mahasiswa pada pemilihan ini. Anda hanya menggunakan hak suara untuk pemilihan Presiden BEM Universitas.
                 </p>
               </div>
             ) : (
               <div className="space-y-6 pt-2">
-                {/* B. Sesi Rekomendasi Prodi (Jika ada kandidat dari jurusannya) */}
-                {recommendedCandidates.length > 0 && (
-                  <div className="mb-6">
-                    <div className="flex items-center gap-2 mb-3 px-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
-                        Rekomendasi Sesuai Jurusan Anda ({verifiedVoter?.prodi || voterProdi})
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {recommendedCandidates.map((cand: any) => {
-                        const isSelected = selectedHima && String(selectedHima.id) === String(cand.id);
-                        const displayPhoto = cand?.photoUrl || cand?.photo_url || cand?.image_url;
-                        const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
-                        const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                        const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
-                        const candProdi = cand?.prodi || cand?.hima_name || cand?.prodi_name || '';
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {prodiHimaCandidates.map((cand: any) => {
+                    const isSelected = selectedHima && String(selectedHima.id) === String(cand.id);
+                    const displayPhoto = cand?.photoUrl || cand?.photo_url || cand?.image_url;
+                    const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
+                    const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
+                    const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
+                    const candProdi = cand?.prodi || cand?.hima_name || cand?.prodi_name || '';
 
-                        return (
-                          <div
-                            key={String(cand?.id || displayNumber)}
-                            onClick={() => {
-                              setSelectedHima(cand);
-                              setSelectedHimaId(String(cand.id));
-                            }}
-                            className={`rounded-3xl border-2 p-5 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                              isSelected
-                                ? 'border-blue-600 bg-blue-50/40 ring-4 ring-blue-600/15 shadow-xl scale-[1.01]'
-                                : 'border-emerald-300/80 bg-white hover:border-emerald-500 hover:shadow-md'
-                            }`}
-                          >
+                    return (
+                      <div
+                        key={String(cand?.id || displayNumber)}
+                        onClick={() => {
+                          setSelectedHima(cand);
+                          setSelectedHimaId(String(cand.id));
+                        }}
+                        className={`rounded-3xl border-2 p-5 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-blue-600 bg-blue-50/40 ring-4 ring-blue-600/15 shadow-xl scale-[1.01]'
+                            : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
                             <div>
-                              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
-                                <div>
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-[11px] font-black text-blue-600 uppercase tracking-wide block">
-                                      Nomor Urut {displayNumber}: Paslon HIMA
-                                    </span>
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                                      Rekomendasi Prodi
-                                    </span>
-                                  </div>
-                                  <h4 className="text-base font-black text-slate-900 mt-1">
-                                    {displayName} {displayVice ? `& ${displayVice}` : ''}
-                                  </h4>
-                                  {candProdi && (
-                                    <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
-                                      {candProdi}
-                                    </p>
-                                  )}
-                                  <p className="text-xs text-slate-500 italic mt-0.5 line-clamp-2">
-                                    &ldquo;{cand?.tagline || cand?.slogan || 'Sinergi dan Prestasi untuk Program Studi'}&rdquo;
-                                  </p>
-                                </div>
-                                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
-                                  {displayNumber}
-                                </div>
-                              </div>
-
-                              <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-3">
-                                {displayPhoto ? (
-                                  <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="text-center p-3">
-                                    <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                                      {displayNumber}
-                                    </div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                                      Paslon {displayNumber}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="text-center">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDetailModalCandidate(cand);
-                                    setIsDetailModalOpen(true);
-                                  }}
-                                  className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>Lihat Visi &amp; Misi Resmi</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="mt-4">
-                              {isSelected ? (
-                                <div className="w-full bg-blue-600 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
-                                  <Check className="w-4 h-4 stroke-[3]" />
-                                  <span>Terpilih sebagai Pilihan Anda</span>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedHima(cand);
-                                    setSelectedHimaId(String(cand.id));
-                                  }}
-                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-blue-600 hover:bg-slate-50 font-bold py-2 px-4 rounded-full text-xs transition-colors cursor-pointer"
-                                >
-                                  Pilih Nomor Urut {displayNumber}
-                                </button>
+                              <span className="text-[11px] font-black text-blue-600 uppercase tracking-wide block">
+                                Nomor Urut {displayNumber}: Paslon HIMA
+                              </span>
+                              <h4 className="text-base font-black text-slate-900 mt-1">
+                                {displayName} {displayVice ? `& ${displayVice}` : ''}
+                              </h4>
+                              {candProdi && (
+                                <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
+                                  {candProdi}
+                                </p>
                               )}
+                              <p className="text-xs text-slate-500 italic mt-0.5 line-clamp-2">
+                                &ldquo;{cand?.tagline || cand?.slogan || 'Sinergi dan Prestasi untuk Program Studi'}&rdquo;
+                              </p>
+                            </div>
+                            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                              {displayNumber}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
 
-                {/* C. Sesi Paslon Lingkup Fakultas Lainnya */}
-                {otherFacultyCandidates.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3 px-1">
-                      <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        Pasangan Calon HIMA Lainnya di Lingkup {voterFaculty}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {otherFacultyCandidates.map((cand: any) => {
-                        const isSelected = selectedHima && String(selectedHima.id) === String(cand.id);
-                        const displayPhoto = cand?.photoUrl || cand?.photo_url || cand?.image_url;
-                        const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
-                        const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
-                        const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
-                        const candProdi = cand?.prodi || cand?.hima_name || cand?.prodi_name || '';
-
-                        return (
-                          <div
-                            key={String(cand?.id || displayNumber)}
-                            onClick={() => {
-                              setSelectedHima(cand);
-                              setSelectedHimaId(String(cand.id));
-                            }}
-                            className={`rounded-3xl border-2 p-5 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-                              isSelected
-                                ? 'border-blue-600 bg-blue-50/40 ring-4 ring-blue-600/15 shadow-xl scale-[1.01]'
-                                : 'border-slate-200 bg-white hover:border-slate-400 hover:shadow-md'
-                            }`}
-                          >
-                            <div>
-                              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100 mb-3">
-                                <div>
-                                  <span className="text-[11px] font-black text-blue-600 uppercase tracking-wide block">
-                                    Nomor Urut {displayNumber}: Paslon HIMA
-                                  </span>
-                                  <h4 className="text-base font-black text-slate-900 mt-1">
-                                    {displayName} {displayVice ? `& ${displayVice}` : ''}
-                                  </h4>
-                                  {candProdi && (
-                                    <p className="text-[11px] font-semibold text-slate-600 mt-0.5">
-                                      {candProdi}
-                                    </p>
-                                  )}
-                                  <p className="text-xs text-slate-500 italic mt-0.5 line-clamp-2">
-                                    &ldquo;{cand?.tagline || cand?.slogan || 'Sinergi dan Prestasi untuk Program Studi'}&rdquo;
-                                  </p>
-                                </div>
-                                <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                          <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-3">
+                            {displayPhoto ? (
+                              <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="text-center p-3">
+                                <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
                                   {displayNumber}
                                 </div>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase block">
+                                  Paslon {displayNumber}
+                                </span>
                               </div>
-
-                              <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-3">
-                                {displayPhoto ? (
-                                  <img src={displayPhoto} alt={displayName} className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="text-center p-3">
-                                    <div className="w-12 h-12 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center mx-auto mb-1 font-black text-sm">
-                                      {displayNumber}
-                                    </div>
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase block">
-                                      Paslon {displayNumber}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="text-center">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDetailModalCandidate(cand);
-                                    setIsDetailModalOpen(true);
-                                  }}
-                                  className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Eye className="w-3.5 h-3.5" />
-                                  <span>Lihat Visi &amp; Misi Resmi</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="mt-4">
-                              {isSelected ? (
-                                <div className="w-full bg-blue-600 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
-                                  <Check className="w-4 h-4 stroke-[3]" />
-                                  <span>Terpilih sebagai Pilihan Anda</span>
-                                </div>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedHima(cand);
-                                    setSelectedHimaId(String(cand.id));
-                                  }}
-                                  className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-blue-600 hover:bg-slate-50 font-bold py-2 px-4 rounded-full text-xs transition-colors cursor-pointer"
-                                >
-                                  Pilih Nomor Urut {displayNumber}
-                                </button>
-                              )}
-                            </div>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+
+                          <div className="text-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDetailModalCandidate(cand);
+                                setIsDetailModalOpen(true);
+                              }}
+                              className="text-xs font-bold text-slate-700 hover:text-slate-950 underline underline-offset-2 inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Lihat Visi &amp; Misi Resmi</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-4">
+                          {isSelected ? (
+                            <div className="w-full bg-blue-600 text-white font-bold py-2.5 px-4 rounded-full shadow-md flex items-center justify-center gap-2 text-xs">
+                              <Check className="w-4 h-4 stroke-[3]" />
+                              <span>Terpilih sebagai Pilihan Anda</span>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedHima(cand);
+                                setSelectedHimaId(String(cand.id));
+                              }}
+                              className="w-full bg-white border-2 border-slate-300 text-slate-700 hover:border-blue-600 hover:bg-slate-50 font-bold py-2 px-4 rounded-full text-xs transition-colors cursor-pointer"
+                            >
+                              Pilih Nomor Urut {displayNumber}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -1934,15 +1766,21 @@ function VoteContent() {
               {/* WAJIB VALIDASI: disabled={!selectedHima} jika paslon ada */}
               <button
                 type="button"
-                onClick={() => setStep('REVIEW_CONFIRM')}
-                disabled={facultyHimaCandidates.length > 0 && !selectedHima}
+                onClick={() => {
+                  if (prodiHimaCandidates.length === 0) {
+                    setSelectedHima(null);
+                    setSelectedHimaId('');
+                  }
+                  setStep('REVIEW_CONFIRM');
+                }}
+                disabled={prodiHimaCandidates.length > 0 && !selectedHima}
                 className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl text-xs sm:text-sm font-bold shadow-lg flex items-center justify-center gap-2 transition-all ${
-                  facultyHimaCandidates.length > 0 && !selectedHima
+                  prodiHimaCandidates.length > 0 && !selectedHima
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
                     : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20 cursor-pointer active:scale-95'
                 }`}
               >
-                <span>Tinjau Pilihan Suara</span>
+                <span>Lanjut ke Konfirmasi Akhir</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -2027,13 +1865,19 @@ function VoteContent() {
               </div>
 
               {/* KARTU 2: PILIHAN HIMA */}
-              <div className="rounded-3xl border-2 border-blue-600/40 bg-blue-50/40 p-6 flex flex-col justify-between shadow-sm">
+              <div className={`rounded-3xl border-2 p-6 flex flex-col justify-between shadow-sm ${
+                selectedHima
+                  ? 'border-blue-600/40 bg-blue-50/40'
+                  : 'border-slate-200 bg-slate-50/60'
+              }`}>
                 <div>
-                  <div className="flex items-center justify-between pb-3 border-b border-blue-200 mb-4">
-                    <span className="text-xs font-black text-blue-900 uppercase tracking-wider">
-                      2. Pilihan Ketua Himpunan ({voterProdi})
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+                    <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
+                      2. Pilihan Ketua Himpunan ({verifiedVoter?.prodi || voterProdi})
                     </span>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      selectedHima ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-600'
+                    }`}>
                       HIMA
                     </span>
                   </div>
@@ -2069,20 +1913,24 @@ function VoteContent() {
                       </div>
                     </div>
                   ) : (
-                    <div className="p-4 rounded-2xl bg-white/70 border border-blue-200 text-center space-y-1">
-                      <span className="text-xs font-bold text-slate-700 block">
-                        Pemilihan HIMA Dilewati
-                      </span>
-                      <p className="text-[11px] text-slate-500">
-                        Tidak ada pasangan calon HIMA terdaftar untuk Program Studi {voterProdi}.
+                    <div className="p-4 rounded-2xl bg-white/70 border border-slate-200 text-center space-y-1">
+                      <p className="text-xs font-medium text-slate-500">
+                        HIMA: Tidak ada paslon terdaftar untuk {verifiedVoter?.prodi || voterProdi} (Hak suara dilewati)
                       </p>
                     </div>
                   )}
                 </div>
-                <div className="mt-4 pt-3 border-t border-blue-200/80 flex items-center gap-1.5 text-xs text-blue-700 font-bold">
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>Siap Dimasukkan ke Kotak Suara</span>
-                </div>
+                {selectedHima ? (
+                  <div className="mt-4 pt-3 border-t border-blue-200/80 flex items-center gap-1.5 text-xs text-blue-700 font-bold">
+                    <Check className="w-4 h-4 stroke-[3]" />
+                    <span>Siap Dimasukkan ke Kotak Suara</span>
+                  </div>
+                ) : (
+                  <div className="mt-4 pt-3 border-t border-slate-200/80 flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                    <Info className="w-4 h-4" />
+                    <span>Hak suara dilewati</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2134,64 +1982,55 @@ function VoteContent() {
         )}
 
         {/* =========================================================================
-            6. TAHAP: SUCCESS (LAYAR SUKSES + AUDIO TERIMA KASIH LOOP 60 DETIK)
+            6. TAHAP: SUCCESS (LAYAR SUKSES FORMAL TANPA EMOJI)
             ========================================================================= */}
         {step === 'SUCCESS' && (
-          <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-2xl max-w-lg mx-auto text-center space-y-6 animate-in fade-in zoom-in-95">
-            <div className="relative mx-auto w-24 h-24 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping" />
-              <div className="w-24 h-24 rounded-full bg-emerald-600 text-white flex items-center justify-center shadow-xl shadow-emerald-600/30">
-                <Check className="w-12 h-12 stroke-[3]" />
+          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-2xl max-w-md mx-auto animate-in fade-in zoom-in-95">
+            <div className="flex flex-col items-center text-center py-6 px-4">
+              {/* Ikon Ceklis Minimalis Resmi */}
+              <div className="w-16 h-16 rounded-full bg-emerald-50 border border-emerald-200/60 flex items-center justify-center mb-5">
+                <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
               </div>
-            </div>
 
-            <div>
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                Hak Suara Anda Berhasil Digunakan!
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2 leading-relaxed">
-                Terima Kasih Telah Berpartisipasi dalam PEMIRA UBTH 2026. Suara Anda telah berhasil direkapitulasi secara sah, aman, dan rahasia.
+              <p className="text-[11px] font-bold tracking-widest text-emerald-600 uppercase mb-2">
+                Suara Berhasil Direkam
               </p>
-            </div>
 
-            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-900">
-              <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-emerald-700 animate-pulse" />
-                <span className="font-bold">Audio Apresiasi Aktif (60s)</span>
+              <h2 className="text-lg font-bold text-slate-800 leading-snug mb-3 max-w-xs">
+                Terima Kasih Atas Partisipasi Anda
+              </h2>
+
+              <p className="text-xs text-slate-600 leading-relaxed max-w-sm mb-6">
+                Hak suara Anda dalam Pemilihan Raya Mahasiswa Universitas Bakti Tunas Husada Tahun 2026 telah tersimpan secara resmi dan terverifikasi ke dalam sistem tabulasi suara digital.
+              </p>
+
+              <div className="w-full bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-left mb-6">
+                <div className="flex justify-between items-center text-xs py-1 border-b border-slate-200/50">
+                  <span className="text-slate-400">Nama Pemilih</span>
+                  <span className="font-semibold text-slate-700">{verifiedVoter?.name || inputName || 'Pemilih'}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs py-1 border-b border-slate-200/50">
+                  <span className="text-slate-400">NIM</span>
+                  <span className="font-mono text-slate-700">{verifiedVoter?.nim || inputNim || '-'}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs py-1">
+                  <span className="text-slate-400">Program Studi</span>
+                  <span className="font-medium text-slate-700">{verifiedVoter?.prodi || voterProdi || '-'}</span>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={playThankYouAudio}
-                className="px-3 py-1 rounded-xl bg-white border border-emerald-300 font-bold hover:bg-emerald-100 transition-colors cursor-pointer text-[11px]"
-              >
-                Putar Ulang
-              </button>
-            </div>
 
-            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
-              <span className="text-xs text-slate-500 block font-medium">Silakan meninggalkan bilik suara dalam waktu:</span>
-              <div className="text-4xl font-black text-slate-900 font-mono tracking-tight pt-1 flex items-center justify-center gap-2">
-                <Clock className="w-7 h-7 text-slate-700" />
-                <span>{formatTimer(postSubmitSeconds)}</span>
+              <p className="text-[11px] text-slate-400 mb-6">
+                Silakan tinggalkan bilik suara dengan tertib. Halaman ini akan tertutup otomatis.
+              </p>
+
+              {/* Watermark Konsisten di Bagian Bawah Kartu */}
+              <div className="w-full pt-4 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[10px] text-slate-400 font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                <span>Engineered by <strong className="text-slate-600 font-semibold">Sagit Faturrakhman</strong></span>
               </div>
-              <span className="text-[10px] text-slate-400 block pt-1">
-                Bilik otomatis dikosongkan dan dialokasikan untuk pemilih berikutnya.
-              </span>
             </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                sessionStorage.clear();
-                localStorage.removeItem('pemira_voter_session');
-                localStorage.removeItem('pemira_session_token');
-                window.close();
-                window.location.href = 'about:blank';
-              }}
-              className="w-full py-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-md active:scale-95"
-            >
-              Keluar dari Sistem Pemira
-            </button>
           </div>
         )}
       </main>

@@ -107,10 +107,10 @@ function BoothCard({
   // STATUS HIJAU: AVAILABLE (Tersedia)
   if (isAvailable) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs flex flex-col justify-between transition-all hover:border-slate-300">
+      <div className="rounded-2xl border border-[#EFECE6] bg-white p-4 shadow-sm flex flex-col justify-between transition-all hover:border-[#E2DDD5]">
         <div>
           <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-slate-800">Bilik {boothNumStr}</span>
+            <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
             <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>Tersedia</span>
@@ -125,7 +125,7 @@ function BoothCard({
         <button
           onClick={() => onReset(booth)}
           disabled={isResetting}
-          className="w-full py-1.5 text-xs text-slate-400 border border-slate-200 hover:bg-slate-50 hover:text-slate-600 rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          className="w-full py-1.5 text-xs text-slate-600 border border-[#E2DDD5] bg-white hover:bg-[#F5F2EB] rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
           <span>Reset</span>
@@ -137,7 +137,7 @@ function BoothCard({
   // STATUS KUNING: OCCUPIED (Sedang Memilih)
   if (isOccupied) {
     return (
-      <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-xs flex flex-col justify-between transition-all">
+      <div className="rounded-2xl border border-amber-200/80 bg-white p-4 shadow-sm flex flex-col justify-between transition-all">
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
@@ -160,7 +160,7 @@ function BoothCard({
         <button
           onClick={() => onReset(booth)}
           disabled={isResetting}
-          className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
           <span>↺ Batalkan Alokasi</span>
@@ -171,7 +171,7 @@ function BoothCard({
 
   // STATUS SEDANG MEMILIH (VOTING)
   return (
-    <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-xs flex flex-col justify-between transition-all">
+    <div className="rounded-2xl border border-amber-200/80 bg-white p-4 shadow-sm flex flex-col justify-between transition-all">
       <div>
         <div className="flex items-center justify-between mb-3">
           <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
@@ -181,7 +181,7 @@ function BoothCard({
           </div>
         </div>
 
-        <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1 mb-3">
+        <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-[#EFECE6] space-y-1 mb-3">
           <p className="font-bold text-slate-900 text-xs truncate" title={voterName}>
             {voterName}
           </p>
@@ -198,7 +198,7 @@ function BoothCard({
       <button
         onClick={() => onReset(booth)}
         disabled={isResetting}
-        className="w-full py-1.5 text-xs bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+        className="w-full py-1.5 text-xs bg-white text-slate-700 hover:bg-[#F5F2EB] border border-[#E2DDD5] rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
       >
         <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
         <span>↺ Batalkan Sesi</span>
@@ -663,29 +663,29 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
       <AdminHeader />
 
       <main className="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
         {/* TOP BAR: JUDUL & MASTER STATUS SWITCH */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
               Dashboard Bilik &amp; Hasil Suara
             </h1>
-            <p className="text-xs text-slate-500 font-medium">
+            <p className="text-xs text-slate-500 font-normal">
               Pemantauan real-time bilik fisik &amp; aktivitas pemungutan suara PEMIRA UBTH 2026
             </p>
           </div>
 
           {/* Master 3 Toggle Status (AKTIF, JEDA, TUTUP) */}
-          <div className="flex items-center gap-2 p-1 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFECE6] shadow-2xs">
             <button
               onClick={() => setElectionStatus('AKTIF')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 electionStatus === 'AKTIF'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
               }`}
             >
               <Play className="w-3 h-3 fill-current" />
@@ -694,10 +694,10 @@ export default function AdminDashboardPage() {
 
             <button
               onClick={() => setElectionStatus('JEDA')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 electionStatus === 'JEDA'
                   ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
               }`}
             >
               <Pause className="w-3 h-3 fill-current" />
@@ -706,10 +706,10 @@ export default function AdminDashboardPage() {
 
             <button
               onClick={() => setElectionStatus('TUTUP')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 electionStatus === 'TUTUP'
-                  ? 'bg-rose-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  ? 'bg-slate-700 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
               }`}
             >
               <StopCircle className="w-3 h-3" />
@@ -720,7 +720,7 @@ export default function AdminDashboardPage() {
 
         {/* 4 STAT CARDS REAL-TIME */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
                 TOTAL DPT
@@ -734,7 +734,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
                 SUARA MASUK
@@ -759,7 +759,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wide block">
                 BILIK TERSEDIA
@@ -773,23 +773,23 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold text-rose-600 uppercase tracking-wide block">
+              <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wide block">
                 BILIK DIGUNAKAN
               </span>
-              <span className="text-2xl font-black text-rose-600 font-mono">
+              <span className="text-2xl font-black text-amber-600 font-mono">
                 {countDigunakan}
               </span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
               <Activity className="w-5 h-5" />
             </div>
           </div>
         </div>
 
         {/* SECTION: TRAFIK PENGUNJUNG BILIK (INTERVAL 10 MENIT) */}
-        <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs relative overflow-hidden">
+        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-sm relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
@@ -876,13 +876,13 @@ export default function AdminDashboardPage() {
         </section>
 
         {/* SECTION: STATUS REAL-TIME BILIK SUARA (DYNAMIC GRID) */}
-        <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs">
+        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-sm">
           <div className="flex items-center justify-between mb-5 pb-3 border-b border-slate-100">
             <div>
               <h2 className="text-base font-bold text-slate-900 tracking-tight">
                 Status Real-time Bilik Suara
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 font-normal">
                 Pemantauan {booths.length} bilik fisik terhubung sinkronisasi real-time
               </p>
             </div>
@@ -901,8 +901,8 @@ export default function AdminDashboardPage() {
           {/* DYNAMIC GRID BOOTHS - 4 UI STATES */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {isLoadingBooths && booths.length === 0 ? (
-              <div className="col-span-full py-12 text-center text-xs text-slate-500 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
-                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <div className="col-span-full py-12 text-center text-xs text-slate-500 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-[#EFECE6] flex flex-col items-center justify-center gap-2">
+                <div className="w-6 h-6 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
                 <span className="font-semibold text-slate-700">Memuat status bilik suara terhubung...</span>
                 <span className="text-[11px] text-slate-400">Menghubungkan ke database dan PostgreSQL Realtime</span>
               </div>
@@ -918,7 +918,7 @@ export default function AdminDashboardPage() {
                 <div className="flex items-center gap-2 mt-1">
                   <button
                     onClick={() => fetchBooths()}
-                    className="px-4 py-2 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-white border border-[#E2DDD5] hover:bg-[#F5F2EB] text-slate-700 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Coba Lagi
@@ -926,14 +926,14 @@ export default function AdminDashboardPage() {
                   <button
                     onClick={handleSeedBooths}
                     disabled={isSeedingBooths}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     {isSeedingBooths ? 'Menginisialisasi...' : 'Inisialisasi 16 Bilik'}
                   </button>
                 </div>
               </div>
             ) : booths.length === 0 ? (
-              <div className="col-span-full py-10 px-4 text-center bg-slate-50/60 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
+              <div className="col-span-full py-10 px-4 text-center bg-slate-50/60 border border-dashed border-[#EFECE6] rounded-2xl flex flex-col items-center justify-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                   <Monitor className="w-5 h-5" />
                 </div>
@@ -946,7 +946,7 @@ export default function AdminDashboardPage() {
                 <button
                   onClick={handleSeedBooths}
                   disabled={isSeedingBooths}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSeedingBooths ? (
                     <>
@@ -973,7 +973,7 @@ export default function AdminDashboardPage() {
 
         {/* SECTION 2: LIVE ACTIVITY LOG STREAM */}
         <div className="grid grid-cols-1 gap-6">
-          <section className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex flex-col justify-between">
+          <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-sm flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
                 <div className="flex items-center gap-2">
@@ -991,14 +991,14 @@ export default function AdminDashboardPage() {
               {/* Feed Stream List */}
               <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
                 {activityLogs.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-[#EFECE6]">
                     Belum ada aktivitas bilik terbaru tercatat.
                   </div>
                 ) : (
                   activityLogs.map((log) => (
                     <div
                       key={log.id}
-                      className="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 hover:bg-slate-50 transition-colors flex items-start gap-2.5 text-xs"
+                      className="p-3 rounded-2xl border border-[#EFECE6] bg-[#FAF8F4]/50 hover:bg-[#FAF8F4] transition-colors flex items-start gap-2.5 text-xs"
                     >
                       <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 pt-0.5">
                         [{log.time}]

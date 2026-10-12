@@ -534,7 +534,7 @@ export default function AdminRekapPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FAF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
       {/* Top Header */}
       <AdminHeader />
 
@@ -549,7 +549,7 @@ export default function AdminRekapPage() {
               <h2 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
                 Rekapitulasi Suara Real-time
               </h2>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-xs text-slate-500 font-normal">
                 Tabulasi dan perolehan suara pemilihan Presiden BEM &amp; Himpunan Mahasiswa 2026.
               </p>
             </div>
@@ -558,7 +558,7 @@ export default function AdminRekapPage() {
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setIsBeritaAcaraOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold flex items-center gap-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-white hover:bg-[#F5F2EB] text-slate-700 border border-[#E2DDD5] text-xs font-semibold flex items-center gap-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer"
             >
               <FileText className="w-4 h-4 text-blue-600" />
               <span>Berita Acara</span>
@@ -571,7 +571,7 @@ export default function AdminRekapPage() {
             ========================================================================= */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Total DPT */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">TOTAL DPT</span>
               <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
@@ -589,7 +589,7 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Card 2: Suara Masuk */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">SUARA MASUK</span>
               <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
@@ -618,7 +618,7 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Card 3: Belum Memilih */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">BELUM MEMILIH</span>
               <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
@@ -636,7 +636,7 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Card 4: Partisipasi */}
-          <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-xs flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">PARTISIPASI</span>
               <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
@@ -676,7 +676,7 @@ export default function AdminRekapPage() {
         {/* =========================================================================
             2. GRAFIK DINAMIKA PEROLEHAN SUARA (INTERVAL 10 MENIT DENGAN BASELINE 0)
             ========================================================================= */}
-        <section className="bg-white rounded-3xl p-6 border border-slate-100 shadow-xs relative overflow-hidden">
+        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-sm relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
@@ -692,7 +692,7 @@ export default function AdminRekapPage() {
                     </span>
                   )}
                 </h2>
-                <p className="text-xs text-slate-500 font-medium">
+                <p className="text-xs text-slate-500 font-normal">
                   Tren akumulasi suara masuk per pasangan calon diperbarui otomatis per interval 10 menit
                 </p>
               </div>
@@ -700,14 +700,14 @@ export default function AdminRekapPage() {
 
             {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] serta Dropdown Prodi HIMA */}
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-              <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+              <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFECE6] shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setChartType('BEM')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'BEM'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                      ? 'bg-[#0F172A] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
                   }`}
                 >
                   BEM Universitas
@@ -715,10 +715,10 @@ export default function AdminRekapPage() {
                 <button
                   type="button"
                   onClick={() => setChartType('HIMA')}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'HIMA'
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                      ? 'bg-[#0F172A] text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
                   }`}
                 >
                   HIMA
@@ -833,10 +833,10 @@ export default function AdminRekapPage() {
         {/* =========================================================================
             3. SECTION 1: HASIL SUARA BEM DENGAN PERSENTASE & PROGRESS BAR
             ========================================================================= */}
-        <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
+          <div className="flex items-center justify-between pb-4 border-b border-[#EFECE6] mb-6">
             <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-blue-600" />
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
                 Hasil Suara Pemilihan Presiden BEM Universitas
               </h3>
@@ -848,7 +848,7 @@ export default function AdminRekapPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {bemList.length === 0 ? (
-              <div className="col-span-2 p-8 rounded-2xl border-2 border-dashed border-slate-200 text-center">
+              <div className="col-span-2 p-8 rounded-2xl border-2 border-dashed border-[#EFECE6] text-center">
                 <p className="text-xs font-bold text-slate-500">Belum ada Paslon BEM terdaftar.</p>
               </div>
             ) : (
@@ -862,11 +862,11 @@ export default function AdminRekapPage() {
                 return (
                   <div
                     key={cand.id}
-                    className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+                    className="p-5 rounded-2xl border border-[#EFECE6] bg-white shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
                   >
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
+                        <span className="w-8 h-8 rounded-xl bg-[#0F172A] text-white font-mono font-bold text-xs flex items-center justify-center">
                           {displayNumber}
                         </span>
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -875,7 +875,7 @@ export default function AdminRekapPage() {
                       </div>
 
                       {/* Foto Paslon BEM */}
-                      <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-100">
+                      <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-[#FAF8F4] flex items-center justify-center border border-[#EFECE6]">
                         {photoUrl ? (
                           <img
                             src={photoUrl}
@@ -895,19 +895,19 @@ export default function AdminRekapPage() {
                       </p>
 
                       {/* Baris Suara, Persentase, dan Progress Bar Paslon */}
-                      <div className="mt-5 pt-3 border-t border-slate-100">
+                      <div className="mt-5 pt-3 border-t border-[#EFECE6]">
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-xl font-black text-slate-800 font-mono">
                             {isSensorActive ? '*** Suara' : `${votes.toLocaleString('id-ID')} Suara`}
                           </span>
-                          <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-md">
+                          <span className="text-sm font-bold text-slate-900 bg-[#F5F2EB] border border-[#E8E4DC] px-2.5 py-0.5 rounded-md">
                             {isSensorActive ? '***%' : `${persentasePaslon}%`}
                           </span>
                         </div>
                         {/* Progress Bar Persentase */}
-                        <div className="w-full bg-slate-100 h-2 rounded-full mt-2.5 overflow-hidden">
+                        <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] h-2 rounded-full mt-2.5 overflow-hidden">
                           <div
-                            className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                            className="bg-[#0F172A] h-full rounded-full transition-all duration-500"
                             style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
                           />
                         </div>
@@ -923,10 +923,10 @@ export default function AdminRekapPage() {
         {/* =========================================================================
             3. SECTION 2: HASIL SUARA HIMA PER FAKULTAS DENGAN PERSENTASE & PROGRESS BAR
             ========================================================================= */}
-        <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
-          <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
+          <div className="flex items-center justify-between pb-4 border-b border-[#EFECE6] mb-6">
             <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-amber-500" />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
                 Hasil Suara Himpunan Mahasiswa (HIMA)
               </h3>
@@ -937,8 +937,8 @@ export default function AdminRekapPage() {
           </div>
 
           {himaList.length === 0 ? (
-            <div className="p-10 rounded-2xl border-2 border-dashed border-slate-200 text-center flex flex-col items-center">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 border border-amber-100">
+            <div className="p-10 rounded-2xl border-2 border-dashed border-[#EFECE6] text-center flex flex-col items-center">
+              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 border border-amber-200/60">
                 <BookOpen className="w-6 h-6" />
               </div>
               <h4 className="text-sm font-bold text-slate-800">Belum ada data paslon himpunan.</h4>
@@ -947,7 +947,7 @@ export default function AdminRekapPage() {
               </p>
               <Link
                 href="/admin/paslon"
-                className="mt-4 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium shadow-sm transition-all"
+                className="mt-4 px-4 py-2 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-medium shadow-xs transition-all"
               >
                 + Tambah Paslon
               </Link>
@@ -961,8 +961,8 @@ export default function AdminRekapPage() {
                 }, 0);
 
                 return (
-                  <div key={fac.id} className="p-5 rounded-2xl bg-slate-50/60 border border-slate-200/80 space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <div key={fac.id} className="p-5 rounded-2xl bg-[#FAF8F4]/60 border border-[#EFECE6] space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-[#EFECE6]">
                       <div>
                         <h4 className="text-sm font-black text-slate-900 tracking-tight">
                           {fac.name}
@@ -971,13 +971,13 @@ export default function AdminRekapPage() {
                           {facCandidates.length} Pasangan Calon Terdaftar • Total Suara: {isSensorActive ? '***' : facTotalVotes.toLocaleString('id-ID')}
                         </span>
                       </div>
-                      <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black bg-slate-200 text-slate-800 uppercase">
+                      <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#F5F2EB] text-slate-700 border border-[#E8E4DC] uppercase">
                         {fac.shortName}
                       </span>
                     </div>
 
                     {facCandidates.length === 0 ? (
-                      <div className="p-6 rounded-2xl bg-white border border-dashed border-slate-200 text-center">
+                      <div className="p-6 rounded-2xl bg-white border border-dashed border-[#EFECE6] text-center">
                         <p className="text-xs font-semibold text-slate-400">
                           Belum ada pasangan calon terdaftar di fakultas/himpunan ini.
                         </p>
@@ -996,21 +996,21 @@ export default function AdminRekapPage() {
                           return (
                             <div
                               key={cand.id}
-                              className="p-5 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+                              className="p-5 rounded-2xl border border-[#EFECE6] bg-white shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
                             >
                               <div>
                                 <div className="flex items-center justify-between mb-3">
-                                  <span className="w-7 h-7 rounded-lg bg-blue-600 text-white font-mono font-bold text-xs flex items-center justify-center">
+                                  <span className="w-7 h-7 rounded-lg bg-[#0F172A] text-white font-mono font-bold text-xs flex items-center justify-center">
                                     {displayNumber}
                                   </span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[140px]">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC] truncate max-w-[140px]">
                                     {candProdi}
                                   </span>
                                 </div>
 
                                 {/* Foto Paslon HIMA */}
                                 {candidatePhoto ? (
-                                  <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-slate-100 flex items-center justify-center">
+                                  <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-[#FAF8F4] flex items-center justify-center border border-[#EFECE6]">
                                     <img 
                                       src={candidatePhoto} 
                                       alt={candidateName || 'Paslon HIMA'} 
@@ -1019,7 +1019,7 @@ export default function AdminRekapPage() {
                                     />
                                   </div>
                                 ) : (
-                                  <div className="w-full h-44 rounded-xl bg-slate-100 border border-dashed border-slate-200 flex items-center justify-center text-xs text-slate-400 font-medium mb-3">
+                                  <div className="w-full h-44 rounded-xl bg-[#FAF8F4] border border-dashed border-[#EFECE6] flex items-center justify-center text-xs text-slate-400 font-medium mb-3">
                                     Foto Belum Diunggah
                                   </div>
                                 )}
@@ -1033,19 +1033,19 @@ export default function AdminRekapPage() {
                               </div>
 
                               {/* Baris Suara, Persentase, dan Progress Bar Paslon HIMA */}
-                              <div className="mt-4 pt-3 border-t border-slate-100">
+                              <div className="mt-4 pt-3 border-t border-[#EFECE6]">
                                 <div className="flex items-center justify-between mt-2">
                                   <span className="text-xl font-black text-slate-800 font-mono">
                                     {isSensorActive ? '*** Suara' : `${candVotes.toLocaleString('id-ID')} Suara`}
                                   </span>
-                                  <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                                  <span className="text-sm font-bold text-slate-900 bg-[#F5F2EB] border border-[#E8E4DC] px-2 py-0.5 rounded-md">
                                     {isSensorActive ? '***%' : `${persentasePaslon}%`}
                                   </span>
                                 </div>
                                 {/* Progress Bar Persentase */}
-                                <div className="w-full bg-slate-100 h-2 rounded-full mt-2 overflow-hidden">
+                                <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] h-2 rounded-full mt-2 overflow-hidden">
                                   <div
-                                    className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                                    className="bg-[#0F172A] h-full rounded-full transition-all duration-500"
                                     style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
                                   />
                                 </div>
@@ -1063,8 +1063,8 @@ export default function AdminRekapPage() {
         </section>
 
         {/* SECTION 3: MATRIKS 14 PROGRAM STUDI (DINAMIS DARI DATABASE VOTERS) */}
-        <section className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-100 shadow-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 mb-6">
+        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#EFECE6] mb-6">
             <div>
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
                 Matriks 14 Program Studi
@@ -1083,18 +1083,18 @@ export default function AdminRekapPage() {
                   placeholder="Cari program studi..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50 focus:outline-hidden focus:border-blue-400"
+                  className="pl-8 pr-3 py-1.5 rounded-xl border border-[#E2DDD5] text-xs text-slate-800 bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl text-xs font-bold text-slate-600">
+              <div className="flex items-center bg-[#FAF8F4] border border-[#EFECE6] p-1 rounded-xl text-xs font-semibold text-slate-600">
                 {(['ALL', 'FTB', 'FIKES', 'FARMASI'] as const).map((fac) => (
                   <button
                     key={fac}
                     onClick={() => setActiveFacultyFilter(fac)}
                     className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                       activeFacultyFilter === fac
-                        ? 'bg-blue-600 text-white shadow-2xs'
+                        ? 'bg-[#0F172A] text-white shadow-xs font-bold'
                         : 'hover:text-slate-900'
                     }`}
                   >
@@ -1112,10 +1112,10 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Table */}
-          <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
+          <div className="w-full overflow-x-auto rounded-xl border border-[#EFECE6]">
             <table className="w-full min-w-[640px] text-xs text-left">
               <thead>
-                <tr className="bg-slate-50 text-slate-600 border-b border-slate-100 uppercase tracking-wider text-[11px] font-bold">
+                <tr className="bg-[#FAF8F4] text-slate-700 border-b border-[#EFECE6] uppercase tracking-wider text-[11px] font-bold">
                   <th className="py-3 px-4 w-12 text-center">No</th>
                   <th className="py-3 px-4">Program Studi</th>
                   <th className="py-3 px-3 text-center">Fakultas</th>
@@ -1125,9 +1125,9 @@ export default function AdminRekapPage() {
                   <th className="py-3 px-3 text-center">Partisipasi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-[#EFECE6]">
                 {filteredProdis.map((pr, idx) => (
-                  <tr key={pr.no || idx} className="hover:bg-slate-50/70 transition-colors">
+                  <tr key={pr.no || idx} className="hover:bg-[#FAF8F4]/60 transition-colors">
                     <td className="py-3.5 px-4 text-center font-mono text-slate-400">
                       {pr.no}
                     </td>
@@ -1135,7 +1135,7 @@ export default function AdminRekapPage() {
                       {pr.name}
                     </td>
                     <td className="py-3.5 px-3 text-center">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC]">
                         {pr.faculty}
                       </span>
                     </td>
@@ -1149,7 +1149,7 @@ export default function AdminRekapPage() {
                       {pr.totalDpt > 0 ? (isSensorActive ? '***' : pr.sisaBelum) : '-'}
                     </td>
                     <td className="py-3.5 px-3 text-center">
-                      <span className="font-mono font-bold text-blue-600">
+                      <span className="font-mono font-bold text-slate-900">
                         {pr.totalDpt > 0 ? (isSensorActive ? '***%' : pr.partisipasi) : '-'}
                       </span>
                     </td>
