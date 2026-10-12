@@ -248,11 +248,11 @@ export default function AdminRekapPage() {
 
   const fetchVotersAndRefreshMatrix = fetchMetricData;
 
-  // 2. Fetch Candidates & Votes (Decoupled Metadata Instan 0.1s & Background Photos)
+  // 2. Fetch Candidates & Votes (Vercel Edge CDN Caching /api/candidates)
   const fetchCandidates = async () => {
-    // 1. Cek cache sessionStorage terlebih dahulu (metadata teks ringan ~2 KB)
+    // 1. Cek cache sessionStorage terlebih dahulu
     const cached = typeof window !== 'undefined'
-      ? (sessionStorage.getItem('pemira_admin_candidates_meta_v2') || sessionStorage.getItem('pemira_admin_candidates_cache'))
+      ? (sessionStorage.getItem('pemira_candidates_edge_cache') || sessionStorage.getItem('pemira_admin_candidates_meta_v2'))
       : null;
     if (cached) {
       try {
@@ -269,26 +269,24 @@ export default function AdminRekapPage() {
           });
           setBemList(bem);
           setHimaList(hima);
-          // Tarik foto di background
-          fetchCandidatePhotos(parsed.map((c: any) => c.id));
+          const photoMap: Record<string, string> = {};
+          parsed.forEach((p: any) => {
+            const photo = p.image_url || p.photo_url || p.photoUrl || p.foto;
+            if (photo) photoMap[p.id] = photo;
+          });
+          setCandidatePhotos((prev) => ({ ...prev, ...photoMap }));
           return;
         }
       } catch (e) {}
     }
 
-    // 2. Fetch metadata teks ringan dari Supabase (CUMA ~2 KB, selesai dalam 0.1 detik!)
+    // 2. Fetch ke endpoint Vercel CDN (/api/candidates) - Bebas biaya egress Supabase!
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('candidates')
-        .select('id, name, candidate_number, category, prodi, hima_name, slogan');
+      const res = await fetch('/api/candidates');
+      if (!res.ok) throw new Error('Gagal mengambil data paslon dari CDN');
+      const data = await res.json();
 
-      if (error) {
-        console.error("Gagal mengambil data paslon:", error.message);
-        return;
-      }
-
-      if (data && data.length > 0) {
+      if (Array.isArray(data) && data.length > 0) {
         setAllCandidates(data);
         const bem = data.filter((c: any) => {
           const cat = (c.category || c.type || '').toUpperCase();
@@ -300,37 +298,22 @@ export default function AdminRekapPage() {
         });
         setBemList(bem);
         setHimaList(hima);
-        if (typeof window !== 'undefined') {
-          try {
-            sessionStorage.setItem('pemira_admin_candidates_meta_v2', JSON.stringify(data));
-          } catch (storageErr) {}
-        }
-        // Tarik foto secara bertahap di background
-        fetchCandidatePhotos(data.map((c: any) => c.id));
-      }
-    } catch (err) {
-      console.error("Crash saat fetch paslon:", err);
-    }
-  };
 
-  // Ambil foto secara bertahap (Lazy / Background Batch)
-  const fetchCandidatePhotos = async (candidateIds?: string[]) => {
-    try {
-      const supabase = createClient();
-      let query = supabase.from('candidates').select('id, image_url');
-      if (candidateIds && candidateIds.length > 0) {
-        query = query.in('id', candidateIds);
-      }
-      const { data: photos, error } = await query;
-      if (!error && photos) {
         const photoMap: Record<string, string> = {};
-        photos.forEach((p: any) => {
-          if (p.image_url) photoMap[p.id] = p.image_url;
+        data.forEach((p: any) => {
+          const photo = p.image_url || p.photo_url || p.photoUrl || p.foto;
+          if (photo) photoMap[p.id] = photo;
         });
         setCandidatePhotos((prev) => ({ ...prev, ...photoMap }));
+
+        if (typeof window !== 'undefined') {
+          try {
+            sessionStorage.setItem('pemira_candidates_edge_cache', JSON.stringify(data));
+          } catch (storageErr) {}
+        }
       }
-    } catch (e) {
-      console.warn("Background candidate photos fetch warning:", e);
+    } catch (err) {
+      console.error("Crash saat fetch paslon dari CDN:", err);
     }
   };
 

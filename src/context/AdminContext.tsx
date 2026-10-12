@@ -514,6 +514,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
           setHimaCandidates((prev) => [...prev, saved as Candidate]);
         }
       }
+      // Revalidate Vercel Edge CDN cache & clear local storage
+      fetch('/api/revalidate-paslon', { method: 'POST' }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pemira_candidates_edge_cache');
+      }
       showToast(`Paslon ${cand.number} (${cand.leaderName || ''}) berhasil ditambahkan ke database.`, 'success');
     } catch (e: any) {
       console.error('Gagal menambah paslon:', e);
@@ -543,6 +548,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       } else {
         setHimaCandidates((prev) => prev.map((c) => (String(c.id) === String(cand.id) ? saved : c)));
       }
+      // Revalidate Vercel Edge CDN cache & clear local storage
+      fetch('/api/revalidate-paslon', { method: 'POST' }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pemira_candidates_edge_cache');
+      }
       showToast(`Data paslon ${cand.number} diperbarui di database.`, 'success');
     } catch (e: any) {
       console.error('Gagal memperbarui paslon:', e);
@@ -557,6 +567,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
       setBemCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
       setHimaCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
+      // Revalidate Vercel Edge CDN cache & clear local storage
+      fetch('/api/revalidate-paslon', { method: 'POST' }).catch(() => {});
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pemira_candidates_edge_cache');
+      }
       showToast('Paslon berhasil dihapus dari database.', 'info');
     } catch (e: any) {
       console.error('Gagal menghapus paslon:', e);

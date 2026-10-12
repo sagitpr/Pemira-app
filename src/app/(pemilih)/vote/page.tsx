@@ -273,100 +273,61 @@ function VoteContent() {
     }
   }, [recordBoothVisit]);
 
-  // Fetch Foto Secara On-Demand (Hanya Paslon yang Tampil: BEM + HIMA Prodi Pemilih)
-  const fetchRelevantPhotos = useCallback(async (candidateList: any[], voterProdiParam?: string) => {
-    try {
-      const currentProdi = (voterProdiParam || detectedVoter?.prodi || detectedVoter?.prodi_name || inputProdi || '').toLowerCase().trim();
-      // Target: BEM candidates + HIMA candidates sesuai prodi pemilih (hanya ~3-4 paslon, bukan 17!)
-      const targetIds = candidateList
-        .filter((c: any) => {
-          const isBem = (c.category || c.type || '').toUpperCase().includes('BEM');
-          const isHimaProdi = currentProdi && (c.prodi || c.hima_name || '').toLowerCase().includes(currentProdi);
-          return isBem || isHimaProdi;
-        })
-        .map((c: any) => c.id);
+  // Helper untuk menyimpan paslon dan memetakan foto
+  const setCandidates = useCallback((data: any[]) => {
+    setAllCandidates(data);
+    setDbCandidatesLoaded(true);
+    const photoMap: Record<string, string> = {};
+    data.forEach((p: any) => {
+      const photo = p.image_url || p.photo_url || p.photoUrl || p.foto;
+      if (photo) photoMap[p.id] = photo;
+    });
+    setCandidatePhotos((prev) => ({ ...prev, ...photoMap }));
+  }, []);
 
-      if (targetIds.length === 0) return;
-
-      const { data: photos, error } = await supabase
-        .from('candidates')
-        .select('id, image_url')
-        .in('id', targetIds);
-
-      if (!error && photos) {
-        const photoMap: Record<string, string> = {};
-        photos.forEach((p: any) => {
-          if (p.image_url) photoMap[p.id] = p.image_url;
-        });
-        setCandidatePhotos((prev) => ({ ...prev, ...photoMap }));
-      }
-    } catch (e) {
-      console.warn('Background photo fetch warning:', e);
-    }
-  }, [detectedVoter, inputProdi]);
-
-  // 1. DECOUPLED METADATA FETCHING (0.1 detik muncul) & ON-DEMAND PHOTO LOADING
+  // 1. VERCEL EDGE CDN CACHING UNTUK DATA PASLON (HEMAT 100% EGRESS SUPABASE)
   useEffect(() => {
-    async function loadCandidatesMetadata() {
-      // 1. Cek cache teks di localStorage (pasti muat aman karena hanya ~2 KB tanpa base64)
-      const cached = typeof window !== 'undefined' ? localStorage.getItem('pemira_candidates_meta_v2') : null;
-      if (cached) {
+    async function loadCandidatesFromVercelEdge() {
+      // 1. Cek dulu sessionStorage pemilih (0ms render)
+      const localCached = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_candidates_edge_cache') : null;
+      if (localCached) {
         try {
-          const parsed = JSON.parse(cached);
+          const parsed = JSON.parse(localCached);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setAllCandidates(parsed);
-            setDbCandidatesLoaded(true);
+            setCandidates(parsed);
             setIsLoadingCandidates(false);
-            // Muat foto di background khusus paslon yang diperlukan
-            fetchRelevantPhotos(parsed);
-            return; // Langsung tampil 0ms tanpa request ke Supabase!
+            return;
           }
         } catch (e) {}
       }
 
-      // 2. Fetch metadata teks ringan dari Supabase (CUMA ~2 KB, selesai dalam 0.1 detik!)
+      // 2. Fetch ke endpoint Vercel CDN (/api/candidates)
       try {
         setIsLoadingCandidates(true);
-        const { data, error } = await supabase
-          .from('candidates')
-          .select('id, name, candidate_number, category, prodi, hima_name, slogan, vision, mission');
+        const res = await fetch('/api/candidates');
+        if (!res.ok) throw new Error('Gagal memuat paslon dari server');
+        const data = await res.json();
 
-        if (!error && data && data.length > 0) {
-          setAllCandidates(data);
-          setDbCandidatesLoaded(true);
-          setIsLoadingCandidates(false); // Kartu paslon langsung muncul seketika!
+        if (Array.isArray(data) && data.length > 0) {
+          setCandidates(data);
           try {
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('pemira_candidates_meta_v2', JSON.stringify(data));
-            }
+            sessionStorage.setItem('pemira_candidates_edge_cache', JSON.stringify(data));
           } catch (storageErr) {}
-
-          // Lanjutkan mengambil foto secara background on-demand
-          fetchRelevantPhotos(data);
         } else {
           const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
-          setAllCandidates(fallback);
-          setDbCandidatesLoaded(true);
-          setIsLoadingCandidates(false);
+          setCandidates(fallback);
         }
       } catch (err) {
-        console.error('Gagal load metadata paslon:', err);
+        console.error("Error fetching candidates from edge cache:", err);
         const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
-        setAllCandidates(fallback);
-        setDbCandidatesLoaded(true);
+        setCandidates(fallback);
+      } finally {
         setIsLoadingCandidates(false);
       }
     }
 
-    loadCandidatesMetadata();
-  }, [fetchRelevantPhotos]);
-
-  // Re-fetch foto on-demand saat pemilih terdeteksi / memilih prodi
-  useEffect(() => {
-    if (detectedVoter && allCandidates.length > 0) {
-      fetchRelevantPhotos(allCandidates, detectedVoter.prodi || detectedVoter.prodi_name);
-    }
-  }, [detectedVoter, allCandidates, fetchRelevantPhotos]);
+    loadCandidatesFromVercelEdge();
+  }, [setCandidates]);
 
   // 1. Initial Session Check & Auto-Booth Allocation
   useEffect(() => {
@@ -801,9 +762,8 @@ function VoteContent() {
       setStartVoteAt(nowIso);
       setDetectedVoter(voter);
 
-      // Tarik foto HIMA spesifik prodi pemilih ini secara on-demand
+      // Foto paslon sudah termuat lengkap dari Vercel CDN (/api/candidates)
       const voterProdiVal = voter.prodi || voter.prodi_name || selectedProdi;
-      fetchRelevantPhotos(allCandidates, voterProdiVal);
 
       // 2. KIRIM UPDATE KE TABEL 'voters' (UBAH STATUS JADI MENGERJAKAN)
       // Ini agar di halaman Admin DPT statusnya langsung berubah kuning "Mengerjakan"
