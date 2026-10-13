@@ -74,6 +74,8 @@ function ScanContent() {
 
         const boothNum = availableBooth.booth_number || 1;
         if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_valid_session_token', sessionToken || availableBooth.session_token || `TOKEN-${boothNum}`);
+          sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(availableBooth));
           sessionStorage.setItem('pemira_physical_scan_verified', 'true');
           sessionStorage.setItem('pemira_scan_timestamp', Date.now().toString());
           sessionStorage.setItem('pemira_assigned_booth_num', String(boothNum));
@@ -233,6 +235,9 @@ function ScanContent() {
               <button
                 type="button"
                 onClick={() => {
+                  const trialBooth = { id: 'trial-1', booth_number: 1, name: 'Bilik 01', status: 'AVAILABLE' };
+                  sessionStorage.setItem('pemira_valid_session_token', 'UBTH-TRIAL');
+                  sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(trialBooth));
                   sessionStorage.setItem('pemira_physical_scan_verified', 'true');
                   sessionStorage.setItem('pemira_scan_timestamp', Date.now().toString());
                   sessionStorage.setItem('pemira_assigned_booth_num', '1');

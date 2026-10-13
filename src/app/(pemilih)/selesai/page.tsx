@@ -10,16 +10,14 @@ export default function SelesaiPage() {
     voted_at: string;
   } | null>(null);
   const [countdown, setCountdown] = useState(60); // 1 Menit Penuh
-  const [isLockedBlank, setIsLockedBlank] = useState(false);
+  const [isBlankLockdown, setIsBlankLockdown] = useState(false);
   const audioTriggeredRef = useRef(false);
 
   // Fungsi Pemusnahan Sesi Total (Blank Out & Tidak Ada Akses)
   const triggerBlankLockdown = () => {
     sessionStorage.clear();
-    localStorage.removeItem('pemira_booth_session');
-    localStorage.removeItem('pemira_candidates_master');
-    localStorage.removeItem('pemira_candidates_meta_v2');
-    setIsLockedBlank(true);
+    localStorage.clear();
+    setIsBlankLockdown(true);
   };
 
   useEffect(() => {
@@ -27,7 +25,7 @@ export default function SelesaiPage() {
     const stored = sessionStorage.getItem('pemira_completed_voter');
     if (!stored) {
       // Jika diakses tanpa submit sah, langsung kunci dan kosongkan layar
-      setIsLockedBlank(true);
+      setIsBlankLockdown(true);
       return;
     }
 
@@ -44,7 +42,7 @@ export default function SelesaiPage() {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel(); // Reset antrean suara sebelumnya
           const utterance = new SpeechSynthesisUtterance(
-            "Terima kasih atas partisipasi Anda dalam Pemilihan Raya Mahasiswa Universitas Bakti Tunas Husada Tahun 2026. Hak suara Anda telah berhasil disimpan secara sah."
+            "Terima kasih atas partisipasi Anda dalam Pemilihan Raya Mahasiswa Universitas Bakti Tunas Husada 2026. Hak suara Anda telah berhasil disimpan."
           );
           utterance.lang = 'id-ID';
           utterance.rate = 0.95; // Kecepatan formal yang jelas
@@ -82,19 +80,19 @@ export default function SelesaiPage() {
   }, []);
 
   // Tampilan Blank Hitam/Kosong Total saat sesi habis atau link dicuri
-  if (isLockedBlank) {
+  if (isBlankLockdown) {
     return (
-      <div className="fixed inset-0 bg-[#0B0F19] text-white flex flex-col items-center justify-center p-6 text-center z-50">
-        <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-4 text-slate-400">
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m2-11a9 9 0 110 18 9 9 0 010-18z" />
+      <div className="fixed inset-0 bg-[#0B0F19] text-white flex flex-col items-center justify-center p-6 text-center z-50 select-none">
+        <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-3 text-slate-600">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <h2 className="text-sm font-bold tracking-wider uppercase text-slate-200 mb-1">
-          Sesi Bilik Telah Berakhir
+        <h2 className="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-1">
+          Sesi Bilik Selesai
         </h2>
-        <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-          Hak suara telah tercatat. Akses halaman ini telah ditutup permanen demi menjaga kerahasiaan dan integritas pemilihan.
+        <p className="text-[11px] text-slate-600 max-w-xs leading-relaxed">
+          Hak suara Anda telah tersimpan. Silakan tinggalkan bilik suara.
         </p>
       </div>
     );
@@ -132,7 +130,7 @@ export default function SelesaiPage() {
         </span>
       </header>
 
-      {/* Konten Utama (Tanpa Ikon Ceklis & Kotak Hijau di Tengah) */}
+      {/* Konten Utama */}
       <main className="w-full max-w-md mx-auto my-auto py-4">
         <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm flex flex-col items-center text-center">
           
