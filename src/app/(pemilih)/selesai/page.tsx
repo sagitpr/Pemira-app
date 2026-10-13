@@ -9,15 +9,16 @@ export default function SelesaiPage() {
     prodi: string;
     voted_at: string;
   } | null>(null);
-  const [countdown, setCountdown] = useState(60); // Tepat 1 Menit (60 Detik)
-  const [isLockedBlank, setIsLockedBlank] = useState(false);
+  const [countdown, setCountdown] = useState(60); // 1 Menit (60 Detik)
+  const [isPureBlank, setIsPureBlank] = useState(false);
   const speechIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // 1. Ambil data selesai dari sessionStorage
+    // 1. Periksa ketersediaan data pemilih
     const stored = sessionStorage.getItem('pemira_completed_voter');
     if (!stored) {
-      setIsLockedBlank(true);
+      // Jika diakses tanpa sesi yang sah / sudah pernah selesai -> Langsung Blank Hitam Total
+      setIsPureBlank(true);
       return;
     }
 
@@ -27,8 +28,8 @@ export default function SelesaiPage() {
       console.error(e);
     }
 
-    // 2. Audio Suara Ucapan Terima Kasih (Web Speech API Indonesia)
-    const playThankYouAudio = () => {
+    // 2. Audio Suara Ucapan Terima Kasih (Bahasa Indonesia)
+    const speakThankYou = () => {
       try {
         if ('speechSynthesis' in window) {
           window.speechSynthesis.cancel();
@@ -39,32 +40,29 @@ export default function SelesaiPage() {
           utterance.pitch = 1.0;
           window.speechSynthesis.speak(utterance);
         }
-      } catch (err) {
-        console.warn("Speech API tidak tersedia:", err);
-      }
+      } catch (err) {}
     };
 
-    // Putar pertama kali
-    playThankYouAudio();
+    speakThankYou();
 
-    // Looping suara setiap 20 detik selama rentang 1 menit
+    // Looping suara setiap 20 detik selama periode 1 menit
     speechIntervalRef.current = setInterval(() => {
-      playThankYouAudio();
+      speakThankYou();
     }, 20000);
 
-    // Kunci tombol back browser
+    // 3. Kunci Riwayat Navigasi Browser (Cegah tombol Back)
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
     };
     window.addEventListener('popstate', handlePopState);
 
-    // 3. Hitung Mundur 60 Detik Menuju Blank
+    // 4. Hitung Mundur 60 Detik menuju Blank Hitam Total
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          triggerBlankLockdown();
+          triggerTotalBlackout();
           return 0;
         }
         return prev - 1;
@@ -79,11 +77,12 @@ export default function SelesaiPage() {
     };
   }, []);
 
-  const triggerBlankLockdown = () => {
+  // FUNGSI MEMUSNAHKAN SESI & MEMICU BLACKOUT TOTAL
+  const triggerTotalBlackout = () => {
     if (speechIntervalRef.current) clearInterval(speechIntervalRef.current);
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    
-    // Hancurkan semua data sesi
+
+    // Hancurkan semua data sesi dari perangkat ini
     sessionStorage.clear();
     localStorage.removeItem('pemira_booth_session');
     localStorage.removeItem('pemira_active_token');
@@ -91,29 +90,23 @@ export default function SelesaiPage() {
     localStorage.removeItem('pemira_completed_voter');
     localStorage.removeItem('pemira_access_verified');
 
-    // Kunci permanen ke blank screen tanpa redirect
-    setIsLockedBlank(true);
+    // Aktifkan tampilan blank hitam murni
+    setIsPureBlank(true);
   };
 
-  // TAMPILAN BLANK HITAM TOTAL SETELAH 1 MENIT ATAU JIKA LINK DIBUKA ULANG
-  if (isLockedBlank) {
+  // ============================================================================
+  // TAMPILAN PURE BLACKOUT (BENAR-BENAR HITAM KOSONG, TANPA TEKS & TANPA IKON)
+  // ============================================================================
+  if (isPureBlank) {
     return (
-      <div className="fixed inset-0 bg-[#0B0F19] text-white flex flex-col items-center justify-center p-6 text-center z-50 select-none">
-        <div className="w-10 h-10 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-3 text-slate-600">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m2-11a9 9 0 110 18 9 9 0 010-18z" />
-          </svg>
-        </div>
-        <h2 className="text-xs font-semibold tracking-wider uppercase text-slate-400 mb-1">
-          Sesi Bilik Telah Selesai
-        </h2>
-        <p className="text-[11px] text-slate-600 max-w-xs leading-relaxed">
-          Hak suara Anda telah tersimpan secara resmi. Silakan tinggalkan bilik suara.
-        </p>
-      </div>
+      <div 
+        className="fixed inset-0 w-screen h-screen bg-black z-[999999] cursor-none select-none pointer-events-none" 
+        aria-hidden="true"
+      />
     );
   }
 
+  // Tampilan formal kartu terima kasih selama 60 detik pertama
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
       {/* Header Resmi */}
@@ -126,7 +119,7 @@ export default function SelesaiPage() {
               className="w-full h-full object-contain"
               onError={(e) => {
                 const target = e.currentTarget;
-                if (!target.src.includes('image-logo-Pemira')) {
+                if (!target.src.includes('image-logo-Pemira.png')) {
                   target.src = '/image-logo-Pemira.png';
                 }
               }}
@@ -187,7 +180,7 @@ export default function SelesaiPage() {
           </div>
 
           <button
-            onClick={triggerBlankLockdown}
+            onClick={triggerTotalBlackout}
             className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99]"
           >
             Selesai & Keluar dari Bilik
