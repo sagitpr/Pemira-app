@@ -83,9 +83,19 @@ function ScanContent() {
           localStorage.setItem('pemira_booth', String(boothNum));
         }
 
-        // Arahkan HP pemilih langsung ke halaman pemilihan bilik tersebut (tanpa query string token terbuka)
+        // Teruskan token atau nomor bilik di URL agar vote/page.tsx dapat memverifikasinya
+        const forwardedToken =
+          searchParams.get('token') ||
+          searchParams.get('t') ||
+          availableBooth.session_token ||
+          sessionToken;
+
         setTimeout(() => {
-          router.replace('/vote');
+          if (forwardedToken) {
+            router.replace(`/vote?token=${encodeURIComponent(forwardedToken)}`);
+          } else {
+            router.replace(`/vote?booth=${boothNum}`);
+          }
         }, 1200);
         return;
       }
@@ -235,14 +245,7 @@ function ScanContent() {
               <button
                 type="button"
                 onClick={() => {
-                  const trialBooth = { id: 'trial-1', booth_number: 1, name: 'Bilik 01', status: 'AVAILABLE' };
-                  sessionStorage.setItem('pemira_valid_session_token', 'UBTH-TRIAL');
-                  sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(trialBooth));
-                  sessionStorage.setItem('pemira_physical_scan_verified', 'true');
-                  sessionStorage.setItem('pemira_scan_timestamp', Date.now().toString());
-                  sessionStorage.setItem('pemira_assigned_booth_num', '1');
-                  localStorage.setItem('pemira_booth', '1');
-                  router.replace('/vote');
+                  router.replace('/vote?booth=1');
                 }}
                 className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-800 text-[11px] font-bold transition-all cursor-pointer"
               >

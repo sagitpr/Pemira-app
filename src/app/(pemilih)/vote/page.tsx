@@ -331,54 +331,64 @@ function VoteContent() {
     loadCandidatesFromVercelEdge();
   }, [setCandidates]);
 
-  // 1. Validasi Token DB & Fitur Pinjam HP (Anti-Share URL)
+  // 1. Validasi Token Fleksibel & Anti-Share (Dukungan Pinjam HP)
   useEffect(() => {
     setMounted(true);
 
-    async function validateEntryAccess() {
+    async function verifySessionToken() {
       setIsCheckingAccess(true);
 
-      // 1. Ambil token dari URL hasil scan QR kamera (?token=... atau ?session=...)
-      const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('token') || params.get('session') || params.get('session_token');
+      // Ambil token dari query URL kamera (?token=... atau ?b=... atau ?booth=...)
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawToken = urlParams.get('token') || urlParams.get('t') || urlParams.get('session');
+      const boothParam = urlParams.get('booth') || urlParams.get('b');
 
-      // KASUS A: Pengguna Baru Saja Scan QR Fisik di Bilik (Ada Token di URL)
-      if (urlToken) {
+      // --------------------------------------------------------------------------
+      // KASUS 1: PENGGUNA BARU SAJA SCAN QR FISIK (Ada parameter token/booth di URL)
+      // --------------------------------------------------------------------------
+      if (rawToken || boothParam) {
         try {
-          // Cek validitas token ke tabel booths di Supabase
-          const { data: boothData, error: boothErr } = await supabase
-            .from('booths')
-            .select('*')
-            .eq('session_token', urlToken.trim())
-            .maybeSingle();
+          const cleanToken = (rawToken || '').trim();
 
-          const st = (boothData?.status || '').toUpperCase();
-          const isValidStatus =
-            st === 'ALLOCATED' ||
-            st === 'AVAILABLE' ||
-            st === 'TERSEDIA' ||
-            st === 'KOSONG' ||
-            st === 'MENUJU_BILIK';
+          // Cari bilik yang sesuai di Supabase (Toleran: cek session_token ATAU booth_number ATAU id)
+          let query = supabase.from('booths').select('*');
+          if (cleanToken) {
+            query = query.or(`session_token.eq.${cleanToken},id.eq.${cleanToken}`);
+          } else if (boothParam) {
+            query = query.eq('booth_number', parseInt(boothParam, 10));
+          }
 
-          if (!boothErr && boothData && isValidStatus) {
-            // TOKEN SAH DARI SCAN QR FISIK:
-            // A. Hapus seluruh sesi lama (SOLUSI PINJAM HP: sesi pemilih sebelumnya musnah)
+          const { data: boothList, error: boothErr } = await query;
+          const matchedBooth = boothList && boothList.length > 0 ? boothList[0] : null;
+
+          if (matchedBooth) {
+            // SCAN QR SAH DARI BILIK FISIK:
+            // A. Bersihkan sesi pemilih sebelumnya (Fitur Pinjam HP Teman langsung fresh)
             sessionStorage.clear();
             localStorage.removeItem('pemira_booth_session');
             localStorage.removeItem('pemira_completed_voter');
-            localStorage.removeItem('pemira_voter_session');
-            localStorage.removeItem('pemira_session');
-            localStorage.removeItem('pemira_session_token');
+            localStorage.removeItem('pemira_active_token');
+            localStorage.removeItem('pemira_assigned_booth');
 
             // B. Kunci sesi baru untuk pemilih ini
-            sessionStorage.setItem('pemira_valid_session_token', urlToken.trim());
-            sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(boothData));
-            setAssignedBooth(boothData);
-            setAssignedBoothId(boothData.id || '');
-            setAssignedBoothNumber(boothData.booth_number || 1);
-            setAssignedBoothName(boothData.name || `Bilik ${String(boothData.booth_number || 1).padStart(2, '0')}`);
+            sessionStorage.setItem('pemira_active_token', cleanToken || `BOOTH-${matchedBooth.booth_number}`);
+            sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(matchedBooth));
+            setAssignedBooth(matchedBooth);
+            setAssignedBoothId(matchedBooth.id || '');
+            setAssignedBoothNumber(matchedBooth.booth_number || 1);
+            setAssignedBoothName(matchedBooth.name || `Bilik ${String(matchedBooth.booth_number || 1).padStart(2, '0')}`);
 
-            // C. Segera bersihkan parameter URL agar link TIDAK BISA DISALIN ATAU DIBAGIKAN
+            // C. BERSINKRONISASI DENGAN SUPABASE
+            await supabase
+              .from('booths')
+              .update({
+                status: 'ALLOCATED',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', matchedBooth.id);
+
+            // D. AMANKAN URL: Hapus token dari address bar browser seketika!
+            // Jika pemilih copy link atau share ke WA, yang ter-copy hanya URL polos tanpa token
             window.history.replaceState({}, document.title, window.location.pathname);
 
             setIsAccessGranted(true);
@@ -387,22 +397,24 @@ function VoteContent() {
             return;
           }
         } catch (err) {
-          console.error("Gagal validasi token QR:", err);
+          console.error("Gagal verifikasi token QR:", err);
         }
 
-        // Jika token di URL tidak valid / sudah kadaluarsa:
+        // Jika ada token tapi tidak cocok di DB sama sekali
         setIsAccessGranted(false);
         setIsCheckingAccess(false);
         setLoading(false);
         return;
       }
 
-      // KASUS B: Tidak Ada Token di URL (Membuka via history, refresh, atau copy link)
-      const activeStoredToken = sessionStorage.getItem('pemira_valid_session_token');
+      // --------------------------------------------------------------------------
+      // KASUS 2: TIDAK ADA PARAMETER DI URL (Cek apakah sedang di tengah sesi HP ini)
+      // --------------------------------------------------------------------------
+      const activeStoredToken = sessionStorage.getItem('pemira_active_token');
       const storedBooth = sessionStorage.getItem('pemira_assigned_booth');
 
       if (activeStoredToken && storedBooth) {
-        // Masih dalam sesi bilik yang sedang berjalan di HP ini
+        // Sesi aktif di HP yang sama (misal refresh saat memilih)
         try {
           const parsed = JSON.parse(storedBooth);
           setAssignedBooth(parsed);
@@ -414,7 +426,7 @@ function VoteContent() {
           setIsAccessGranted(false);
         }
       } else {
-        // TIDAK ADA AKSES (Buka link mentah / link share tanpa scan QR) -> BLANK
+        // BUKA LINK MENTAH / LINK HASIL SHARE DARI ORANG LAIN -> TOLAK & BLANK
         setIsAccessGranted(false);
       }
 
@@ -422,7 +434,7 @@ function VoteContent() {
       setLoading(false);
     }
 
-    validateEntryAccess();
+    verifySessionToken();
   }, []);
 
   // 2. Realtime Listener Antrean Bilik Kosong (Supabase Channel)
@@ -1043,7 +1055,7 @@ function VoteContent() {
           Akses Bilik Tidak Ditemukan
         </h2>
         <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed">
-          Halaman ini hanya dapat diakses melalui pemindaian QR Code resmi pada layar bilik suara fisik. Tautan langsung tidak diizinkan.
+          Halaman ini hanya dapat diakses melalui pemindaian QR Code resmi pada bilik suara fisik. Tautan langsung atau tautan berbagi tidak diizinkan.
         </p>
       </div>
     );
