@@ -75,17 +75,17 @@ function BoothCard({
 }) {
   const st = (booth.status || '').toUpperCase();
   const isAvailable = st === 'AVAILABLE' || st === 'TERSEDIA' || st === 'KOSONG';
-  const isOccupied = st === 'OCCUPIED' || st === 'MENUJU_BILIK' || st === 'MENUJU BILIK';
+  const isAllocated = st === 'ALLOCATED' || st === 'MENUJU_BILIK' || st === 'MENUJU BILIK';
   const boothNumStr = String(booth.booth_number).padStart(2, '0');
-  const voterName = booth.voter_name || booth.current_voter_name || 'Pemilih Terdaftar';
-  const voterNim = booth.voter_nim || booth.current_voter_nim || '-';
-  const voterProdi = booth.voter_prodi || booth.current_voter_prodi || '-';
+  const voterName = booth.current_voter_name || booth.voter_name || 'Mahasiswa Sedang Memilih';
+  const voterNim = booth.current_voter_nim || booth.voter_nim || '-';
+  const voterProdi = booth.current_voter_prodi || booth.voter_prodi || '-';
 
   // Live timer berjalan untuk bilik yang sedang digunakan
   const [elapsed, setElapsed] = useState<string>('00:00');
 
   useEffect(() => {
-    if (isAvailable || isOccupied || !booth.started_at) {
+    if (isAvailable || isAllocated || !booth.started_at) {
       setElapsed('00:00');
       return;
     }
@@ -102,7 +102,7 @@ function BoothCard({
     calcElapsed();
     const timer = setInterval(calcElapsed, 1000);
     return () => clearInterval(timer);
-  }, [isAvailable, isOccupied, booth.started_at]);
+  }, [isAvailable, isAllocated, booth.started_at]);
 
   // STATUS HIJAU: AVAILABLE (Tersedia)
   if (isAvailable) {
@@ -117,8 +117,8 @@ function BoothCard({
             </div>
           </div>
           <div className="py-4 text-center">
-            <p className="text-xs text-slate-400 font-medium">
-              - Bilik Siap Digunakan -
+            <p className="text-xs text-emerald-600 font-medium">
+              Bilik Siap Digunakan
             </p>
           </div>
         </div>
@@ -134,25 +134,25 @@ function BoothCard({
     );
   }
 
-  // STATUS KUNING: OCCUPIED (Sedang Memilih)
-  if (isOccupied) {
+  // STATUS BIRU/KUNING: ALLOCATED / MENUJU BILIK (Menunggu pemilih tiba & verifikasi)
+  if (isAllocated) {
     return (
-      <div className="rounded-2xl border border-amber-200/80 bg-white p-4 shadow-sm flex flex-col justify-between transition-all">
+      <div className="rounded-2xl border border-blue-200/80 bg-white p-4 shadow-sm flex flex-col justify-between transition-all">
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-              <span>Sedang Memilih</span>
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              <span>Menuju Bilik</span>
             </div>
           </div>
 
-          <div className="py-3 px-3 rounded-xl bg-amber-50/50 border border-amber-100 space-y-1 mb-3 text-center">
-            <p className="font-bold text-amber-900 text-xs">
-              Alokasi Bilik Berhasil
+          <div className="py-3 px-3 rounded-xl bg-blue-50/50 border border-blue-100 space-y-1 mb-3 text-center">
+            <p className="font-bold text-blue-900 text-xs">
+              Alokasi Berhasil
             </p>
-            <p className="text-[11px] text-amber-700 font-medium">
-              Menunggu pemilih tiba &amp; menekan tombol konfirmasi...
+            <p className="text-[11px] text-blue-700 font-medium">
+              Menunggu pemilih memverifikasi identitas di bilik.
             </p>
           </div>
         </div>
@@ -160,7 +160,7 @@ function BoothCard({
         <button
           onClick={() => onReset(booth)}
           disabled={isResetting}
-          className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          className="w-full py-1.5 text-xs bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
         >
           <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
           <span>↺ Batalkan Alokasi</span>
@@ -169,7 +169,7 @@ function BoothCard({
     );
   }
 
-  // STATUS SEDANG MEMILIH (VOTING)
+  // STATUS AMBER: OCCUPIED (Sedang Memilih - Tampilkan Detail Pemilih: Nama, NIM, Prodi)
   return (
     <div className="rounded-2xl border border-amber-200/80 bg-white p-4 shadow-sm flex flex-col justify-between transition-all">
       <div>
@@ -181,27 +181,32 @@ function BoothCard({
           </div>
         </div>
 
-        <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-[#EFECE6] space-y-1 mb-3">
-          <p className="font-bold text-slate-900 text-xs truncate" title={voterName}>
+        <div className="py-2.5 px-3 rounded-xl bg-amber-50/60 border border-amber-100 space-y-1 mb-3">
+          <h4 className="font-bold text-slate-800 text-sm leading-snug line-clamp-1" title={voterName}>
             {voterName}
+          </h4>
+          <p className="font-mono text-xs text-slate-500 mt-0.5">
+            NIM: {voterNim}
           </p>
-          <p className="text-[10px] text-slate-600 font-semibold truncate">
-            {voterNim !== '-' ? `(${voterNim})` : ''} - {voterProdi}
+          <p className="text-[11px] text-indigo-600 font-medium mt-0.5 line-clamp-1" title={voterProdi}>
+            {voterProdi}
           </p>
-          <div className="pt-1 flex items-center gap-1 text-[11px] font-mono font-bold text-amber-600">
-            <Clock className="w-3 h-3" />
-            <span>Durasi: {elapsed}</span>
-          </div>
+          {elapsed !== '00:00' && (
+            <div className="pt-1 flex items-center gap-1 text-[11px] font-mono font-bold text-amber-600">
+              <Clock className="w-3 h-3" />
+              <span>Durasi: {elapsed}</span>
+            </div>
+          )}
         </div>
       </div>
 
       <button
         onClick={() => onReset(booth)}
         disabled={isResetting}
-        className="w-full py-1.5 text-xs bg-white text-slate-700 hover:bg-[#F5F2EB] border border-[#E2DDD5] rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+        className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
       >
         <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-        <span>↺ Batalkan Sesi</span>
+        <span>Paksa Reset Bilik</span>
       </button>
     </div>
   );
@@ -414,7 +419,7 @@ export default function AdminDashboardPage() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('booths')
-        .select('id, booth_number, status, current_voter_name, current_voter_nim, current_voter_prodi')
+        .select('*')
         .order('booth_number', { ascending: true });
 
       if (error) {

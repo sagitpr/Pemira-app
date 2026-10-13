@@ -862,12 +862,11 @@ function VoteContent() {
       // 2. Tandai bahwa proses submit dimulai agar Realtime Listener tidak memicu 'CANCELLED'
       isVoteFinishedRef.current = true;
 
-      // 3. Simpan suara BEM ke tabel votes
+      // 3. Simpan suara BEM ke tabel votes (HANYA candidate_id dan category, JANGAN sertakan booth_number!)
       const votesPayload: any[] = [
         {
           candidate_id: selectedBem.id,
           category: 'BEM',
-          booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
         }
       ];
 
@@ -876,7 +875,6 @@ function VoteContent() {
         votesPayload.push({
           candidate_id: selectedHima.id,
           category: 'HIMA',
-          booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
         });
       }
 
@@ -912,29 +910,28 @@ function VoteContent() {
 
       // 7. Reset bilik menjadi AVAILABLE
       const targetBoothId = assignedBooth?.id || assignedBoothId;
+      const resetPayload = {
+        status: 'AVAILABLE',
+        current_voter_name: null,
+        current_voter_nim: null,
+        current_voter_prodi: null,
+        voter_name: null,
+        voter_nim: null,
+        voter_prodi: null,
+        started_at: null,
+        session_token: null,
+        updated_at: new Date().toISOString()
+      };
+
       if (targetBoothId) {
         await supabase
           .from('booths')
-          .update({
-            status: 'AVAILABLE',
-            current_voter_name: null,
-            current_voter_nim: null,
-            current_voter_prodi: null,
-            session_token: null,
-            updated_at: new Date().toISOString()
-          })
+          .update(resetPayload)
           .eq('id', targetBoothId);
       } else {
         await supabase
           .from('booths')
-          .update({
-            status: 'AVAILABLE',
-            current_voter_name: null,
-            current_voter_nim: null,
-            current_voter_prodi: null,
-            session_token: null,
-            updated_at: new Date().toISOString()
-          })
+          .update(resetPayload)
           .eq('booth_number', assignedBoothNumber || 1);
       }
 
