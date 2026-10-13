@@ -443,8 +443,14 @@ function VoteContent() {
         }
       } else {
         // TIDAK ADA TOKEN DAN TIDAK ADA SESI AKTIF (LINK DARI SHARE WA / BUKA LANGSUNG)
-        // -> TOLAK DAN BLOKIR TOTAL
+        // -> Alihkan langsung ke about:blank seketika
         setIsAccessGranted(false);
+        setIsCheckingAccess(false);
+        setLoading(false);
+        if (typeof window !== 'undefined') {
+          window.location.replace('about:blank');
+        }
+        return;
       }
 
       setIsCheckingAccess(false);
@@ -1059,22 +1065,16 @@ function VoteContent() {
 
   const himaCandidates = prodiHimaCandidates;
 
-  // B. Tampilan Jika Akses Ditolak (Layar Blank Murni - Tanpa Window Alert)
+  // B. Tampilan Jika Akses Ditolak (Alihkan Langsung ke about:blank)
   if (!isCheckingAccess && !isAccessGranted) {
+    if (typeof window !== 'undefined') {
+      window.location.replace('about:blank');
+    }
     return (
-      <div className="fixed inset-0 bg-[#0B0F19] text-white flex flex-col items-center justify-center p-6 text-center z-50 select-none">
-        <div className="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 text-slate-500">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m2-11a9 9 0 110 18 9 9 0 010-18z" />
-          </svg>
-        </div>
-      <h2 className="text-xs font-bold tracking-widest uppercase text-slate-300 mb-1.5">
-        Akses Bilik Tidak Ditemukan
-      </h2>
-      <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed">
-        Halaman pemilihan hanya dapat diakses dengan memindai QR Code resmi pada bilik suara fisik. Tautan langsung atau tautan berbagi tidak diizinkan.
-      </p>
-      </div>
+      <div 
+        className="fixed inset-0 w-screen h-screen bg-black z-[999999] cursor-none select-none pointer-events-none" 
+        aria-hidden="true" 
+      />
     );
   }
 
