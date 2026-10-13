@@ -10,23 +10,25 @@ export default function QrScreenPage() {
   const [token, setToken] = useState('');
   const [timeLeft, setTimeLeft] = useState(20);
   const [baseUrl, setBaseUrl] = useState('');
+  const [boothNumber, setBoothNumber] = useState<number>(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [tokenTime, setTokenTime] = useState<number>(Date.now());
 
-  const generateNewToken = async () => {
+  const generateNewToken = async (targetBooth?: number) => {
+    const bNum = targetBooth ?? boothNumber;
     const now = Date.now();
     let sessionUuid: string;
     try {
       if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
         sessionUuid = crypto.randomUUID();
       } else {
-        sessionUuid = `UBTH-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+        sessionUuid = `UBTH-${bNum}-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
       }
     } catch {
-      sessionUuid = `UBTH-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+      sessionUuid = `UBTH-${bNum}-${now.toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
     }
 
     setToken(sessionUuid);
@@ -40,21 +42,37 @@ export default function QrScreenPage() {
       await supabaseClient.from('activity_logs').insert([
         {
           event_type: 'QR_SESSION_GENERATED',
-          message: `Token Sesi QR Baru Dibuat: ${sessionUuid}`,
+          message: `Token Sesi QR Baru Dibuat Bilik ${bNum}: ${sessionUuid}`,
           description: sessionUuid,
           created_at: new Date(now).toISOString(),
         },
       ]);
+
+      // Update session_token pada bilik
+      await supabaseClient
+        .from('booths')
+        .update({
+          session_token: sessionUuid,
+          updated_at: new Date(now).toISOString(),
+        })
+        .eq('booth_number', bNum);
     } catch (saveErr) {
       console.warn('Simpan token ke Supabase log:', saveErr);
     }
   };
 
   useEffect(() => {
+    let currentBNum = 1;
     if (typeof window !== 'undefined') {
       setBaseUrl(window.location.origin);
+      const params = new URLSearchParams(window.location.search);
+      const bParam = params.get('booth') || params.get('b');
+      if (bParam) {
+        currentBNum = parseInt(bParam, 10) || 1;
+        setBoothNumber(currentBNum);
+      }
     }
-    generateNewToken();
+    generateNewToken(currentBNum);
   }, []);
 
   // Poll & Realtime election status from system_config
@@ -130,7 +148,9 @@ export default function QrScreenPage() {
     }
   };
 
-  const voteUrl = baseUrl ? `${baseUrl}/vote?session=${token}&ts=${tokenTime}` : '';
+  const voteUrl = baseUrl
+    ? `${baseUrl}/vote?booth=${boothNumber}&token=${token || 'UBTH-' + boothNumber + '-' + Date.now()}&src=qr`
+    : '';
   const formattedTime = `00:${timeLeft < 10 ? `0${timeLeft}` : timeLeft}`;
 
   return (
@@ -305,7 +325,7 @@ export default function QrScreenPage() {
 
             {/* Tombol Refresh Token Kecil di Sudut */}
             <button
-              onClick={generateNewToken}
+              onClick={() => generateNewToken()}
               title="Refresh Token"
               className="absolute -bottom-3 -right-3 flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md border border-slate-200 text-slate-500 hover:text-slate-900 transition cursor-pointer"
             >

@@ -92,9 +92,9 @@ function ScanContent() {
 
         setTimeout(() => {
           if (forwardedToken) {
-            router.replace(`/vote?token=${encodeURIComponent(forwardedToken)}`);
+            router.replace(`/vote?booth=${boothNum}&token=${encodeURIComponent(forwardedToken)}&src=qr`);
           } else {
-            router.replace(`/vote?booth=${boothNum}`);
+            router.replace(`/vote?booth=${boothNum}&src=qr`);
           }
         }, 1200);
         return;

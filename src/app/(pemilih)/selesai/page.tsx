@@ -89,6 +89,7 @@ export default function SelesaiPage() {
     localStorage.removeItem('pemira_active_token');
     localStorage.removeItem('pemira_assigned_booth');
     localStorage.removeItem('pemira_completed_voter');
+    localStorage.removeItem('pemira_access_verified');
 
     // Kunci permanen ke blank screen tanpa redirect
     setIsLockedBlank(true);
