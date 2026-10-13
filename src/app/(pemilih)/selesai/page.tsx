@@ -1,77 +1,142 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, useRef } from 'react';
 
 export default function SelesaiPage() {
-  const router = useRouter();
   const [voter, setVoter] = useState<{
     name: string;
     nim: string;
     prodi: string;
-    booth_number: number;
     voted_at: string;
   } | null>(null);
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(60); // 1 Menit Penuh
+  const [isLockedBlank, setIsLockedBlank] = useState(false);
+  const audioTriggeredRef = useRef(false);
+
+  // Fungsi Pemusnahan Sesi Total (Blank Out & Tidak Ada Akses)
+  const triggerBlankLockdown = () => {
+    sessionStorage.clear();
+    localStorage.removeItem('pemira_booth_session');
+    localStorage.removeItem('pemira_candidates_master');
+    localStorage.removeItem('pemira_candidates_meta_v2');
+    setIsLockedBlank(true);
+  };
 
   useEffect(() => {
-    // Ambil data pemilih dari sessionStorage
+    // 1. Validasi Keamanan: Cegah akses langsung tanpa sesi submit yang sah
     const stored = sessionStorage.getItem('pemira_completed_voter');
-    if (stored) {
+    if (!stored) {
+      // Jika diakses tanpa submit sah, langsung kunci dan kosongkan layar
+      setIsLockedBlank(true);
+      return;
+    }
+
+    try {
+      setVoter(JSON.parse(stored));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // 2. Audio Suara Ucapan Terima Kasih Otomatis (Web Speech API Indonesia)
+    if (!audioTriggeredRef.current) {
+      audioTriggeredRef.current = true;
       try {
-        setVoter(JSON.parse(stored));
-      } catch (e) {
-        console.error(e);
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel(); // Reset antrean suara sebelumnya
+          const utterance = new SpeechSynthesisUtterance(
+            "Terima kasih atas partisipasi Anda dalam Pemilihan Raya Mahasiswa Universitas Bakti Tunas Husada Tahun 2026. Hak suara Anda telah berhasil disimpan secara sah."
+          );
+          utterance.lang = 'id-ID';
+          utterance.rate = 0.95; // Kecepatan formal yang jelas
+          utterance.pitch = 1.0;
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch (err) {
+        console.warn("Speech synthesis tidak didukung atau diblokir:", err);
       }
     }
 
-    // Countdown otomatis menutup sesi
+    // 3. Kunci Riwayat Navigasi Browser (Cegah tombol Back)
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      window.history.pushState(null, '', window.location.href);
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    // 4. Hitung Mundur 1 Menit (60 Detik) menuju Blank Out
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          sessionStorage.clear();
-          window.location.href = '/scan';
+          triggerBlankLockdown();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [router]);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
+  // Tampilan Blank Hitam/Kosong Total saat sesi habis atau link dicuri
+  if (isLockedBlank) {
+    return (
+      <div className="fixed inset-0 bg-[#0B0F19] text-white flex flex-col items-center justify-center p-6 text-center z-50">
+        <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-4 text-slate-400">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m2-11a9 9 0 110 18 9 9 0 010-18z" />
+          </svg>
+        </div>
+        <h2 className="text-sm font-bold tracking-wider uppercase text-slate-200 mb-1">
+          Sesi Bilik Telah Berakhir
+        </h2>
+        <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+          Hak suara telah tercatat. Akses halaman ini telah ditutup permanen demi menjaga kerahasiaan dan integritas pemilihan.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
       {/* Header Resmi */}
       <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center">
-            <img src="/image-logo-Pemira.png" alt="Logo Pemira" className="w-full h-full object-contain" />
+          <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center overflow-hidden">
+            {/* Path Logo dari folder public/candidate */}
+            <img 
+              src="/candidate/image-logo-Pemira.png" 
+              alt="Logo Pemira" 
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                // Fallback jika nama file berbeda sedikit di folder candidate
+                const target = e.currentTarget;
+                if (!target.src.includes('image-logo-Pemira')) {
+                  target.src = '/image-logo-Pemira.png';
+                }
+              }}
+            />
           </div>
           <div>
             <h1 className="text-xs font-bold text-slate-900 tracking-tight leading-none">PEMIRA UBTH 2026</h1>
             <p className="text-[10px] font-medium text-slate-500 tracking-wide mt-0.5">KOMISI PEMILIHAN RAYA</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          <span>Suara Terverifikasi</span>
-        </div>
+
+        {/* Status Text Murni: Tanpa Kotak Border, Tanpa Background, Tanpa Titik Dot */}
+        <span className="text-[11px] font-semibold text-emerald-600 tracking-tight">
+          Suara Terverifikasi
+        </span>
       </header>
 
-      {/* Konten Utama */}
+      {/* Konten Utama (Tanpa Ikon Ceklis & Kotak Hijau di Tengah) */}
       <main className="w-full max-w-md mx-auto my-auto py-4">
         <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm flex flex-col items-center text-center">
           
-          {/* Ikon Ceklis Formal (SVG Outline Bersih, Tanpa Emoji) */}
-          <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center mb-4 text-emerald-600 shadow-xs">
-            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.4}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-          </div>
-
-          <p className="text-[11px] font-bold tracking-widest text-emerald-600 uppercase mb-1">
+          <p className="text-[11px] font-bold tracking-widest text-emerald-600 uppercase mb-2">
             Transaksi Suara Berhasil
           </p>
 
@@ -103,6 +168,7 @@ export default function SelesaiPage() {
             </div>
           </div>
 
+          {/* Penunjuk Sesi Bilik (Hitung Mundur 1 Menit) */}
           <div className="w-full bg-slate-50 border border-slate-200/60 rounded-xl py-2 px-3 mb-6 flex items-center justify-center gap-2 text-[11px] text-slate-500">
             <span>Sesi bilik tertutup otomatis dalam</span>
             <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
@@ -111,16 +177,13 @@ export default function SelesaiPage() {
           </div>
 
           <button
-            onClick={() => {
-              sessionStorage.clear();
-              window.location.href = '/scan';
-            }}
+            onClick={triggerBlankLockdown}
             className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99]"
           >
             Selesai & Keluar dari Bilik
           </button>
 
-          {/* Watermark Konsisten di Bawah Kartu */}
+          {/* Watermark Konsisten */}
           <div className="w-full mt-6 pt-4 border-t border-[#EFECE6] flex items-center justify-center gap-1.5 text-[10px] text-slate-400 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span>Engineered by <strong className="text-slate-700 font-semibold">Sagit Faturrakhman</strong></span>

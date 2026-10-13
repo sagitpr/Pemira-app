@@ -28,6 +28,8 @@ function ScanContent() {
     }
 
     if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pemira_physical_scan_verified', 'true');
+      sessionStorage.setItem('pemira_scan_timestamp', Date.now().toString());
       sessionStorage.setItem('pemira_session_token', token);
       setSessionToken(token);
     }
@@ -72,12 +74,16 @@ function ScanContent() {
 
         const boothNum = availableBooth.booth_number || 1;
         if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pemira_physical_scan_verified', 'true');
+          sessionStorage.setItem('pemira_scan_timestamp', Date.now().toString());
+          sessionStorage.setItem('pemira_assigned_booth_num', String(boothNum));
+          sessionStorage.setItem('pemira_assigned_booth_id', String(availableBooth.id));
           localStorage.setItem('pemira_booth', String(boothNum));
         }
 
-        // Arahkan HP pemilih langsung ke halaman pemilihan bilik tersebut
+        // Arahkan HP pemilih langsung ke halaman pemilihan bilik tersebut (tanpa query string token terbuka)
         setTimeout(() => {
-          router.push(`/vote?booth=${boothNum}`);
+          router.replace('/vote');
         }, 1200);
         return;
       }
@@ -138,11 +144,14 @@ function ScanContent() {
       <header className="w-full max-w-md mx-auto text-center pt-4">
         <div className="flex items-center justify-center gap-2 mb-2">
           <img
-            src="/candidate/image/logo-pemira.png"
+            src="/candidate/image-logo-Pemira.png"
             alt="Logo Pemira"
             className="h-10 w-auto object-contain"
             onError={(e) => {
-              e.currentTarget.style.display = 'none';
+              const target = e.currentTarget;
+              if (!target.src.includes('image-logo-Pemira')) {
+                target.src = '/image-logo-Pemira.png';
+              }
             }}
           />
         </div>
@@ -223,7 +232,13 @@ function ScanContent() {
 
               <button
                 type="button"
-                onClick={() => router.push('/vote?booth=1')}
+                onClick={() => {
+                  sessionStorage.setItem('pemira_physical_scan_verified', 'true');
+                  sessionStorage.setItem('pemira_scan_timestamp', Date.now().toString());
+                  sessionStorage.setItem('pemira_assigned_booth_num', '1');
+                  localStorage.setItem('pemira_booth', '1');
+                  router.replace('/vote');
+                }}
                 className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:text-slate-800 text-[11px] font-bold transition-all cursor-pointer"
               >
                 Masuk Bilik 1 (Mode Uji Coba)

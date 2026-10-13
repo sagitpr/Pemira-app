@@ -331,6 +331,20 @@ function VoteContent() {
 
   // 1. Initial Session Check & Auto-Booth Allocation
   useEffect(() => {
+    // Bersihkan parameter URL seketika agar link yang dibagikan tidak membawa token
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    // Validasi: Apakah pengguna benar-benar membuka dari scan QR di HP tersebut?
+    const isFromPhysicalScan = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_physical_scan_verified') : null;
+    if (!isFromPhysicalScan) {
+      // Jika link disalin, dikirim di WhatsApp, atau dibuka langsung tanpa scan di bilik:
+      alert("Akses Ditolak: Anda wajib memindai QR Code fisik secara langsung di bilik suara resmi.");
+      window.location.href = '/scan';
+      return;
+    }
+
     setMounted(true);
     let isCancelled = false;
 
@@ -369,6 +383,28 @@ function VoteContent() {
           setIsAccessDenied(true);
           setLoading(false);
           return;
+        }
+
+        // Cek jika bilik sudah dialokasikan saat memindai di /scan
+        const preAllocBoothId = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_assigned_booth_id') : null;
+        const preAllocBoothNum = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_assigned_booth_num') : null;
+
+        if (preAllocBoothId || preAllocBoothNum) {
+          const { data: preBooth } = await supabase
+            .from('booths')
+            .select('*')
+            .eq(preAllocBoothId ? 'id' : 'booth_number', preAllocBoothId || Number(preAllocBoothNum))
+            .maybeSingle();
+
+          if (preBooth) {
+            setAssignedBooth(preBooth);
+            setAssignedBoothId(preBooth.id || '');
+            setAssignedBoothNumber(preBooth.booth_number || 1);
+            setAssignedBoothName(preBooth.name || `Bilik ${String(preBooth.booth_number).padStart(2, '0')}`);
+            setIsWaitingQueue(false);
+            if (!isCancelled) setLoading(false);
+            return;
+          }
         }
 
         // Cari bilik yang berstatus 'AVAILABLE' (diurutkan berdasarkan booth_number asc)
@@ -1271,14 +1307,19 @@ function VoteContent() {
       <header className="w-full max-w-full bg-white/80 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 sticky top-0 z-30">
         {/* Kiri: Logo & Nama */}
         <div className="flex items-center gap-2.5">
-          <img
-            src="/logo-kpr.png"
-            onError={(e) => {
-              e.currentTarget.src = '/candidate/image/logo-pemira.png';
-            }}
-            alt="KPR UBTH"
-            className="w-8 h-8 object-contain"
-          />
+          <div className="w-8 h-8 rounded-lg bg-white border border-[#EFECE6] p-1 shadow-xs flex items-center justify-center overflow-hidden">
+            <img
+              src="/candidate/image-logo-Pemira.png"
+              alt="Logo Pemira"
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('image-logo-Pemira')) {
+                  target.src = '/image-logo-Pemira.png';
+                }
+              }}
+            />
+          </div>
           <div>
             <h1 className="text-sm font-bold text-slate-800 leading-tight">PEMIRA UBTH 2026</h1>
             <p className="text-[10px] text-slate-500 font-medium">KOMISI PEMILIHAN RAYA</p>
