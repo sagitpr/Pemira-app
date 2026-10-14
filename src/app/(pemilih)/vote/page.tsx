@@ -338,88 +338,51 @@ function VoteContent() {
     async function handleBoothEntry() {
       setIsCheckingAccess(true);
 
-      // Ambil parameter dari hasil scan QR fisik kamera
       const params = new URLSearchParams(window.location.search);
-      const urlToken = params.get('token') || params.get('t') || params.get('session');
       const boothParam = params.get('booth') || params.get('b');
-      const isFromQr = params.get('src') === 'qr' || Boolean(urlToken || boothParam);
+      const urlToken = params.get('token') || params.get('t') || params.get('session');
 
-      // ==========================================================================
-      // KASUS A: AKSES BERASAL DARI SCAN QR FISIK KAMERA (Ada parameter di URL)
-      // ==========================================================================
-      if (isFromQr && (urlToken || boothParam)) {
-        try {
-          const boothNo = boothParam ? parseInt(boothParam, 10) : 1;
-          const activeToken = urlToken ? urlToken.trim() : `BOOTH-${boothNo}-${Date.now()}`;
+      if (boothParam && urlToken) {
+        const boothNumberInt = parseInt(boothParam, 10);
 
-          // 1. SOLUSI PINJAM HP: Hapus seluruh sesi lama pemilih sebelumnya dari HP ini
-          sessionStorage.clear();
-          localStorage.removeItem('pemira_booth_session');
-          localStorage.removeItem('pemira_completed_voter');
-          localStorage.removeItem('pemira_active_token');
-          localStorage.removeItem('pemira_assigned_booth');
-          localStorage.removeItem('pemira_access_verified');
+        // Ambil detail bilik dari Supabase berdasarkan booth_number yang dikirim
+        const { data: boothData } = await supabase
+          .from('booths')
+          .select('*')
+          .eq('booth_number', boothNumberInt)
+          .maybeSingle();
 
-          // 2. Cari bilik di database Supabase (Toleran: cari berdasarkan booth_number atau session_token)
-          let matchedBooth: any = null;
-          try {
-            const { data: booths } = await supabase
-              .from('booths')
-              .select('*')
-              .or(`booth_number.eq.${boothNo},session_token.eq.${activeToken}`);
+        const activeBooth = boothData || {
+          id: `booth-${boothNumberInt}`,
+          booth_number: boothNumberInt,
+          status: 'ALLOCATED',
+          session_token: urlToken
+        };
 
-            if (booths && booths.length > 0) {
-              matchedBooth = booths[0];
-            }
-          } catch (dbErr) {
-            console.warn("DB booth fetch warning:", dbErr);
-          }
+        // Bersihkan sesi lama & simpan sesi bilik baru
+        sessionStorage.clear();
+        localStorage.removeItem('pemira_booth_session');
+        localStorage.removeItem('pemira_completed_voter');
+        localStorage.removeItem('pemira_active_token');
+        localStorage.removeItem('pemira_assigned_booth');
+        localStorage.removeItem('pemira_access_verified');
 
-          // Jika data bilik di DB belum ada/gagal query, buat objek fallback agar pemilih TIDAK TERKUNCI
-          if (!matchedBooth) {
-            matchedBooth = {
-              id: `booth-${boothNo}`,
-              booth_number: boothNo,
-              status: 'ALLOCATED',
-              session_token: activeToken
-            };
-          }
+        setAssignedBooth(activeBooth);
+        setAssignedBoothId(activeBooth.id || '');
+        setAssignedBoothNumber(activeBooth.booth_number || boothNumberInt);
+        setAssignedBoothName(activeBooth.name || `Bilik ${String(activeBooth.booth_number || boothNumberInt).padStart(2, '0')}`);
 
-          // 3. Update status bilik di Supabase secara hening di background
-          if (matchedBooth?.id) {
-            supabase
-              .from('booths')
-              .update({
-                status: 'ALLOCATED',
-                session_token: activeToken,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', matchedBooth.id)
-              .then(() => {});
-          }
+        sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(activeBooth));
+        sessionStorage.setItem('pemira_active_token', urlToken);
+        sessionStorage.setItem('pemira_access_verified', 'true');
 
-          // 4. Kunci sesi valid di sessionStorage HP ini
-          sessionStorage.setItem('pemira_active_token', activeToken);
-          sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(matchedBooth));
-          sessionStorage.setItem('pemira_access_verified', 'true');
-          setAssignedBooth(matchedBooth);
-          setAssignedBoothId(matchedBooth.id || '');
-          setAssignedBoothNumber(matchedBooth.booth_number || boothNo);
-          setAssignedBoothName(matchedBooth.name || `Bilik ${String(matchedBooth.booth_number || boothNo).padStart(2, '0')}`);
+        // Bersihkan URL dari address bar agar tidak bisa disalin/dishare
+        window.history.replaceState({}, document.title, window.location.pathname);
 
-          // 5. ANTI-SHARE LINK: SEGERA BERSIHKAN URL DARI BROWSER ADDRESS BAR!
-          // URL di address bar seketika berubah menjadi bersih tanpa parameter (?token= hilang)
-          // Sehingga jika pemilih meng-copy link atau share ke WA, yang ter-copy hanya URL kosong
-          window.history.replaceState({}, document.title, window.location.pathname);
-
-          // BERIKAN IZIN MASUK SEKETIKA
-          setIsAccessGranted(true);
-          setIsCheckingAccess(false);
-          setLoading(false);
-          return;
-        } catch (err) {
-          console.error("Gagal inisialisasi QR:", err);
-        }
+        setIsAccessGranted(true);
+        setIsCheckingAccess(false);
+        setLoading(false);
+        return;
       }
 
       // ==========================================================================
@@ -964,30 +927,42 @@ function VoteContent() {
       }
 
       // 7. Reset bilik menjadi AVAILABLE
-      const targetBoothId = assignedBooth?.id || assignedBoothId;
-      const resetPayload = {
-        status: 'AVAILABLE',
-        current_voter_name: null,
-        current_voter_nim: null,
-        current_voter_prodi: null,
-        voter_name: null,
-        voter_nim: null,
-        voter_prodi: null,
-        started_at: null,
-        session_token: null,
-        updated_at: new Date().toISOString()
-      };
-
-      if (targetBoothId) {
+      if (assignedBooth?.id) {
         await supabase
           .from('booths')
-          .update(resetPayload)
-          .eq('id', targetBoothId);
+          .update({
+            status: 'AVAILABLE',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            session_token: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', assignedBooth.id);
+      } else if (assignedBoothId) {
+        await supabase
+          .from('booths')
+          .update({
+            status: 'AVAILABLE',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            session_token: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', assignedBoothId);
       } else {
         await supabase
           .from('booths')
-          .update(resetPayload)
-          .eq('booth_number', assignedBoothNumber || 1);
+          .update({
+            status: 'AVAILABLE',
+            current_voter_name: null,
+            current_voter_nim: null,
+            current_voter_prodi: null,
+            session_token: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('booth_number', assignedBooth?.booth_number || assignedBoothNumber || 1);
       }
 
       // 8. Hapus cache lokal bilik dan alihkan ke halaman selesai
@@ -1381,12 +1356,12 @@ function VoteContent() {
               <p className="text-[11px] font-bold tracking-widest text-slate-400 uppercase text-center mb-4">
                 ARAHAN BILIK SUARA FISIK
               </p>
-              <div className="relative py-6 px-6 rounded-3xl bg-linear-to-b from-blue-50/80 to-slate-50 border-2 border-blue-300 shadow-inner">
-                <h1 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
-                  Silakan Segera Menuju <span className="text-blue-600">BILIK {assignedBoothNumber}</span>
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2">
-                  Bilik nomor {assignedBoothNumber} telah dikunci sementara khusus untuk sesi Anda.
+              <div className="border border-blue-200 bg-blue-50/50 rounded-2xl p-6 text-center mb-6">
+                <h2 className="text-xl font-bold text-slate-900 leading-snug">
+                  Silakan Segera Menuju <span className="text-blue-600 font-extrabold">BILIK {assignedBooth?.booth_number || 1}</span>
+                </h2>
+                <p className="text-xs text-slate-500 mt-2">
+                  Bilik nomor {assignedBooth?.booth_number || 1} telah dikunci sementara khusus untuk sesi Anda.
                 </p>
               </div>
             </div>
@@ -1394,7 +1369,7 @@ function VoteContent() {
             <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-left text-xs text-amber-800 space-y-1">
               <strong className="text-amber-900 block font-bold">Petunjuk Pemilih:</strong>
               <p>
-                Segera berjalan menuju <strong>Bilik {assignedBoothNumber}</strong>. Setelah Anda berada di depan bilik fisik, tekan tombol di bawah untuk membuka formulir verifikasi DPT.
+                Segera berjalan menuju <strong>Bilik {assignedBooth?.booth_number || 1}</strong>. Setelah Anda berada di depan bilik fisik, tekan tombol di bawah untuk membuka formulir verifikasi DPT.
               </p>
             </div>
 

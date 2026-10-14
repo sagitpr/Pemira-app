@@ -68,10 +68,12 @@ function BoothCard({
   booth,
   isResetting,
   onReset,
+  onResetBooth,
 }: {
   booth: BoothItem;
   isResetting: boolean;
   onReset: (booth: any) => void;
+  onResetBooth: (boothId: string | number) => void;
 }) {
   const st = (booth.status || '').toUpperCase();
   const isAvailable = st === 'AVAILABLE' || st === 'TERSEDIA' || st === 'KOSONG';
@@ -157,14 +159,25 @@ function BoothCard({
           </div>
         </div>
 
-        <button
-          onClick={() => onReset(booth)}
-          disabled={isResetting}
-          className="w-full py-1.5 text-xs bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-        >
-          <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-          <span>↺ Batalkan Alokasi</span>
-        </button>
+        <div>
+          <button
+            onClick={() => onReset(booth)}
+            disabled={isResetting}
+            className="w-full py-1.5 text-xs bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+            <span>↺ Batalkan Alokasi</span>
+          </button>
+          <button
+            onClick={() => onResetBooth(booth.id || booth.booth_number)}
+            className="mt-2 text-[11px] font-medium text-slate-400 hover:text-rose-600 transition flex items-center justify-center gap-1 w-full pt-2 border-t border-slate-100 cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Reset Bilik ke Tersedia
+          </button>
+        </div>
       </div>
     );
   }
@@ -200,14 +213,25 @@ function BoothCard({
         </div>
       </div>
 
-      <button
-        onClick={() => onReset(booth)}
-        disabled={isResetting}
-        className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-      >
-        <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-        <span>Paksa Reset Bilik</span>
-      </button>
+      <div>
+        <button
+          onClick={() => onReset(booth)}
+          disabled={isResetting}
+          className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+        >
+          <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
+          <span>Paksa Reset Bilik</span>
+        </button>
+        <button
+          onClick={() => onResetBooth(booth.id || booth.booth_number)}
+          className="mt-2 text-[11px] font-medium text-slate-400 hover:text-rose-600 transition flex items-center justify-center gap-1 w-full pt-2 border-t border-slate-100 cursor-pointer"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Reset Bilik ke Tersedia
+        </button>
+      </div>
     </div>
   );
 }
@@ -631,17 +655,34 @@ export default function AdminDashboardPage() {
       console.error("Crash saat cancel session:", err);
     }
   };
-  const handleCancelAllocation = handleCancelSession;
+  const handleResetBooth = async (boothId: string | number) => {
+    try {
+      await supabase
+        .from('booths')
+        .update({
+          status: 'AVAILABLE',
+          current_voter_name: null,
+          current_voter_nim: null,
+          current_voter_prodi: null,
+          session_token: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', boothId);
+      showToast?.('Bilik berhasil di-reset ke Tersedia', 'success');
+      fetchBooths();
+    } catch (e) {
+      console.error("Gagal reset bilik:", e);
+    }
+  };
 
-  const countTersedia = booths.filter((b) => {
-    const st = (b.status || '').toUpperCase();
-    return st === 'TERSEDIA' || st === 'KOSONG';
-  }).length;
+  // 1. Bilik Tersedia: Hanya yang benar-benar siap (AVAILABLE)
+  const availableCount = booths.filter((b) => b.status === 'AVAILABLE' || b.status === 'TERSEDIA').length;
 
-  const countDigunakan = booths.filter((b) => {
-    const st = (b.status || '').toUpperCase();
-    return st === 'DIGUNAKAN' || st === 'TERISI' || st === 'SEDANG MEMILIH';
-  }).length;
+  // 2. Bilik Aktif / Digunakan: Hitung yang sedang memilih (OCCUPIED) MAUPUN yang sedang berjalan ke bilik (ALLOCATED)
+  const inUseCount = booths.filter((b) => b.status === 'OCCUPIED' || b.status === 'ALLOCATED').length;
+
+  const countTersedia = availableCount;
+  const countDigunakan = inUseCount;
 
   // Custom Tooltip Recharts untuk Trafik Bilik
   const TrafficTooltip = ({ active, payload, label }: any) => {
@@ -970,6 +1011,7 @@ export default function AdminDashboardPage() {
                   booth={booth}
                   isResetting={resettingBoothId === booth.booth_number}
                   onReset={handleCancelSession}
+                  onResetBooth={handleResetBooth}
                 />
               ))
             )}
