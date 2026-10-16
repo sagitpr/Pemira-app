@@ -350,17 +350,20 @@ export default function AdminDashboardPage() {
 
   // UBAH MASTER STATUS ELECTION
   const handleUpdateStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
-    setElectionStatus(newStatus);
     try {
-      await fetch('/api/admin/system-config', {
+      const res = await fetch('/api/admin/system-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ election_status: newStatus === 'AKTIF' ? 'OPEN' : newStatus }),
+        body: JSON.stringify({ election_status: newStatus }), // Jangan sertakan total_booths agar tidak mereset bilik!
       });
-      showToast?.(`Status pemilihan diperbarui: ${newStatus}`, newStatus === 'AKTIF' ? 'success' : 'warning');
-      fetchDashboardData();
+      const data = await res.json();
+      if (data.success) {
+        setElectionStatus(newStatus);
+        showToast?.(`Status pemilihan diperbarui: ${newStatus}`, newStatus === 'AKTIF' ? 'success' : 'warning');
+        fetchDashboardData();
+      }
     } catch (e) {
-      console.warn('Gagal ubah status:', e);
+      console.error(e);
     }
   };
 

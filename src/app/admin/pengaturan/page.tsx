@@ -96,9 +96,7 @@ export default function AdminPengaturanPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          election_status: newStatus === 'AKTIF' ? 'OPEN' : newStatus,
-          total_booths: totalBooths,
-          session_timeout_seconds: sessionTimeout,
+          election_status: newStatus,
         }),
       });
 
