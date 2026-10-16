@@ -7,26 +7,44 @@ import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    // 1. Hitung suara sah tiap kandidat secara langsung dan cepat
+    const currentServerTime = Date.now();
+
+    // 1. Kueri Kandidat & Suara: Cocokkan c.id ATAU c.candidate_number secara case-insensitive
     const candidateVotes = await sql`
       SELECT 
-        c.id, c.name, c.leader_name, c.vice_leader_name, c.candidate_number, 
-        c.category, c.type, c.prodi, c.faculty, c.slogan, c.photo_url,
+        c.id, 
+        c.name, 
+        c.leader_name, 
+        c.vice_leader_name, 
+        c.candidate_number, 
+        c.category, 
+        c.type, 
+        c.prodi, 
+        c.faculty, 
+        c.slogan, 
+        c.photo_url,
         COUNT(v.id)::int as total_suara
       FROM candidates c
-      LEFT JOIN votes v ON c.id::text = v.candidate_id::text
+      LEFT JOIN votes v ON (
+        (v.candidate_id = c.id OR v.candidate_id = c.candidate_number::text)
+        AND UPPER(COALESCE(v.category, v.type, '')) = UPPER(COALESCE(c.category, c.type, ''))
+      )
       GROUP BY c.id
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Ambil ringkasan total suara sah BEM murni
-    const bemCountRes = await sql`SELECT count(*)::int as total FROM votes WHERE category = 'BEM'`;
+    // 2. Ambil Total Suara Sah BEM murni (Case-Insensitive)
+    const bemCountRes = await sql`
+      SELECT count(*)::int as total 
+      FROM votes 
+      WHERE UPPER(category) = 'BEM' OR UPPER(type) = 'BEM'
+    `;
     const totalBemSuaraSah = bemCountRes[0]?.total || 0;
 
     // 3. Ambil data voters untuk matriks 14 prodi
     const voters = await sql`SELECT id, prodi, faculty, has_voted FROM voters`;
 
-    // Master Matriks 14 Program Studi
+    // Matriks 14 Program Studi Resmi
     const MASTER_MATRIX = [
       { no: 1, name: 'Bisnis Digital', faculty: 'FTB', match: ['bisnis digital'] },
       { no: 2, name: 'Sistem Informasi', faculty: 'FTB', match: ['sistem informasi'] },
@@ -80,8 +98,6 @@ export async function GET() {
       return !cat.includes('BEM');
     });
 
-    const totalBemSuara = bemCandidates.reduce((acc: number, curr: any) => acc + (curr.total_suara || 0), 0);
-    const totalHimaSuara = himaCandidates.reduce((acc: number, curr: any) => acc + (curr.total_suara || 0), 0);
     const totalSudahMemilih = voters.filter((v: any) => v.has_voted === true).length;
 
     return new NextResponse(
@@ -92,18 +108,15 @@ export async function GET() {
         himaCandidates,
         candidateVotes,
         totalDpt: voters.length,
-        totalBemSuaraSah: totalBemSuaraSah || totalBemSuara,
-        totalBemSuara,
-        totalHimaSuara,
+        totalBemSuaraSah,
         summary: {
           totalVoters: voters.length,
           totalSudahMemilih,
           totalBelumMemilih: Math.max(0, voters.length - totalSudahMemilih),
           partisipasi: voters.length > 0 ? ((totalSudahMemilih / voters.length) * 100).toFixed(1) : '0.0',
-          totalBemVotes: totalBemSuaraSah || totalBemSuara,
-          totalHimaVotes: totalHimaSuara
+          totalBemVotes: totalBemSuaraSah
         },
-        timestamp: Date.now()
+        timestamp: currentServerTime
       }),
       {
         status: 200,
@@ -115,9 +128,8 @@ export async function GET() {
         },
       }
     );
-
   } catch (err: any) {
-    console.error('Error fast rekap:', err);
+    console.error('Error rekap route:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

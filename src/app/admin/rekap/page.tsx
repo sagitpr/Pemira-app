@@ -167,6 +167,7 @@ export default function AdminRekapPage() {
   const [himaList, setHimaList] = useState<Candidate[]>(contextHima || []);
   const [bemCandidates, setBemCandidates] = useState<any[]>([]);
   const [himaCandidates, setHimaCandidates] = useState<any[]>([]);
+  const [totalBemSuara, setTotalBemSuara] = useState<number>(0);
   const [selectedHimaProdi, setSelectedHimaProdi] = useState<string>('');
 
   // Chart State
@@ -174,10 +175,15 @@ export default function AdminRekapPage() {
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // Fetch data rekap matriks 14 prodi, votes, dan summary langsung dari Neon (Fast-Sync Realtime)
-  const prevRekapHashRef = useRef('');
+  // Timestamp Sequencing Guard & In-Flight Protection
+  const latestAppliedTimestampRef = useRef<number>(0);
+  const isPollingInFlightRef = useRef<boolean>(false);
 
   const fetchRekapData = async () => {
+    // Cegah request ganda bertumpuk jika request sebelumnya masih berjalan di jaringan
+    if (isPollingInFlightRef.current) return;
+    isPollingInFlightRef.current = true;
+
     try {
       const res = await fetch(`/api/admin/rekap?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -189,46 +195,45 @@ export default function AdminRekapPage() {
       if (!res.ok) return;
       const data = await res.json();
 
-      if (data.success) {
-        // Cek perubahan data
-        const currentHash = JSON.stringify({
-          bem: data.bemCandidates,
-          hima: data.himaCandidates,
-          total: data.totalBemSuaraSah
-        });
+      if (data.success && data.timestamp) {
+        // KUNCI ANTI-GLITCH: Tolak data jika timestamp lebih lama dari yang sudah tampil di layar!
+        if (data.timestamp < latestAppliedTimestampRef.current) {
+          return;
+        }
+        latestAppliedTimestampRef.current = data.timestamp;
 
-        // Hanya update state jika suara benar-benar bertambah atau berubah
-        if (prevRekapHashRef.current !== currentHash) {
-          prevRekapHashRef.current = currentHash;
-          setBemCandidates(data.bemCandidates || []);
-          setHimaCandidates(data.himaCandidates || []);
-          setBemList(data.bemCandidates || []);
-          setHimaList(data.himaCandidates || []);
-          setProdiMatrix(data.matrix || []);
-          setIsLoadingMatrix(false);
-          setTotalDptCount(data.totalDpt || 0);
+        // Update state secara bersih
+        setBemCandidates(data.bemCandidates || []);
+        setHimaCandidates(data.himaCandidates || []);
+        setBemList(data.bemCandidates || []);
+        setHimaList(data.himaCandidates || []);
+        setProdiMatrix(data.matrix || []);
+        setIsLoadingMatrix(false);
+        setTotalDptCount(data.totalDpt || 0);
+        setTotalBemSuara(data.totalBemSuaraSah || 0);
 
-          if (data.rawVotes) {
-            setRawVotes(data.rawVotes);
-          }
+        if (data.rawVotes) {
+          setRawVotes(data.rawVotes);
+        }
 
-          if (data.summary) {
-            const total = data.summary.totalVoters || 0;
-            const masuk = data.summary.totalSudahMemilih || 0;
-            const sisa = data.summary.totalBelumMemilih ?? Math.max(0, total - masuk);
-            const pct = data.summary.partisipasi ?? (total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0');
+        if (data.summary) {
+          const total = data.summary.totalVoters || 0;
+          const masuk = data.summary.totalSudahMemilih || 0;
+          const sisa = data.summary.totalBelumMemilih ?? Math.max(0, total - masuk);
+          const pct = data.summary.partisipasi ?? (total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0');
 
-            setMetrics({
-              totalDpt: total,
-              suaraMasuk: masuk,
-              belumMemilih: sisa,
-              partisipasi: pct,
-            });
-          }
+          setMetrics({
+            totalDpt: total,
+            suaraMasuk: masuk,
+            belumMemilih: sisa,
+            partisipasi: pct,
+          });
         }
       }
-    } catch (e) {
-      console.warn('Fast rekap sync warning:', e);
+    } catch (err) {
+      console.warn('Rekap sync warning:', err);
+    } finally {
+      isPollingInFlightRef.current = false;
     }
   };
 
@@ -933,7 +938,7 @@ export default function AdminRekapPage() {
                       iconType="circle"
                     />
 
-                    {/* Render garis paslon secara dinamis */}
+                    {/* Render garis paslon secara dinamis tanpa re-animasi berkedip */}
                     {candidateKeys.map((key, idx) => (
                       <Line
                         key={key}
@@ -942,6 +947,7 @@ export default function AdminRekapPage() {
                         name={key}
                         stroke={LINE_COLORS[idx % LINE_COLORS.length]}
                         strokeWidth={3}
+                        isAnimationActive={false}
                         dot={{ r: 4, fill: LINE_COLORS[idx % LINE_COLORS.length], strokeWidth: 2, stroke: '#ffffff' }}
                         activeDot={{ r: 6, stroke: LINE_COLORS[idx % LINE_COLORS.length], strokeWidth: 2 }}
                       />
@@ -993,9 +999,11 @@ export default function AdminRekapPage() {
               </div>
             ) : (
               (bemCandidates.length > 0 ? bemCandidates : bemList).map((cand) => {
-                const totalEffectiveBem = (bemCandidates.length > 0 ? bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0) : totalSuaraBem);
+                const totalVotesAcrossBem = (bemCandidates.length > 0 ? bemCandidates : bemList).reduce((acc, c) => acc + (c.total_suara || 0), 0);
                 const votes = cand.total_suara ?? candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
-                const persentasePaslon = totalEffectiveBem > 0 ? ((votes / totalEffectiveBem) * 100).toFixed(1) : '0.0';
+                const votePercentage = totalVotesAcrossBem > 0 
+                  ? ((votes / totalVotesAcrossBem) * 100).toFixed(1) 
+                  : '0.0';
                 const displayNumber = cand.candidate_number || (cand as any).paslon_number || cand.number || (cand as any).no_urut || cand.candidateNumber || '1';
                 const photoUrl = candidatePhotos[cand.id] || cand.image_url || cand.photo_url || (cand as any).foto || (cand as any).imageUrl || (cand as any).photoUrl || null;
                 const candName = cand.name || (cand as any).nama || (cand as any).candidate_name || `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}` || 'Nama Paslon';
@@ -1033,24 +1041,35 @@ export default function AdminRekapPage() {
                         {candName}
                       </h4>
                       <p className="text-xs text-slate-500 italic mt-1 line-clamp-1">
-                        &ldquo;{cand.slogan || cand.tagline || 'Menuju Kampus BTH Berkemajuan'}&rdquo;
+                        &ldquo;{candSlogan}&rdquo;
                       </p>
 
                       {/* Baris Suara, Persentase, dan Progress Bar Paslon */}
                       <div className="mt-5 pt-3 border-t border-slate-200/80">
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-xl font-black text-slate-800 font-mono">
-                            {isSensorActive ? '*** Suara' : `${votes.toLocaleString('id-ID')} Suara`}
-                          </span>
+                          <div className="flex items-baseline gap-1">
+                            {isSensorActive ? (
+                              <span className="text-xl font-bold text-amber-600 font-mono filter blur-xs select-none">
+                                *** Suara
+                              </span>
+                            ) : (
+                              <>
+                                <span className="text-xl font-bold text-slate-900 transition-colors">
+                                  {votes}
+                                </span>
+                                <span className="text-xs text-slate-400">Suara</span>
+                              </>
+                            )}
+                          </div>
                           <span className="text-sm font-bold text-slate-900 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-md">
-                            {isSensorActive ? '***%' : `${persentasePaslon}%`}
+                            {isSensorActive ? '***%' : `${votePercentage}%`}
                           </span>
                         </div>
                         {/* Progress Bar Persentase */}
-                        <div className="w-full bg-slate-100 border border-slate-200 h-2 rounded-full mt-2.5 overflow-hidden">
+                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden mt-3">
                           <div
-                            className="bg-slate-900 h-full rounded-full transition-all duration-500"
-                            style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
+                            className="bg-slate-900 h-full rounded-full transition-all duration-500 ease-out"
+                            style={{ width: `${isSensorActive ? 50 : Number(votePercentage)}%` }}
                           />
                         </div>
                       </div>

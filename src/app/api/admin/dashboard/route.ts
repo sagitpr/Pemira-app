@@ -16,7 +16,11 @@ export async function GET() {
     // 2. Ambil metrik DPT
     const dptCountRes = await sql`SELECT count(*)::int as total FROM voters`;
     const sudahMemilihRes = await sql`SELECT count(*)::int as total FROM voters WHERE has_voted = true`;
-    const suaraMasukRes = await sql`SELECT count(*)::int as total FROM votes WHERE category = 'BEM'`;
+    const suaraMasukRes = await sql`
+      SELECT count(*)::int as total 
+      FROM votes 
+      WHERE UPPER(category) = 'BEM' OR UPPER(type) = 'BEM'
+    `;
 
     // 3. Ambil system_config
     const configRes = await sql`SELECT * FROM system_config LIMIT 1`;
