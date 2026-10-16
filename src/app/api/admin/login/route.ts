@@ -5,14 +5,6 @@ import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
 export async function POST(request: Request) {
-  // Pastikan pengecekan DATABASE_URL dilakukan di dalam handler runtime (bukan saat build)
-  if (!process.env.DATABASE_URL) {
-    return NextResponse.json(
-      { success: false, message: 'Konfigurasi database server belum lengkap (DATABASE_URL missing).' },
-      { status: 500 }
-    );
-  }
-
   try {
     const { email, password } = await request.json();
 
@@ -35,7 +27,7 @@ export async function POST(request: Request) {
 
     if (!users || users.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Akun admin tidak terdaftar.' },
+        { success: false, message: 'Akun admin tidak terdaftar di database.' },
         { status: 401 }
       );
     }
@@ -83,7 +75,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Error login Neon DB:', error);
     return NextResponse.json(
-      { success: false, message: 'Terjadi kendala server database: ' + error.message },
+      { success: false, message: error.message || 'Terjadi kendala pada server database.' },
       { status: 500 }
     );
   }
