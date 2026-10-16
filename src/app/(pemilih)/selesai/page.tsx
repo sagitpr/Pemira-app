@@ -13,6 +13,7 @@ export default function SelesaiPage() {
   const speechIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasExitedRef = useRef(false);
 
+  // FUNGSI KELUAR KE ABOUT:BLANK
   const handleExitToAboutBlank = () => {
     if (hasExitedRef.current) return;
     hasExitedRef.current = true;
@@ -27,6 +28,7 @@ export default function SelesaiPage() {
   };
 
   useEffect(() => {
+    // Validasi sesi: jika tidak ada data selesai yang sah, langsung lempar ke about:blank
     const stored = sessionStorage.getItem('pemira_completed_voter');
     if (!stored) {
       handleExitToAboutBlank();
@@ -39,7 +41,7 @@ export default function SelesaiPage() {
       console.error(e);
     }
 
-    // Pemutaran Audio Suara Terima Kasih Resmi
+    // Audio Suara Terima Kasih Resmi
     const speakThankYou = () => {
       try {
         if ('speechSynthesis' in window) {
@@ -57,12 +59,14 @@ export default function SelesaiPage() {
     speakThankYou();
     speechIntervalRef.current = setInterval(speakThankYou, 20000);
 
+    // Kunci tombol back browser
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
     };
     window.addEventListener('popstate', handlePopState);
 
+    // Timer 60 Detik menuju about:blank
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -84,7 +88,7 @@ export default function SelesaiPage() {
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
-      {/* Header Resmi */}
+      {/* Header Resmi Identik */}
       <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center overflow-hidden">
@@ -110,7 +114,7 @@ export default function SelesaiPage() {
         </span>
       </header>
 
-      {/* Konten Utama */}
+      {/* Konten Kartu Utama */}
       <main className="w-full max-w-md mx-auto my-auto py-4">
         <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm flex flex-col items-center text-center">
           
@@ -146,7 +150,7 @@ export default function SelesaiPage() {
             </div>
           </div>
 
-          {/* Hitung Mundur 1 Menit Menuju about:blank */}
+          {/* Penunjuk Sesi Bilik (Hitung Mundur 60s) */}
           <div className="w-full bg-slate-50 border border-slate-200/60 rounded-xl py-2 px-3 mb-6 flex items-center justify-center gap-2 text-[11px] text-slate-500">
             <span>Sesi bilik tertutup otomatis dalam</span>
             <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
@@ -169,7 +173,7 @@ export default function SelesaiPage() {
         </div>
       </main>
 
-      {/* Footer Resmi */}
+      {/* Footer Resmi Identik */}
       <footer className="w-full py-3 text-center">
         <p className="text-[11px] text-slate-400 font-medium tracking-wide">
           KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026

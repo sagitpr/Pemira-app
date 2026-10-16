@@ -1,12 +1,13 @@
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    // 1. Ambil data seluruh paslon beserta perolehan suara sahnya
+    // 1. Hitung suara sah tiap kandidat secara langsung dan cepat
     const candidateVotes = await sql`
       SELECT 
         c.id, c.name, c.leader_name, c.vice_leader_name, c.candidate_number, 
@@ -18,10 +19,14 @@ export async function GET() {
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Ambil seluruh voters untuk perhitungan matriks prodi
+    // 2. Ambil ringkasan total suara sah BEM murni
+    const bemCountRes = await sql`SELECT count(*)::int as total FROM votes WHERE category = 'BEM'`;
+    const totalBemSuaraSah = bemCountRes[0]?.total || 0;
+
+    // 3. Ambil data voters untuk matriks 14 prodi
     const voters = await sql`SELECT id, prodi, faculty, has_voted FROM voters`;
 
-    // 3. Matriks 14 Program Studi Resmi
+    // Master Matriks 14 Program Studi
     const MASTER_MATRIX = [
       { no: 1, name: 'Bisnis Digital', faculty: 'FTB', match: ['bisnis digital'] },
       { no: 2, name: 'Sistem Informasi', faculty: 'FTB', match: ['sistem informasi'] },
@@ -65,7 +70,6 @@ export async function GET() {
       };
     });
 
-    // Klasifikasi BEM vs HIMA yang toleran huruf besar/kecil
     const bemCandidates = candidateVotes.filter((c: any) => {
       const cat = (c.category || c.type || '').toUpperCase().trim();
       return cat.includes('BEM');
@@ -78,30 +82,42 @@ export async function GET() {
 
     const totalBemSuara = bemCandidates.reduce((acc: number, curr: any) => acc + (curr.total_suara || 0), 0);
     const totalHimaSuara = himaCandidates.reduce((acc: number, curr: any) => acc + (curr.total_suara || 0), 0);
-
     const totalSudahMemilih = voters.filter((v: any) => v.has_voted === true).length;
 
-    return NextResponse.json({
-      success: true,
-      matrix,
-      bemCandidates,
-      himaCandidates,
-      candidateVotes,
-      totalDpt: voters.length,
-      totalBemSuara,
-      totalHimaSuara,
-      summary: {
-        totalVoters: voters.length,
-        totalSudahMemilih,
-        totalBelumMemilih: Math.max(0, voters.length - totalSudahMemilih),
-        partisipasi: voters.length > 0 ? ((totalSudahMemilih / voters.length) * 100).toFixed(1) : '0.0',
-        totalBemVotes: totalBemSuara,
-        totalHimaVotes: totalHimaSuara
+    return new NextResponse(
+      JSON.stringify({
+        success: true,
+        matrix,
+        bemCandidates,
+        himaCandidates,
+        candidateVotes,
+        totalDpt: voters.length,
+        totalBemSuaraSah: totalBemSuaraSah || totalBemSuara,
+        totalBemSuara,
+        totalHimaSuara,
+        summary: {
+          totalVoters: voters.length,
+          totalSudahMemilih,
+          totalBelumMemilih: Math.max(0, voters.length - totalSudahMemilih),
+          partisipasi: voters.length > 0 ? ((totalSudahMemilih / voters.length) * 100).toFixed(1) : '0.0',
+          totalBemVotes: totalBemSuaraSah || totalBemSuara,
+          totalHimaVotes: totalHimaSuara
+        },
+        timestamp: Date.now()
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
       }
-    });
+    );
 
   } catch (err: any) {
-    console.error('Error /api/admin/rekap:', err);
+    console.error('Error fast rekap:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

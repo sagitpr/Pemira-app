@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useAdmin } from '@/context/AdminContext';
 import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
@@ -174,55 +174,61 @@ export default function AdminRekapPage() {
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // Fetch data rekap matriks 14 prodi, votes, dan summary langsung dari Neon
+  // Fetch data rekap matriks 14 prodi, votes, dan summary langsung dari Neon (Fast-Sync Realtime)
+  const prevRekapHashRef = useRef('');
+
   const fetchRekapData = async () => {
     try {
-      const res = await fetch('/api/admin/rekap', { cache: 'no-store' });
+      const res = await fetch(`/api/admin/rekap?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Pragma': 'no-cache',
+          'Cache-Control': 'no-cache'
+        }
+      });
       if (!res.ok) return;
       const data = await res.json();
-      if (data.success) {
-        if (data.matrix) {
-          setProdiMatrix(data.matrix);
-          setIsLoadingMatrix(false);
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pemira_admin_rekap_matrix', JSON.stringify(data.matrix));
-          }
-        }
-        if (data.bemCandidates) {
-          setBemCandidates(data.bemCandidates);
-          setBemList(data.bemCandidates);
-        }
-        if (data.himaCandidates) {
-          setHimaCandidates(data.himaCandidates);
-          setHimaList(data.himaCandidates);
-        }
-        if (data.rawVotes) {
-          setRawVotes(data.rawVotes);
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pemira_admin_rekap_votes', JSON.stringify(data.rawVotes));
-          }
-        }
-        if (data.summary) {
-          const total = data.summary.totalVoters || 0;
-          const masuk = data.summary.totalSudahMemilih || 0;
-          const sisa = data.summary.totalBelumMemilih ?? Math.max(0, total - masuk);
-          const pct = data.summary.partisipasi ?? (total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0');
 
-          const newMetrics = {
-            totalDpt: total,
-            suaraMasuk: masuk,
-            belumMemilih: sisa,
-            partisipasi: pct,
-          };
-          setMetrics(newMetrics);
-          setTotalDptCount(total);
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pemira_admin_rekap_metrics', JSON.stringify(newMetrics));
+      if (data.success) {
+        // Cek perubahan data
+        const currentHash = JSON.stringify({
+          bem: data.bemCandidates,
+          hima: data.himaCandidates,
+          total: data.totalBemSuaraSah
+        });
+
+        // Hanya update state jika suara benar-benar bertambah atau berubah
+        if (prevRekapHashRef.current !== currentHash) {
+          prevRekapHashRef.current = currentHash;
+          setBemCandidates(data.bemCandidates || []);
+          setHimaCandidates(data.himaCandidates || []);
+          setBemList(data.bemCandidates || []);
+          setHimaList(data.himaCandidates || []);
+          setProdiMatrix(data.matrix || []);
+          setIsLoadingMatrix(false);
+          setTotalDptCount(data.totalDpt || 0);
+
+          if (data.rawVotes) {
+            setRawVotes(data.rawVotes);
+          }
+
+          if (data.summary) {
+            const total = data.summary.totalVoters || 0;
+            const masuk = data.summary.totalSudahMemilih || 0;
+            const sisa = data.summary.totalBelumMemilih ?? Math.max(0, total - masuk);
+            const pct = data.summary.partisipasi ?? (total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0');
+
+            setMetrics({
+              totalDpt: total,
+              suaraMasuk: masuk,
+              belumMemilih: sisa,
+              partisipasi: pct,
+            });
           }
         }
       }
     } catch (e) {
-      console.warn('Gagal load rekap Neon:', e);
+      console.warn('Fast rekap sync warning:', e);
     }
   };
 
@@ -513,8 +519,12 @@ export default function AdminRekapPage() {
     fetchRekapData();
     fetchCandidates();
 
-    const interval = setInterval(fetchRekapData, 3000); // Live sync tiap 3s
-    return () => clearInterval(interval);
+    // Polling cepat setiap 1 detik agar suara yang disubmit langsung ter-update seketika
+    const fastInterval = setInterval(() => {
+      fetchRekapData();
+    }, 1000);
+
+    return () => clearInterval(fastInterval);
   }, []);
 
   // =========================================================================
@@ -972,19 +982,20 @@ export default function AdminRekapPage() {
               </h3>
             </div>
             <span className="text-xs font-semibold text-slate-400 font-mono">
-              Total Suara Sah BEM: {isSensorActive ? '***' : totalSuaraBem.toLocaleString('id-ID')}
+              Total Suara Sah BEM: {isSensorActive ? '***' : (bemCandidates.length > 0 ? bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0) : totalSuaraBem).toLocaleString('id-ID')}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {bemList.length === 0 ? (
+            {(bemCandidates.length > 0 ? bemCandidates : bemList).length === 0 ? (
               <div className="col-span-2 p-8 rounded-2xl border-2 border-dashed border-[#EFECE6] text-center">
                 <p className="text-xs font-bold text-slate-500">Belum ada Paslon BEM terdaftar.</p>
               </div>
             ) : (
-              bemList.map((cand) => {
-                const votes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
-                const persentasePaslon = totalSuaraBem > 0 ? ((votes / totalSuaraBem) * 100).toFixed(1) : '0.0';
+              (bemCandidates.length > 0 ? bemCandidates : bemList).map((cand) => {
+                const totalEffectiveBem = (bemCandidates.length > 0 ? bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0) : totalSuaraBem);
+                const votes = cand.total_suara ?? candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? (cand as any).votes ?? (cand as any).vote_count ?? 0;
+                const persentasePaslon = totalEffectiveBem > 0 ? ((votes / totalEffectiveBem) * 100).toFixed(1) : '0.0';
                 const displayNumber = cand.candidate_number || (cand as any).paslon_number || cand.number || (cand as any).no_urut || cand.candidateNumber || '1';
                 const photoUrl = candidatePhotos[cand.id] || cand.image_url || cand.photo_url || (cand as any).foto || (cand as any).imageUrl || (cand as any).photoUrl || null;
                 const candName = cand.name || (cand as any).nama || (cand as any).candidate_name || `${cand.leader_name || cand.leaderName || 'Calon Ketua'} & ${cand.vice_leader_name || cand.viceLeaderName || 'Calon Wakil'}` || 'Nama Paslon';

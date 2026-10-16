@@ -913,9 +913,10 @@ function VoteContent() {
   if (isWaitingQueue) {
     return (
       <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
+        {/* Header Resmi Identik */}
         <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center overflow-hidden">
               <img src="/candidate/image-logo-Pemira.png" alt="Logo Pemira" className="w-full h-full object-contain" />
             </div>
             <div>
@@ -923,47 +924,52 @@ function VoteContent() {
               <p className="text-[10px] font-medium text-slate-500 tracking-wide mt-0.5">KOMISI PEMILIHAN RAYA</p>
             </div>
           </div>
-          <span className="text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-200/60 px-2.5 py-1 rounded-full flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-            Antrean Bilik
+          <span className="text-[11px] font-semibold text-blue-600 tracking-tight">
+            Menunggu Bilik
           </span>
         </header>
 
-        <main className="w-full max-w-md mx-auto my-auto py-8">
-          <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm text-center flex flex-col items-center">
-            {/* Radar Animasi Menunggu */}
-            <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200/80 flex items-center justify-center mb-4 text-amber-600 shadow-xs relative">
-              <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+        {/* Konten Kartu Utama */}
+        <main className="w-full max-w-md mx-auto my-auto py-4">
+          <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm flex flex-col">
+            
+            <p className="text-[11px] font-bold tracking-widest text-slate-400 uppercase text-center mb-4">
+              STATUS BILIK SUARA FISIK
+            </p>
+
+            {/* Kotak Status Antrean (Gaya Identik Kotak Arahan Bilik) */}
+            <div className="border border-blue-200 bg-blue-50/50 rounded-2xl p-6 text-center mb-4">
+              <h2 className="text-xl font-bold text-slate-900 leading-snug">
+                Seluruh Bilik Sedang Terisi
+              </h2>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                Mohon menunggu sejenak. Sistem sedang memantau ketersediaan bilik fisik secara realtime.
+              </p>
             </div>
 
-            <p className="text-[11px] font-bold tracking-widest text-amber-600 uppercase mb-1">
-              Status Bilik Penuh
-            </p>
-
-            <h2 className="text-lg font-bold text-slate-900 leading-snug mb-2">
-              Mohon Menunggu Sejenak
-            </h2>
-
-            <p className="text-xs text-slate-600 leading-relaxed max-w-xs mb-6">
-              {queueMessage || 'Seluruh bilik suara fisik sedang terisi.'}
-            </p>
-
-            <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-4 text-xs text-slate-600 text-left space-y-2 mb-6">
-              <div className="flex items-center gap-2 text-slate-700 font-semibold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Sistem Alokasi Otomatis Aktif</span>
-              </div>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
+            {/* Kotak Petunjuk Pemilih */}
+            <div className="bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-4 text-left mb-6 space-y-1.5">
+              <p className="text-xs font-bold text-slate-700">Petunjuk Pemilih:</p>
+              <p className="text-xs text-slate-500 leading-relaxed">
                 Anda tidak perlu memindai ulang QR Code. Halaman ini akan <strong>otomatis terbuka</strong> dan mengarahkan Anda ke bilik fisik begitu pemilih di dalam bilik menyelesaikan suaranya.
               </p>
             </div>
 
-            <p className="text-[10px] text-slate-400">
-              Pemeriksaan ketersediaan bilik fisik secara realtime...
-            </p>
+            {/* Indikator Status Heuristik */}
+            <div className="w-full bg-slate-50 border border-slate-200/60 rounded-xl py-2 px-3 mb-6 flex items-center justify-center gap-2 text-[11px] text-slate-500">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              <span>Memeriksa bilik kosong secara otomatis...</span>
+            </div>
+
+            {/* Watermark Konsisten */}
+            <div className="w-full pt-4 border-t border-[#EFECE6] flex items-center justify-center gap-1.5 text-[10px] text-slate-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span>Engineered by <strong className="text-slate-700 font-semibold">Sagit Faturrakhman</strong></span>
+            </div>
           </div>
         </main>
 
+        {/* Footer Resmi Identik */}
         <footer className="w-full py-3 text-center">
           <p className="text-[11px] text-slate-400 font-medium tracking-wide">
             KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
