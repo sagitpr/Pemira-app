@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { sql } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +8,6 @@ export async function POST(req: Request) {
     const body = await req.json();
     let voters = body.voters || body.items || [];
 
-    // Jika input berupa raw csvText
     if ((!Array.isArray(voters) || voters.length === 0) && typeof body.csvText === 'string') {
       const lines = body.csvText.split('\n').filter((l: string) => l.trim() !== '');
       let startIdx = 0;
@@ -20,8 +19,8 @@ export async function POST(req: Request) {
         if (l.includes(';') && !l.includes(',')) sep = ';';
         else if (l.includes('\t')) sep = '\t';
         const cols = l.split(sep).map((s: string) => s.replace(/["']/g, '').trim());
-        return { nim: cols[0], nama: cols[1], prodi: cols[2] };
-      }).filter((v: any) => v.nim && v.nama);
+        return { nim: cols[0], name: cols[1], prodi: cols[2], angkatan: cols[3] };
+      }).filter((v: any) => v.nim && v.name);
     }
 
     if (!voters || !Array.isArray(voters)) {
@@ -32,44 +31,32 @@ export async function POST(req: Request) {
       .map((v: any) => ({
         nim: String(v.nim).trim(),
         name: String(v.nama || v.name).trim(),
-        nama: String(v.nama || v.name).trim(),
-        prodi: String(v.prodi || v.jurusan || '').trim(),
+        prodi: String(v.prodi || v.jurusan || 'Program Studi').trim(),
         faculty: v.faculty || 'FTB',
-        has_voted: false,
-        voting_status: 'BELUM',
+        angkatan: String(v.angkatan || '2026').trim(),
       }))
-      .filter((v: any) => v.nim && (v.name || v.nama));
+      .filter((v: any) => v.nim && v.name);
 
     if (payload.length === 0) {
       return NextResponse.json({ success: false, message: 'Data pemilih kosong atau format tidak valid.' }, { status: 400 });
     }
 
-    // Upsert dalam chunk 200 baris agar tidak memicu Vercel timeout
-    const CHUNK = 200;
-    for (let i = 0; i < payload.length; i += CHUNK) {
-      const chunk = payload.slice(i, i + CHUNK);
-      const { error } = await supabaseAdmin.from('voters').upsert(chunk, { onConflict: 'nim' });
-      if (error) throw error;
+    for (const v of payload) {
+      await sql`
+        INSERT INTO voters (nim, name, prodi, faculty, angkatan, has_voted, voting_status, created_at, updated_at)
+        VALUES (${v.nim}, ${v.name}, ${v.prodi}, ${v.faculty}, ${v.angkatan}, false, 'BELUM', NOW(), NOW())
+        ON CONFLICT (nim) DO UPDATE
+        SET name = EXCLUDED.name, prodi = EXCLUDED.prodi, angkatan = EXCLUDED.angkatan, updated_at = NOW()
+      `;
     }
-
-    // Catat ke activity_logs (non-blocking)
-    try {
-      await supabaseAdmin.from('activity_logs').insert([
-        {
-          message: `Admin KPUM berhasil mengimpor ${payload.length} pemilih DPT ke database.`,
-          description: `Import batch CSV DPT sebanyak ${payload.length} data.`,
-          event_type: 'IMPORT_DPT',
-          created_at: new Date().toISOString(),
-        },
-      ]);
-    } catch {}
 
     return NextResponse.json({
       success: true,
       count: payload.length,
-      message: `Berhasil mengimpor ${payload.length} data DPT.`,
+      message: `Berhasil mengimpor ${payload.length} data DPT ke database Neon.`,
     });
   } catch (err: any) {
+    console.error('Error import DPT:', err);
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
 }
