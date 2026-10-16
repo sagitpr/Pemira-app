@@ -1,19 +1,15 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('admin_users')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching admin_users in API:', error);
-      return NextResponse.json({ success: false, message: error.message }, { status: 500 });
-    }
+    const data = await sql`
+      SELECT id, email, name, role 
+      FROM admin_users_rows 
+      ORDER BY id ASC
+    `;
 
     return NextResponse.json({ success: true, data: data || [] });
   } catch (err: any) {
@@ -24,24 +20,22 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, email, password, role, status } = body;
+    const { name, email, password, role } = body;
 
-    const { data, error } = await supabaseAdmin
-      .from('admin_users')
-      .insert([{
-        name: name?.trim(),
-        email: email?.trim()?.toLowerCase(),
-        password,
-        role: role || 'admin',
-        status: status || 'Aktif',
-      }])
-      .select();
-
-    if (error) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json({ success: false, message: 'Email dan password wajib diisi' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, data });
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = (name || 'Admin').trim();
+    const userRole = role || 'admin';
+
+    await sql`
+      INSERT INTO admin_users_rows (name, email, password, role)
+      VALUES (${cleanName}, ${cleanEmail}, ${password}, ${userRole})
+    `;
+
+    return NextResponse.json({ success: true, message: 'Admin berhasil ditambahkan' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
@@ -57,19 +51,13 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, message: 'ID or email required' }, { status: 400 });
     }
 
-    let query = supabaseAdmin.from('admin_users').delete();
     if (id) {
-      query = query.eq('id', id);
+      await sql`DELETE FROM admin_users_rows WHERE id = ${id}`;
     } else if (email) {
-      query = query.eq('email', email);
+      await sql`DELETE FROM admin_users_rows WHERE LOWER(email) = ${email.toLowerCase()}`;
     }
 
-    const { error } = await query;
-    if (error) {
-      return NextResponse.json({ success: false, message: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: 'Admin berhasil dihapus' });
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
