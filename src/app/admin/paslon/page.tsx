@@ -5,6 +5,7 @@ import { useAdmin } from '@/context/AdminContext';
 import { Candidate } from '@/data/voteMockData';
 import AdminHeader from '@/components/admin/AdminHeader';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
+import { parseListItems } from '@/lib/formatList';
 import {
   Vote,
   Plus,
@@ -107,6 +108,7 @@ export default function AdminPaslonPage() {
     hima_name: '',
     vision: '',
     mission: '',
+    programsText: '',
     image_url: '',
   });
 
@@ -129,6 +131,7 @@ export default function AdminPaslonPage() {
   const [formPhotoUrl, setFormPhotoUrl] = useState('');
   const [formVision, setFormVision] = useState('');
   const [formMission, setFormMission] = useState('');
+  const [formPrograms, setFormPrograms] = useState('');
 
   const fetchCandidates = async () => {
     try {
@@ -223,6 +226,14 @@ export default function AdminPaslonPage() {
   const handleOpenEditModal = (candidate: any) => {
     setEditingCandidate(candidate);
     const candType = (candidate.category || candidate.type || 'BEM').toUpperCase() as 'BEM' | 'HIMA';
+    const candPrograms = candidate.programs;
+    let initialProgramsText = '';
+    if (Array.isArray(candPrograms)) {
+      initialProgramsText = candPrograms.join('\n');
+    } else if (typeof candPrograms === 'string') {
+      initialProgramsText = candPrograms;
+    }
+
     setEditForm({
       candidate_number: Number(candidate.candidate_number || candidate.number) || 1,
       name: candidate.name || '',
@@ -232,6 +243,7 @@ export default function AdminPaslonPage() {
       hima_name: candidate.hima_name || candidate.prodi || candidate.organization || candidate.prodi_name || '',
       vision: candidate.vision || candidate.visi || '',
       mission: candidate.mission || candidate.misi || '',
+      programsText: initialProgramsText,
       image_url: candidate.photo_url || candidate.image_url || candidate.photoUrl || '',
     });
   };
@@ -287,6 +299,7 @@ export default function AdminPaslonPage() {
           prodi: himaVal,
           vision: editForm.vision.trim(),
           mission: editForm.mission.trim(),
+          programs: parseListItems(editForm.programsText),
           photo_url: editForm.image_url.trim() || null,
         }),
       });
@@ -341,6 +354,7 @@ export default function AdminPaslonPage() {
           slogan: formSlogan.trim(),
           vision: formVision.trim(),
           mission: formMission.trim(),
+          programs: parseListItems(formPrograms),
           photo_url: formPhotoUrl.trim() || null,
         }),
       });
@@ -359,6 +373,7 @@ export default function AdminPaslonPage() {
         setFormPhotoUrl('');
         setFormVision('');
         setFormMission('');
+        setFormPrograms('');
 
         await fetchCandidates();
       } else {
@@ -853,6 +868,23 @@ export default function AdminPaslonPage() {
                 />
               </div>
 
+              {/* 6. Program Kerja Unggulan */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Program Kerja Unggulan
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Contoh:&#10;1. Pekan Olahraga dan Seni Farmasi&#10;2. Workshop Digital Entrepreneurship&#10;3. Advokasi Beasiswa Terpadu"
+                  value={formPrograms}
+                  onChange={(e) => setFormPrograms(e.target.value)}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-slate-50/50"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Tips: Tuliskan dengan nomor atau pisahkan dengan enter, sistem akan merapikannya otomatis.
+                </p>
+              </div>
+
               {/* Modal Buttons */}
               <div className="pt-4 flex gap-3 border-t border-[#EFECE6]">
                 <button
@@ -1090,6 +1122,23 @@ export default function AdminPaslonPage() {
                   onChange={(e) => setEditForm({ ...editForm, mission: e.target.value })}
                   className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
                 />
+              </div>
+
+              {/* 6. Program Kerja Unggulan */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Program Kerja Unggulan
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Contoh:&#10;1. Pekan Olahraga dan Seni Farmasi&#10;2. Workshop Digital Entrepreneurship&#10;3. Advokasi Beasiswa Terpadu"
+                  value={editForm.programsText || ''}
+                  onChange={(e) => setEditForm({ ...editForm, programsText: e.target.value })}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 bg-slate-50/50"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Tips: Tuliskan dengan nomor atau pisahkan dengan enter, sistem akan merapikannya otomatis.
+                </p>
               </div>
 
               {/* Modal Buttons */}

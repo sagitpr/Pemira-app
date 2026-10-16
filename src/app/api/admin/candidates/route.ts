@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const candidates = await sql`
       SELECT id, name, leader_name, vice_leader_name, category, type, candidate_number, 
-             faculty, prodi, slogan, vision, mission, photo_url, created_at
+             faculty, prodi, slogan, vision, mission, programs, photo_url, created_at
       FROM candidates
       ORDER BY candidate_number ASC, created_at ASC
     `;
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
       slogan,
       vision,
       mission,
+      programs,
       photo_url
     } = body;
 
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
     const officialName = name || officialLeader;
     const cat = (category || type || 'BEM').toUpperCase();
     const num = parseInt(candidate_number, 10) || 1;
+    const programsJson = JSON.stringify(programs || []);
 
     if (id) {
       await sql`
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
             slogan = ${slogan || null},
             vision = ${vision || null},
             mission = ${mission || null},
+            programs = ${programsJson}::jsonb,
             photo_url = ${photo_url || null},
             updated_at = NOW()
         WHERE id = ${id}
@@ -75,11 +78,11 @@ export async function POST(req: Request) {
     await sql`
       INSERT INTO candidates (
         id, name, leader_name, vice_leader_name, category, type, candidate_number,
-        faculty, prodi, slogan, vision, mission, photo_url, created_at, updated_at
+        faculty, prodi, slogan, vision, mission, programs, photo_url, created_at, updated_at
       ) VALUES (
         ${newId}, ${officialName}, ${officialLeader}, ${vice_leader_name || null},
         ${cat}, ${cat}, ${num}, ${faculty || null}, ${prodi || null},
-        ${slogan || null}, ${vision || null}, ${mission || null}, ${photo_url || null},
+        ${slogan || null}, ${vision || null}, ${mission || null}, ${programsJson}::jsonb, ${photo_url || null},
         NOW(), NOW()
       )
     `;

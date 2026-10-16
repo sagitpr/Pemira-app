@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const candidates = await sql`
       SELECT id, name, leader_name, vice_leader_name, category, type, 
-             candidate_number, faculty, prodi, slogan, vision, mission, photo_url
+             candidate_number, faculty, prodi, slogan, vision, mission, programs, photo_url
       FROM candidates
       ORDER BY candidate_number ASC
     `;

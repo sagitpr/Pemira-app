@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Candidate, BEM_CANDIDATES, HIMA_CANDIDATES } from '@/data/voteMockData';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
+import { parseListItems } from '@/lib/formatList';
 import {
   Check,
   CheckCircle2,
@@ -259,46 +260,24 @@ function VoteContent() {
 
   // 1. DATA PASLON DARI NEON ROUTE (/api/candidates)
   useEffect(() => {
-    async function loadCandidatesFromVercelEdge() {
-      // 1. Cek dulu sessionStorage pemilih (0ms render)
-      const localCached = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_candidates_edge_cache') : null;
-      if (localCached) {
-        try {
-          const parsed = JSON.parse(localCached);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setCandidates(parsed);
-            setIsLoadingCandidates(false);
-            return;
-          }
-        } catch (e) {}
-      }
-
-      // 2. Fetch ke endpoint Vercel CDN (/api/candidates)
+    async function loadBallotCandidates() {
+      setIsLoadingCandidates(true);
       try {
-        setIsLoadingCandidates(true);
-        const res = await fetch('/api/candidates');
-        if (!res.ok) throw new Error('Gagal memuat paslon dari server');
+        const res = await fetch('/api/candidates', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Gagal mengambil data paslon');
         const data = await res.json();
-
-        if (Array.isArray(data) && data.length > 0) {
-          setCandidates(data);
-          try {
-            sessionStorage.setItem('pemira_candidates_edge_cache', JSON.stringify(data));
-          } catch (storageErr) {}
-        } else {
-          const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
-          setCandidates(fallback);
-        }
+        
+        const candidateList = Array.isArray(data) ? data : (data.candidates || []);
+        setCandidates(candidateList);
       } catch (err) {
-        console.error("Error fetching candidates from edge cache:", err);
-        const fallback = [...BEM_CANDIDATES, ...HIMA_CANDIDATES];
-        setCandidates(fallback);
+        console.error("Gagal load kandidat di bilik:", err);
+        setCandidates([]);
       } finally {
         setIsLoadingCandidates(false);
       }
     }
 
-    loadCandidatesFromVercelEdge();
+    loadBallotCandidates();
   }, [setCandidates]);
 
   // 1. Validasi Token Cerdas & Anti-Share (Dukungan Pinjam HP & Resilient Fallback)
@@ -472,8 +451,8 @@ function VoteContent() {
     // Hanya jalankan timer jika sudah masuk tahap surat suara
     if (step !== 'VOTE_BEM' && step !== 'VOTE_HIMA') return;
 
-    // JANGAN jalankan interval jika paslon masih loading atau data masih kosong
-    if (isLoadingCandidates || allCandidates.length === 0) return;
+    // JANGAN jalankan interval jika paslon masih loading
+    if (isLoadingCandidates) return;
 
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
@@ -487,7 +466,7 @@ function VoteContent() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [step, isLoadingCandidates, allCandidates.length, handleSessionTimeout]);
+  }, [step, isLoadingCandidates, handleSessionTimeout]);
 
   // 4. Audio Ucapan Terima Kasih Resmi (Loop 60 Detik di Langkah SUCCESS)
   const playThankYouAudio = useCallback(() => {
@@ -1340,13 +1319,19 @@ function VoteContent() {
             </div>
 
             {/* DAFTAR PASLON BEM */}
-            {isLoadingCandidates || allCandidates.length === 0 ? (
+            {isLoadingCandidates ? (
               <div className="w-full">
                 <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-3">
                   <div className="w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
                   <span>Memuat Surat Suara Resmi...</span>
                 </div>
                 <CandidateSkeleton />
+              </div>
+            ) : bemCandidates.length === 0 ? (
+              <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-6 text-center my-4">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">Informasi Pemilihan</p>
+                <p className="text-sm font-semibold text-slate-800 mb-1">Pasangan Calon BEM Belum Didaftarkan</p>
+                <p className="text-xs text-slate-500">Panitia KPUM belum menginput pasangan calon Presiden BEM ke database sistem.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
@@ -1513,7 +1498,7 @@ function VoteContent() {
             </div>
 
             {/* JIKA SEDANG LOADING ATAU TIDAK ADA PASLON HIMA TERDAFTAR */}
-            {isLoadingCandidates || allCandidates.length === 0 ? (
+            {isLoadingCandidates ? (
               <div className="w-full">
                 <div className="flex items-center justify-center gap-2 text-slate-500 text-xs font-semibold py-3">
                   <div className="w-3.5 h-3.5 border-2 border-slate-700 border-t-transparent rounded-full animate-spin"></div>
