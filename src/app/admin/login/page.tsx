@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase/client';
 import { Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck, UserPlus } from 'lucide-react';
 
 export default function AdminLoginPage() {
@@ -20,45 +19,36 @@ export default function AdminLoginPage() {
     e.preventDefault();
     e.stopPropagation();
     setIsLoading(true);
+    setErrorMessage('');
 
     try {
-      const inputEmail = email.trim().toLowerCase();
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+      });
 
-      // Ambil akun langsung dari tabel admin_users
-      const { data: user, error } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('email', inputEmail)
-        .maybeSingle();
+      const data = await res.json();
 
-      if (error) {
-        alert('Gagal membaca database: ' + error.message);
+      if (!res.ok || !data.success) {
+        setErrorMessage(data.message || 'Email atau kata sandi tidak cocok.');
         setIsLoading(false);
         return;
       }
 
-      if (!user) {
-        alert('Email tidak ditemukan di database admin!');
-        setIsLoading(false);
-        return;
-      }
+      // Simpan session profile admin & alihkan ke dashboard
+      sessionStorage.setItem('pemira_admin_logged_in', 'true');
+      sessionStorage.setItem('pemira_admin_profile', JSON.stringify(data.user));
+      localStorage.setItem('pemira_admin_session', JSON.stringify(data.user));
 
-      // Cocokkan password (mendukung teks biasa maupun hash)
-      const passwordMatch = user.password === password || user.password_hash === password;
-
-      if (!passwordMatch) {
-        alert('Kata sandi salah!');
-        setIsLoading(false);
-        return;
-      }
-
-      // Simpan sesi dan arahkan ke dashboard
-      localStorage.setItem('pemira_admin_session', JSON.stringify(user));
-      document.cookie = `pemira_admin_session=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=28800; SameSite=Lax`;
-      window.location.href = '/admin/dashboard';
+      router.replace('/admin/dashboard');
     } catch (err: any) {
-      alert('Terjadi kesalahan: ' + (err?.message || 'Gagal masuk.'));
-    } finally {
+      setErrorMessage('Terjadi kesalahan koneksi atau server: ' + (err?.message || 'Gagal masuk.'));
       setIsLoading(false);
     }
   };
@@ -186,7 +176,7 @@ export default function AdminLoginPage() {
           </div>
         </div>
 
-        {/* Footer Info Keamanan Sesi (Tanpa Emoji) */}
+        {/* Footer Info Keamanan Sesi */}
         <div className="mt-6 text-center text-[11px] text-slate-400 flex items-center justify-center gap-1.5 font-medium">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
           <span>Sesi terenkripsi dan terlindungi sistem resmi KPR UBTH 2026</span>

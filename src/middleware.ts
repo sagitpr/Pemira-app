@@ -5,7 +5,7 @@ import { verifyAdminToken } from '@/lib/auth/jwt';
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('admin_jwt_token')?.value;
-  const sessionCookie = request.cookies.get('pemira_admin_session')?.value;
+  const sessionCookie = request.cookies.get('pemira_admin_session')?.value || request.cookies.get('admin_session')?.value;
 
   const isAuthRoute = pathname === '/admin/login' || pathname === '/admin/register';
 
