@@ -6,7 +6,6 @@ import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Candidate, BEM_CANDIDATES, HIMA_CANDIDATES } from '@/data/voteMockData';
 import VisiMisiModal from '@/components/vote/VisiMisiModal';
-import { createClient, supabase } from '@/lib/supabase/client';
 import {
   Check,
   CheckCircle2,
@@ -176,7 +175,7 @@ function VoteContent() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
-  // 0. Realtime Status Pemilihan
+  // 0. Realtime Status Pemilihan (Polling Neon)
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -189,22 +188,8 @@ function VoteContent() {
     };
     fetchStatus();
 
-    const channel = supabase
-      .channel('vote_system_config_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_config' }, (payload: any) => {
-        const raw = payload?.new?.election_status || payload?.new?.status;
-        if (raw) {
-          const s = String(raw).toUpperCase();
-          if (s === 'JEDA' || s === 'DIJEDA') setElectionStatus('JEDA');
-          else if (s === 'TUTUP' || s === 'DITUTUP') setElectionStatus('TUTUP');
-          else setElectionStatus('AKTIF');
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const interval = setInterval(fetchStatus, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   // Helper Pencatatan Event Kunjungan Fisik Bilik ke activity_logs
@@ -228,17 +213,11 @@ function VoteContent() {
         created_at: nowIso,
       };
 
-      const { error } = await supabase.from('activity_logs').insert([payload]);
-      if (error) {
-        await supabase.from('activity_logs').insert([
-          {
-            action: 'BOOTH_VISIT',
-            booth_number: bNumber,
-            details: `Pemilih memasuki Bilik ${bNumber}`,
-            created_at: nowIso,
-          },
-        ]);
-      }
+      await fetch('/api/admin/activity-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
     } catch (err) {
       console.warn('Catat kunjungan bilik note:', err);
     }
@@ -254,17 +233,6 @@ function VoteContent() {
       setAssignedBoothName(booth.name || `Bilik ${String(bNum).padStart(2, '0')}`);
       setIsWaitingQueue(false);
 
-      // Kunci bilik di Supabase
-      await supabase
-        .from('booths')
-        .update({
-          status: 'OCCUPIED',
-          session_token: token || undefined,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', booth.id);
-
-      // Catat event kunjungan fisik pemilih ke tabel activity_logs
       recordBoothVisit(bNum);
 
       if (typeof window !== 'undefined') {
@@ -287,7 +255,7 @@ function VoteContent() {
     setCandidatePhotos((prev) => ({ ...prev, ...photoMap }));
   }, []);
 
-  // 1. VERCEL EDGE CDN CACHING UNTUK DATA PASLON (HEMAT 100% EGRESS SUPABASE)
+  // 1. DATA PASLON DARI NEON ROUTE (/api/candidates)
   useEffect(() => {
     async function loadCandidatesFromVercelEdge() {
       // 1. Cek dulu sessionStorage pemilih (0ms render)
@@ -345,18 +313,12 @@ function VoteContent() {
       if (boothParam && urlToken) {
         const boothNumberInt = parseInt(boothParam, 10);
 
-        // Ambil detail bilik dari Supabase berdasarkan booth_number yang dikirim
-        const { data: boothData } = await supabase
-          .from('booths')
-          .select('*')
-          .eq('booth_number', boothNumberInt)
-          .maybeSingle();
-
-        const activeBooth = boothData || {
+        const activeBooth = {
           id: `booth-${boothNumberInt}`,
           booth_number: boothNumberInt,
           status: 'ALLOCATED',
-          session_token: urlToken
+          session_token: urlToken,
+          name: `Bilik ${String(boothNumberInt).padStart(2, '0')}`,
         };
 
         // Bersihkan sesi lama & simpan sesi bilik baru
@@ -423,118 +385,39 @@ function VoteContent() {
     handleBoothEntry();
   }, []);
 
-  // 2. Realtime Listener Antrean Bilik Kosong (Supabase Channel)
+  // 2. Realtime Listener Antrean Bilik Kosong (Neon Polling)
   useEffect(() => {
     if (!isWaitingQueue) return;
 
-    const channel = supabase
-      .channel('booth-queue')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'booths' },
-        (payload: any) => {
-          const newStatus = (payload?.new?.status || '').toUpperCase();
-          if (newStatus === 'AVAILABLE' || newStatus === 'TERSEDIA' || newStatus === 'KOSONG') {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/admin/dashboard');
+        const data = await res.json();
+        if (data.success && Array.isArray(data.booths)) {
+          const avail = data.booths.find((b: any) => b.status === 'AVAILABLE');
+          if (avail) {
             const token = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_session_token') : null;
-            assignAndLockBooth(payload.new, token);
-            showToast(`Bilik 0${payload.new.booth_number} telah tersedia untuk Anda!`, 'success');
+            assignAndLockBooth(avail, token);
+            showToast(`Bilik 0${avail.booth_number} telah tersedia untuk Anda!`, 'success');
           }
         }
-      )
-      .subscribe();
+      } catch {}
+    }, 2000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(interval);
   }, [isWaitingQueue, assignAndLockBooth, showToast]);
 
-  // 2B. Realtime Channel Pemantau Sesi Bilik (Kill-switch Pembatalan Alokasi oleh Admin)
-  useEffect(() => {
-    const targetBoothId = assignedBoothId || assignedBooth?.id;
-    if (!targetBoothId) return;
-
-    const boothChannel = supabase
-      .channel(`booth-killswitch-${targetBoothId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'booths',
-          filter: `id=eq.${targetBoothId}`,
-        },
-        (payload: any) => {
-          if (isVoteFinishedRef.current) {
-            // Abaikan seluruh event perubahan status bilik jika suara sedang atau sudah disubmit!
-            return;
-          }
-
-          const updatedBooth = payload?.new;
-          if (!updatedBooth) return;
-
-          const statusUpper = String(updatedBooth.status || '').toUpperCase();
-          const isAvail = statusUpper === 'AVAILABLE' || statusUpper === 'TERSEDIA' || statusUpper === 'KOSONG';
-
-          // JIKA ADMIN MEMBATALKAN ALOKASI:
-          // Status bilik kembali 'AVAILABLE' atau session_token dihapus padahal pemilih belum selesai (step !== 'SUCCESS')
-          if ((isAvail || !updatedBooth.session_token) && step !== 'SUCCESS') {
-            // 1. Bersihkan seluruh penyimpanan perangkat seketika
-            if (typeof window !== 'undefined') {
-              sessionStorage.clear();
-              localStorage.removeItem('pemira_session');
-              localStorage.removeItem('pemira_session_token');
-              localStorage.removeItem('pemira_voter_session');
-              localStorage.removeItem('pemira_booth');
-            }
-
-            // 2. Kunci layar ke tampilan mati (ACCESS_REVOKED)
-            setIsAccessRevoked(true);
-          }
-        }
-      )
-      .subscribe();
-
-    boothChannelRef.current = boothChannel;
-
-    return () => {
-      supabase.removeChannel(boothChannel);
-    };
-  }, [assignedBoothId, assignedBooth?.id, step]);
-
-  // 3. Penanganan Waktu Sesi Habis (Reset DPT ke "BELUM" & Pengosongan Bilik - Tanpa Redirect ke /qr-screen)
+  // 3. Penanganan Waktu Sesi Habis (Reset Bilik di Neon via API)
   const handleSessionTimeout = useCallback(async () => {
     try {
-      // 1. KEMBALIKAN status DPT pemilih ke "BELUM" jika belum pernah submit
-      const currentVoterNim = detectedVoter?.nim || inputNim.trim();
-      if (currentVoterNim) {
-        await supabase
-          .from('voters')
-          .update({
-            voting_status: 'BELUM',
-            has_voted: false,
-          })
-          .eq('nim', currentVoterNim)
-          .eq('has_voted', false); // Hanya rollback jika belum submit sah
-      }
+      const bNumber = assignedBoothNumber || assignedBooth?.booth_number || 1;
+      const bId = assignedBoothId || assignedBooth?.id;
 
-      // 2. Kosongkan kembali bilik fisik di Supabase
-      if (assignedBoothId || assignedBooth?.id || assignedBoothNumber) {
-        await supabase
-          .from('booths')
-          .update({
-            status: 'AVAILABLE',
-            current_voter_name: null,
-            current_voter_nim: null,
-            current_voter_prodi: null,
-            voter_name: null,
-            voter_nim: null,
-            voter_prodi: null,
-            session_token: null,
-            started_at: null,
-            updated_at: new Date().toISOString(),
-          })
-          .or(`id.eq.${assignedBoothId || assignedBooth?.id || '0'},booth_number.eq.${assignedBoothNumber || 1}`);
-      }
+      await fetch('/api/admin/booths/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ boothId: bId, boothNumber: bNumber }),
+      });
 
       // Hanguskan token di penyimpanan perangkat pemilih
       if (typeof window !== 'undefined') {
@@ -551,7 +434,7 @@ function VoteContent() {
       setIsSessionExpired(true);
       setStep('SESSION_EXPIRED');
     }
-  }, [assignedBoothId, assignedBooth, assignedBoothNumber, detectedVoter, inputNim]);
+  }, [assignedBoothId, assignedBooth, assignedBoothNumber]);
 
   // Timer Countdown Sesi Bilik (BEKUKAN TIMER SAAT MASIH PROSES MEMUAT DATA)
   useEffect(() => {
@@ -681,16 +564,6 @@ function VoteContent() {
   // TAHAP 1 -> TAHAP 2: Tombol Tunggal "Saya Sudah Berada di Bilik"
   const handleArrivedAtBooth = async () => {
     try {
-      if (assignedBoothId) {
-        await supabase
-          .from('booths')
-          .update({
-            status: 'OCCUPIED',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', assignedBoothId);
-      }
-      // Catat event kunjungan fisik pemilih ke tabel activity_logs
       await recordBoothVisit(assignedBoothNumber || assignedBooth?.booth_number || 1);
     } catch (e) {
       console.warn('Update booth note:', e);
@@ -698,7 +571,7 @@ function VoteContent() {
     setStep('IDENTITAS');
   };
 
-  // TAHAP 2: VALIDASI KETAT DPT (HANYA NIM, NAMA, PRODI - ANGKATAN DIHAPUS)
+  // TAHAP 2: VALIDASI KETAT DPT VIA NEON ROUTE (/api/vote/verify)
   const handleVerifyDPT = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
@@ -723,147 +596,39 @@ function VoteContent() {
     setVerifyError(null);
 
     try {
-      // 1. Query langsung ke tabel 'voters' Supabase
-      const { data: voter, error } = await supabase
-        .from('voters')
-        .select('*')
-        .eq('nim', cleanNim)
-        .maybeSingle();
+      const res = await fetch('/api/vote/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nim: cleanNim,
+          booth_id: assignedBooth?.id || assignedBoothId,
+          booth_number: assignedBooth?.booth_number || assignedBoothNumber,
+        }),
+      });
 
-      if (error) {
-        console.error('Error fetching voter:', error);
-      }
+      const data = await res.json();
 
-      // * Jika voter tidak ditemukan:
-      if (!voter) {
+      if (!res.ok || !data.success) {
         setIsVerifying(false);
-        setVerifyError('NIM tidak terdaftar di DPT Pemira UBTH 2026!');
+        setVerifyError(data.message || 'Verifikasi gagal. Pastikan data Anda sesuai DPT.');
         return;
       }
 
-      // * Jika voter.has_voted === true:
-      const isVoted =
-        voter.has_voted === true ||
-        String(voter.voting_status || '').toUpperCase() === 'SUDAH' ||
-        String(voter.voting_status || '').toUpperCase() === 'SELESAI';
-
-      if (isVoted) {
-        setIsVerifying(false);
-        setVerifyError('Hak suara untuk NIM ini sudah digunakan!');
-        return;
-      }
-
-      // * Validasi Nama (case-insensitive & kemiripan):
-      const normInputName = cleanName.toLowerCase().replace(/\s+/g, ' ');
-      const normDbName = String(voter.name || voter.nama || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      if (normInputName !== normDbName && !normDbName.includes(normInputName) && !normInputName.includes(normDbName)) {
-        setIsVerifying(false);
-        setVerifyError('Nama lengkap tidak sesuai dengan data DPT!');
-        return;
-      }
-
-      // * Validasi Prodi (Cocokkan pilihan dropdown pemilih dengan kolom voter.prodi / voter.prodi_name):
-      const normSelectedProdi = selectedProdi.toLowerCase().replace(/\s+/g, '');
-      const normDbProdi = String(voter.prodi || voter.prodi_name || '').trim().toLowerCase().replace(/\s+/g, '');
-      if (
-        normSelectedProdi !== normDbProdi &&
-        !normDbProdi.includes(normSelectedProdi) &&
-        !normSelectedProdi.includes(normDbProdi)
-      ) {
-        setIsVerifying(false);
-        setVerifyError('Program studi yang Anda pilih tidak sesuai dengan data DPT Anda!');
-        return;
-      }
-
-      // * Jika lolos semua validasi:
+      const voter = data.voter;
       const nowIso = new Date().toISOString();
       setStartVoteAt(nowIso);
       setDetectedVoter(voter);
 
-      // Foto paslon sudah termuat lengkap dari Vercel CDN (/api/candidates)
-      const voterProdiVal = voter.prodi || voter.prodi_name || selectedProdi;
-
-      // 2. KIRIM UPDATE KE TABEL 'voters' (UBAH STATUS JADI MENGERJAKAN)
-      // Ini agar di halaman Admin DPT statusnya langsung berubah kuning "Mengerjakan"
-      const { error: updateVoterErr } = await supabase
-        .from('voters')
-        .update({
-          voting_status: 'MENGERJAKAN',
-          start_vote_at: nowIso,
-          updated_at: nowIso,
-        })
-        .eq('nim', cleanNim);
-
-      if (updateVoterErr) {
-        console.warn('Gagal update status voter:', updateVoterErr.message);
-      }
-
-      // 3. KIRIM UPDATE KE TABEL 'booths' (UBAH BILIK JADI OCCUPIED)
-      // Ini agar di Dashboard Admin bilik langsung berubah merah "Sedang Memilih"
-      const targetBoothId = assignedBoothId || assignedBooth?.id;
-
-      if (targetBoothId) {
-        const { error: updateBoothErr } = await supabase
-          .from('booths')
-          .update({
-            status: 'OCCUPIED',
-            current_voter_name: voter.name || voter.nama || cleanName,
-            current_voter_nim: voter.nim || cleanNim,
-            current_voter_prodi: voterProdiVal,
-            voter_name: voter.name || voter.nama || cleanName,
-            voter_nim: voter.nim || cleanNim,
-            voter_prodi: voterProdiVal,
-            started_at: nowIso,
-            updated_at: nowIso,
-          })
-          .eq('id', targetBoothId);
-
-        if (updateBoothErr) {
-          console.warn('Gagal update bilik:', updateBoothErr.message);
-        }
-      } else {
-        const { error: updateBoothErr } = await supabase
-          .from('booths')
-          .update({
-            status: 'OCCUPIED',
-            current_voter_name: voter.name || voter.nama || cleanName,
-            current_voter_nim: voter.nim || cleanNim,
-            current_voter_prodi: voterProdiVal,
-            voter_name: voter.name || voter.nama || cleanName,
-            voter_nim: voter.nim || cleanNim,
-            voter_prodi: voterProdiVal,
-            started_at: nowIso,
-            updated_at: nowIso,
-          })
-          .eq('booth_number', assignedBoothNumber || 1);
-
-        if (updateBoothErr) {
-          console.warn('Gagal update bilik:', updateBoothErr.message);
-        }
-      }
-
-      // Catat log aktivitas
-      try {
-        await supabase.from('activity_logs').insert([
-          {
-            booth_number: assignedBoothNumber,
-            message: `Mahasiswa ${cleanName} (${voterProdiVal}) membuka surat suara`,
-            event_type: 'VOTING_STARTED',
-            created_at: nowIso,
-          },
-        ]);
-      } catch {}
-
       setIsVerifying(false);
-      setStep('VOTE_BEM'); // Lanjut ke TAHAP 1 DARI 2 (Surat Suara BEM)
+      setStep('VOTE_BEM'); // Lanjut ke TAHAP Surat Suara BEM
     } catch (err: any) {
       console.error('Error saat verifikasi DPT:', err);
       setIsVerifying(false);
-      setVerifyError('Terjadi kendala jaringan saat memverifikasi DPT. Silakan coba lagi.');
+      setVerifyError('Terjadi kendala server saat memverifikasi DPT. Silakan coba lagi.');
     }
   };
 
-  // TAHAP 4: ULTRA FAST-RESPONSE VOTE INGESTION & SUBMIT HANDLER
+  // TAHAP 4: ULTRA FAST-RESPONSE VOTE INGESTION VIA NEON ROUTE (/api/vote/submit)
   const handleSubmitVote = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
@@ -876,40 +641,27 @@ function VoteContent() {
         return;
       }
 
-      // Tandai bahwa proses submit dimulai agar Realtime Listener tidak memicu 'CANCELLED'
       isVoteFinishedRef.current = true;
-
-      // Matikan channel realtime di HP ini agar tidak mendengarkan event bilik lagi
-      if (boothChannelRef.current) {
-        try {
-          supabase.removeChannel(boothChannelRef.current);
-        } catch {}
-      }
-
-      // Siapkan payload rekaman suara murni (ringan & instan)
-      const votesPayload: any[] = [
-        { candidate_id: selectedBem.id, category: 'BEM' }
-      ];
-
-      if (selectedHima && selectedHima.id !== 'none') {
-        votesPayload.push({ candidate_id: selectedHima.id, category: 'HIMA' });
-      }
 
       const voterNim = verifiedVoter?.nim || detectedVoter?.nim || inputNim.trim();
 
-      // 1. PARALLEL EXECUTION: Jalankan Insert Suara & Update Voter bersamaan
-      const [voteRes, voterRes] = await Promise.all([
-        supabase.from('votes').insert(votesPayload),
-        voterNim
-          ? supabase.from('voters').update({
-              has_voted: true,
-              voting_status: 'SUDAH',
-              updated_at: new Date().toISOString()
-            }).eq('nim', voterNim)
-          : Promise.resolve({ error: null })
-      ]);
+      const res = await fetch('/api/vote/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voter_nim: voterNim,
+          bem_candidate_id: selectedBem?.id,
+          hima_candidate_id: selectedHima?.id || null,
+          booth_id: assignedBooth?.id || assignedBoothId,
+          booth_number: assignedBooth?.booth_number || assignedBoothNumber,
+        }),
+      });
 
-      if (voteRes.error) throw voteRes.error;
+      const data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.message || 'Gagal menyimpan suara');
+      }
 
       // 2. Simpan identitas pemilih ke sessionStorage untuk layar selesai
       sessionStorage.setItem('pemira_completed_voter', JSON.stringify({
@@ -917,7 +669,7 @@ function VoteContent() {
         nim: voterNim || '-',
         prodi: verifiedVoter?.prodi || detectedVoter?.prodi || inputProdi.trim() || '-',
         booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
-        voted_at: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+        voted_at: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       }));
 
       // Bersihkan cache sesi lokal
@@ -928,29 +680,7 @@ function VoteContent() {
       localStorage.removeItem('pemira_booth');
       sessionStorage.removeItem('pemira_session_token');
 
-      // 3. Reset bilik secara asinkron di latar belakang (background task)
-      const targetBoothId = assignedBooth?.id || assignedBoothId;
-      if (targetBoothId) {
-        supabase.from('booths').update({
-          status: 'AVAILABLE',
-          current_voter_name: null,
-          current_voter_nim: null,
-          current_voter_prodi: null,
-          session_token: null,
-          updated_at: new Date().toISOString()
-        }).eq('id', targetBoothId).then(() => {});
-      } else {
-        supabase.from('booths').update({
-          status: 'AVAILABLE',
-          current_voter_name: null,
-          current_voter_nim: null,
-          current_voter_prodi: null,
-          session_token: null,
-          updated_at: new Date().toISOString()
-        }).eq('booth_number', assignedBooth?.booth_number || assignedBoothNumber || 1).then(() => {});
-      }
-
-      // 4. Pengalihan Instan: Langsung buka halaman selesai dalam milidetik!
+      // 4. Pengalihan Instan ke Halaman Selesai
       router.replace('/selesai');
 
     } catch (err: any) {
@@ -1187,7 +917,7 @@ function VoteContent() {
               <span className="text-xs font-bold text-slate-700 ml-1">Menunggu bilik kosong...</span>
             </div>
             <p className="text-[11px] text-slate-400">
-              Sistem secara otomatis tersinkronisasi via Supabase Realtime
+              Sistem secara otomatis tersinkronisasi via Neon Fast-Sync
             </p>
           </div>
         </div>

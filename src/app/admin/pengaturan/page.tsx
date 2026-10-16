@@ -115,70 +115,65 @@ export default function AdminPengaturanPage() {
     }
   };
 
-  // Reset Seluruh Bilik
+  // B. Tombol "Reset Semua Bilik ke Tersedia"
   const handleResetAllBooths = async () => {
-    if (!confirm('Yakin ingin mereset seluruh bilik suara fisik ke status Tersedia?')) return;
+    if (!confirm('Yakin ingin mereset seluruh status bilik menjadi Tersedia?')) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/pengaturan/reset', {
+      const res = await fetch('/api/admin/system-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: 'booths' }),
+        body: JSON.stringify({ action: 'RESET_ALL_BOOTHS' }),
       });
-      const json = await res.json();
-      if (json.success) {
-        alert('Seluruh bilik berhasil di-reset!');
-        showToast('Seluruh bilik berhasil di-reset!', 'success');
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        showToast(data.message, 'success');
       } else {
-        throw new Error(json.message || 'Gagal reset bilik');
+        alert(data.error || 'Gagal mereset bilik');
       }
-    } catch (err: any) {
-      alert('Gagal reset: ' + err.message);
+    } catch (e) {
+      alert('Gagal mereset bilik');
     } finally {
       setSaving(false);
     }
   };
 
-  // Simpan Konfigurasi Bilik & Timeout
-  const handleSaveBoothConfig = async (e?: React.FormEvent) => {
+  // A. Tombol "Simpan Konfigurasi Bilik"
+  const handleSaveConfig = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setSaving(true);
     try {
-      const target = Number(totalBooths);
-      if (!target || target < 1) {
-        alert('Jumlah bilik minimal 1');
-        return;
-      }
-
       const res = await fetch('/api/admin/system-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          total_booths: target,
-          session_timeout_seconds: Number(sessionTimeout),
+          total_booths: totalBooths,
+          session_timeout_seconds: sessionTimeout,
           election_status: currentElectionStatus === 'AKTIF' ? 'OPEN' : currentElectionStatus,
         }),
       });
-
-      const json = await res.json();
-      if (json.success) {
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
         localStorage.setItem('pemira_booth_timeout', String(sessionTimeout));
         updateConfig({
-          totalBooths: target,
+          totalBooths: Number(totalBooths),
           sessionTimeoutSeconds: Number(sessionTimeout),
         });
-        showToast(`Konfigurasi tersimpan di database Neon! Total bilik: ${target}`, 'success');
+        showToast(data.message, 'success');
         fetchConfigAndAdmins();
       } else {
-        throw new Error(json.error || 'Gagal menyimpan konfigurasi');
+        alert(data.error || 'Gagal menyimpan konfigurasi');
       }
-    } catch (err: any) {
-      console.error('Save booth error:', err);
-      alert('Gagal menyimpan bilik: ' + (err.message || 'Error koneksi'));
+    } catch (e) {
+      alert('Terjadi kesalahan jaringan');
     } finally {
       setSaving(false);
     }
   };
+
+  const handleSaveBoothConfig = handleSaveConfig;
 
   // Tambah Admin ke tabel admin_users_rows Neon
   const handleAddAdmin = async (e: React.FormEvent) => {
