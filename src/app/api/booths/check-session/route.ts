@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     const bNum = parseInt(boothNumber, 10);
 
     const booths = await sql`
-      SELECT id, booth_number, status, session_token
+      SELECT id, booth_number, status, session_token, started_at
       FROM booths
       WHERE booth_number = ${bNum}
       LIMIT 1
@@ -37,6 +37,35 @@ export async function GET(req: Request) {
     // Jika ada token yang dikirim, pastikan tokennya masih cocok
     if (token && booth.session_token && booth.session_token !== token) {
       return NextResponse.json({ valid: false, reason: 'SESSION_EXPIRED' });
+    }
+
+    // Hitung durasi sesi sejak started_at
+    if (booth.started_at) {
+      const startedTime = new Date(booth.started_at).getTime();
+      const now = Date.now();
+      const diffMinutes = (now - startedTime) / (1000 * 60);
+
+      // JIKA SUDAH MELEBIHI 15 MENIT: OTOMATIS KADALUARSA
+      if (diffMinutes >= 15) {
+        // Reset bilik kembali ke AVAILABLE di database
+        await sql`
+          UPDATE booths
+          SET status = 'AVAILABLE',
+              current_voter_name = null,
+              current_voter_nim = null,
+              current_voter_prodi = null,
+              session_token = null,
+              started_at = null,
+              updated_at = NOW()
+          WHERE id = ${booth.id}
+        `;
+
+        return NextResponse.json({
+          valid: false,
+          reason: 'SESSION_EXPIRED',
+          message: 'Sesi bilik telah kadaluarsa karena melebihi batas waktu maksimal 15 menit.'
+        });
+      }
     }
 
     return NextResponse.json({

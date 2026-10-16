@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         const token = requested_token || `UBTH-B${bNum}-${Date.now()}`;
         await sql`
           UPDATE booths 
-          SET status = 'ALLOCATED', session_token = ${token}, updated_at = NOW()
+          SET status = 'ALLOCATED', session_token = ${token}, started_at = NOW(), updated_at = NOW()
           WHERE id = ${target.id}
         `;
 
@@ -79,9 +79,9 @@ export async function POST(req: Request) {
       // Kunci bilik secara atomik
       const lockRes = await sql`
         UPDATE booths 
-        SET status = 'ALLOCATED', session_token = ${token}, updated_at = NOW()
+        SET status = 'ALLOCATED', session_token = ${token}, started_at = NOW(), updated_at = NOW()
         WHERE id = ${selectedBooth.id} AND status = 'AVAILABLE'
-        RETURNING id, booth_number, name, status, session_token
+        RETURNING id, booth_number, name, status, session_token, started_at
       `;
 
       if (lockRes && lockRes.length > 0) {

@@ -41,6 +41,22 @@ export async function GET() {
     `;
     const totalBemSuaraSah = bemCountRes[0]?.total || 0;
 
+    // Tambahkan kueri agregasi suara per interval 10 menit untuk BEM:
+    const timelineRes = await sql`
+      SELECT 
+        to_char(
+          date_trunc('hour', v.created_at) + 
+          INTERVAL '10 minute' * floor(date_part('minute', v.created_at) / 10), 
+          'HH24:MI'
+        ) AS time_slot,
+        v.candidate_id::text,
+        COUNT(v.id)::int AS vote_count
+      FROM votes v
+      WHERE UPPER(COALESCE(v.category, v.type, '')) = 'BEM'
+      GROUP BY 1, 2
+      ORDER BY 1 ASC
+    `;
+
     // 3. Ambil data voters untuk matriks 14 prodi
     const voters = await sql`SELECT id, prodi, faculty, has_voted FROM voters`;
 
@@ -109,6 +125,7 @@ export async function GET() {
         candidateVotes,
         totalDpt: voters.length,
         totalBemSuaraSah,
+        timeline: timelineRes || [],
         summary: {
           totalVoters: voters.length,
           totalSudahMemilih,

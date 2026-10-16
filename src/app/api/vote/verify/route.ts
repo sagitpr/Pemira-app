@@ -44,6 +44,19 @@ export async function POST(req: Request) {
     const parsedBooth = parseInt(booth_number, 10);
     const targetBooth = !isNaN(parsedBooth) && parsedBooth > 0 ? parsedBooth : null;
 
+    if (targetBooth) {
+      const boothData = await sql`SELECT started_at FROM booths WHERE booth_number = ${targetBooth} LIMIT 1`;
+      if (boothData[0]?.started_at) {
+        const diffMinutes = (Date.now() - new Date(boothData[0].started_at).getTime()) / (1000 * 60);
+        if (diffMinutes >= 15) {
+          return NextResponse.json({
+            success: false,
+            message: 'Sesi bilik suara Anda telah kadaluarsa (melebihi batas 15 menit). Silakan scan ulang QR bilik.'
+          }, { status: 403 });
+        }
+      }
+    }
+
     await Promise.all([
       sql`
         UPDATE voters

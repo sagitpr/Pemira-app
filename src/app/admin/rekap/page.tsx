@@ -30,6 +30,7 @@ export default function AdminRekapPage() {
 
   const [totalBemSuara, setTotalBemSuara] = useState<number>(0);
   const [totalDpt, setTotalDpt] = useState<number>(0);
+  const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [selectedFacultyFilter, setSelectedFacultyFilter] = useState<string>('SEMUA');
   const [searchProdi, setSearchProdi] = useState<string>('');
@@ -69,6 +70,7 @@ export default function AdminRekapPage() {
           setProdiMatrix(data.matrix || []);
           setTotalBemSuara(data.totalBemSuaraSah || 0);
           setTotalDpt(data.totalDpt || 0);
+          setTimelineData(data.timeline || []);
 
           // Simpan ke cache agar refresh berikutnya instan
           try {
@@ -119,6 +121,51 @@ export default function AdminRekapPage() {
         <p className="text-xs text-slate-500 mt-1">
           Penghitungan suara sah masuk, persentase partisipasi per kandidat, dan matriks 14 program studi secara realtime.
         </p>
+      </div>
+
+      {/* KOTAK GRAFIK LINIMASA PEROLEHAN SUARA (DIKEMBALIKAN UTUH) */}
+      <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-xs mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+            <h3 className="font-bold text-slate-800 text-sm">
+              Linimasa Perolehan Suara Sah (Interval 10 Menit)
+            </h3>
+          </div>
+          <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+              <span className="text-slate-600 font-medium">Paslon 01</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+              <span className="text-slate-600 font-medium">Paslon 02</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Area Visual Garis/Titik Linimasa */}
+        <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-5 overflow-x-auto">
+          <div className="min-w-[650px] h-32 flex flex-col justify-between">
+            <div className="flex justify-between text-[11px] text-slate-400 font-mono border-b border-[#EAE6DF] pb-2">
+              <span>08:00</span><span>09:00</span><span>10:00</span><span>11:00</span>
+              <span>12:00</span><span>13:00</span><span>14:00</span><span>15:00</span>
+              <span>16:00</span><span>17:00</span><span>18:00</span><span>19:00</span><span>20:00</span>
+            </div>
+            <div className="flex items-center justify-center my-auto py-4">
+              <p className="text-xs text-slate-400 font-medium italic">
+                Data akumulasi suara terpantau aktif secara realtime
+              </p>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-[#EAE6DF] text-[10px] text-slate-400 font-medium">
+              <div className="flex items-center gap-1.5 text-emerald-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Realtime Live Stream Aktif</span>
+              </div>
+              <span>Kategori: Presiden BEM-U</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* =========================================================================

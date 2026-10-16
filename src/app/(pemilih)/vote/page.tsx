@@ -469,8 +469,8 @@ function VoteContent() {
 
         const data = await res.json();
 
-        // Hanya terminate jika benar-benar dibatalkan admin SEBELUM submit suara
-        if (!isSubmittingVoteRef.current && data.valid === false && data.reason === 'CANCELLED_BY_ADMIN') {
+        // Hanya terminate jika benar-benar dibatalkan admin atau sesi kadaluarsa SEBELUM submit suara
+        if (!isSubmittingVoteRef.current && data.valid === false && (data.reason === 'CANCELLED_BY_ADMIN' || data.reason === 'SESSION_EXPIRED')) {
           if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
           terminateSessionToBlank(); // LANGSUNG NGE-BLANK KE about:blank SEKETIKA!
         }
@@ -483,6 +483,18 @@ function VoteContent() {
       if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
     };
   }, [isAccessGranted, assignedBooth?.booth_number, isWaitingQueue]);
+
+  // Timer Pengaman Lokal di HP Pemilih (Maksimal 15 Menit = 900 Detik):
+  useEffect(() => {
+    if (!isAccessGranted) return;
+
+    const maxSessionTimer = setTimeout(() => {
+      // Tepat 15 menit, musnahkan sesi dan lempar ke about:blank
+      terminateSessionToBlank();
+    }, 15 * 60 * 1000); // 15 menit
+
+    return () => clearTimeout(maxSessionTimer);
+  }, [isAccessGranted]);
 
   // 3. Penanganan Waktu Sesi Habis (Reset Bilik di Neon via API)
   const handleSessionTimeout = useCallback(async () => {
