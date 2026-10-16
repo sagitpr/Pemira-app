@@ -128,6 +128,8 @@ function VoteContent() {
   const [assignedBoothId, setAssignedBoothId] = useState<string>('');
 
   const [isWaitingQueue, setIsWaitingQueue] = useState<boolean>(false);
+  const [queueMessage, setQueueMessage] = useState<string>('');
+  const queuePollingRef = useRef<NodeJS.Timeout | null>(null);
   const [step, setStep] = useState<Step>('BOOTH_ROUTING');
   const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
 
@@ -300,112 +302,141 @@ function VoteContent() {
   }, [setCandidates]);
 
   // 1. Validasi Token Cerdas & Anti-Share (Dukungan Pinjam HP & Resilient Fallback)
-  useEffect(() => {
-    setMounted(true);
+  const attemptBoothAllocation = async (targetBoothNum?: number) => {
+    try {
+      const activeSession = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_active_session') : null;
+      const requestedToken = activeSession ? JSON.parse(activeSession).token : undefined;
 
-    async function handleBoothEntry() {
-      setIsCheckingAccess(true);
+      const res = await fetch('/api/booths/allocate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          booth_number: targetBoothNum,
+          requested_token: requestedToken
+        })
+      });
+      const data = await res.json();
 
-      const params = new URLSearchParams(window.location.search);
-      const boothParam = params.get('booth') || params.get('b');
-      const urlToken = params.get('token') || params.get('t') || params.get('session');
+      if (data.success && data.allocated && data.booth) {
+        // BERHASIL DAPAT BILIK:
+        setIsWaitingQueue(false);
+        const b = data.booth;
+        setAssignedBooth(b);
+        setAssignedBoothId(b.id || `booth-${b.booth_number}`);
+        setAssignedBoothNumber(b.booth_number);
+        setAssignedBoothName(b.name || `Bilik ${String(b.booth_number).padStart(2, '0')}`);
 
-      if (boothParam && urlToken) {
-        const boothNumberInt = parseInt(boothParam, 10);
-
-        const activeBooth = {
-          id: `booth-${boothNumberInt}`,
-          booth_number: boothNumberInt,
-          status: 'ALLOCATED',
-          session_token: urlToken,
-          name: `Bilik ${String(boothNumberInt).padStart(2, '0')}`,
-        };
-
-        // Bersihkan sesi lama & simpan sesi bilik baru
-        sessionStorage.clear();
-        localStorage.removeItem('pemira_booth_session');
-        localStorage.removeItem('pemira_completed_voter');
-        localStorage.removeItem('pemira_active_token');
-        localStorage.removeItem('pemira_assigned_booth');
-        localStorage.removeItem('pemira_access_verified');
-
-        setAssignedBooth(activeBooth);
-        setAssignedBoothId(activeBooth.id || '');
-        setAssignedBoothNumber(activeBooth.booth_number || boothNumberInt);
-        setAssignedBoothName(activeBooth.name || `Bilik ${String(activeBooth.booth_number || boothNumberInt).padStart(2, '0')}`);
-
-        sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(activeBooth));
-        sessionStorage.setItem('pemira_active_token', urlToken);
+        sessionStorage.setItem('pemira_active_session', JSON.stringify({
+          booth_number: b.booth_number,
+          token: b.session_token
+        }));
+        sessionStorage.setItem('pemira_assigned_booth', JSON.stringify(b));
+        sessionStorage.setItem('pemira_active_token', b.session_token || '');
         sessionStorage.setItem('pemira_access_verified', 'true');
-
-        // Bersihkan URL dari address bar agar tidak bisa disalin/dishare
-        window.history.replaceState({}, document.title, window.location.pathname);
 
         setIsAccessGranted(true);
         setIsCheckingAccess(false);
         setLoading(false);
-        return;
-      }
-
-      // ==========================================================================
-      // KASUS B: TIDAK ADA PARAMETER DI URL (Membuka link mentah / link share WA)
-      // ==========================================================================
-      // Cek apakah HP ini sedang berada di tengah-tengah proses memilih yang sah
-      const verified = sessionStorage.getItem('pemira_access_verified');
-      const storedBooth = sessionStorage.getItem('pemira_assigned_booth');
-
-      if (verified === 'true' && storedBooth) {
-        // Masih dalam sesi yang sedang berlangsung di HP ini (misal refresh saat memilih)
-        try {
-          const parsed = JSON.parse(storedBooth);
-          setAssignedBooth(parsed);
-          setAssignedBoothId(parsed.id || '');
-          setAssignedBoothNumber(parsed.booth_number || 1);
-          setAssignedBoothName(parsed.name || `Bilik ${String(parsed.booth_number || 1).padStart(2, '0')}`);
-          setIsAccessGranted(true);
-        } catch (e) {
-          setIsAccessGranted(false);
-        }
+        return true;
+      } else if (data.waiting) {
+        // SEMUA BILIK PENUH / MASUK ANTREAN:
+        setIsWaitingQueue(true);
+        setQueueMessage(data.message || 'Seluruh bilik suara fisik sedang terisi.');
+        setIsAccessGranted(true); // Izinkan render layar antrean
+        setIsCheckingAccess(false);
+        setLoading(false);
+        return false;
       } else {
-        // TIDAK ADA TOKEN DAN TIDAK ADA SESI AKTIF (LINK DARI SHARE WA / BUKA LANGSUNG)
-        // -> Alihkan langsung ke about:blank seketika
         setIsAccessGranted(false);
         setIsCheckingAccess(false);
         setLoading(false);
-        if (typeof window !== 'undefined') {
-          window.location.replace('about:blank');
-        }
-        return;
+        window.location.replace('about:blank');
+        return false;
       }
-
+    } catch (e) {
       setIsCheckingAccess(false);
       setLoading(false);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    setMounted(true);
+    const params = new URLSearchParams(window.location.search);
+    const boothParam = params.get('booth') || params.get('b');
+
+    // Bersihkan sesi lama dari HP ini jika scan baru
+    if (boothParam) {
+      sessionStorage.clear();
+      localStorage.removeItem('pemira_booth_session');
+      localStorage.removeItem('pemira_completed_voter');
+      localStorage.removeItem('pemira_active_token');
+      localStorage.removeItem('pemira_assigned_booth');
+      localStorage.removeItem('pemira_access_verified');
     }
 
-    handleBoothEntry();
+    // Bersihkan URL dari address bar agar link tidak bisa dibagikan
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    // Coba alokasi awal
+    attemptBoothAllocation(boothParam ? parseInt(boothParam, 10) : undefined);
   }, []);
 
-  // 2. Realtime Listener Antrean Bilik Kosong (Neon Polling)
+  // Polling Otomatis Saat Berada di Antrean (Mengecek Bilik Kosong Tiap 2 Detik)
   useEffect(() => {
-    if (!isWaitingQueue) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch('/api/admin/dashboard');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.booths)) {
-          const avail = data.booths.find((b: any) => b.status === 'AVAILABLE');
-          if (avail) {
-            const token = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_session_token') : null;
-            assignAndLockBooth(avail, token);
-            showToast(`Bilik 0${avail.booth_number} telah tersedia untuk Anda!`, 'success');
-          }
+    if (isWaitingQueue) {
+      queuePollingRef.current = setInterval(async () => {
+        // Coba ambil bilik kosong yang baru selesai digunakan pemilih lain
+        const success = await attemptBoothAllocation();
+        if (success && queuePollingRef.current) {
+          clearInterval(queuePollingRef.current);
         }
-      } catch {}
+      }, 2000);
+    }
+
+    return () => {
+      if (queuePollingRef.current) clearInterval(queuePollingRef.current);
+    };
+  }, [isWaitingQueue]);
+
+  // Pemusnahan Sesi & Navigasi ke about:blank jika dibatalkan admin
+  const terminateSessionToBlank = () => {
+    sessionStorage.clear();
+    localStorage.removeItem('pemira_booth_session');
+    localStorage.removeItem('pemira_active_session');
+    localStorage.removeItem('pemira_completed_voter');
+    window.location.replace('about:blank');
+  };
+
+  // Polling Pengecekan Sesi (Heartbeat Monitor)
+  useEffect(() => {
+    if (!isAccessGranted || !assignedBooth?.booth_number || isWaitingQueue) return;
+
+    // Jalankan pemeriksaan status bilik setiap 2 detik ke database Neon
+    const heartbeatTimer = setInterval(async () => {
+      try {
+        const activeSession = sessionStorage.getItem('pemira_active_session');
+        const token = activeSession ? JSON.parse(activeSession).token : null;
+
+        const res = await fetch(`/api/booths/check-session?booth=${assignedBooth.booth_number}&token=${token || ''}`, {
+          cache: 'no-store'
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+
+        // JIKA ADMIN MEMBATALKAN ALOKASI ATAU MERESET BILIK:
+        if (data.valid === false && data.reason === 'CANCELLED_BY_ADMIN') {
+          clearInterval(heartbeatTimer);
+          terminateSessionToBlank(); // LANGSUNG NGE-BLANK KE about:blank SEKETIKA!
+        }
+      } catch (e) {
+        console.warn("Heartbeat check warning:", e);
+      }
     }, 2000);
 
-    return () => clearInterval(interval);
-  }, [isWaitingQueue, assignAndLockBooth, showToast]);
+    return () => clearInterval(heartbeatTimer);
+  }, [isAccessGranted, assignedBooth?.booth_number, isWaitingQueue]);
 
   // 3. Penanganan Waktu Sesi Habis (Reset Bilik di Neon via API)
   const handleSessionTimeout = useCallback(async () => {
@@ -601,8 +632,9 @@ function VoteContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           nim: cleanNim,
-          booth_id: assignedBooth?.id || assignedBoothId,
-          booth_number: assignedBooth?.booth_number || assignedBoothNumber,
+          name: cleanName,
+          prodi: selectedProdi,
+          booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
         }),
       });
 
@@ -652,8 +684,7 @@ function VoteContent() {
           voter_nim: voterNim,
           bem_candidate_id: selectedBem?.id,
           hima_candidate_id: selectedHima?.id || null,
-          booth_id: assignedBooth?.id || assignedBoothId,
-          booth_number: assignedBooth?.booth_number || assignedBoothNumber,
+          booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
         }),
       });
 
@@ -679,6 +710,7 @@ function VoteContent() {
       localStorage.removeItem('pemira_voter_session');
       localStorage.removeItem('pemira_booth');
       sessionStorage.removeItem('pemira_session_token');
+      sessionStorage.removeItem('pemira_active_session');
 
       // 4. Pengalihan Instan ke Halaman Selesai
       router.replace('/selesai');
@@ -895,33 +927,59 @@ function VoteContent() {
   // SCREEN: ANTREAN BILIK PENUH
   if (isWaitingQueue) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-between p-4 select-none font-sans">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-blue-200 shadow-xl text-center space-y-5 animate-in fade-in">
-            <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 mx-auto flex items-center justify-center border border-blue-200 shadow-xs relative">
-              <Monitor className="w-8 h-8" />
-              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-blue-600 animate-ping" />
+      <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
+        <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center">
+              <img src="/candidate/image-logo-Pemira.png" alt="Logo Pemira" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                Semua Bilik Suara Sedang Terisi
-              </h2>
-              <p className="text-xs text-slate-600 mt-2 leading-relaxed font-medium">
-                Mohon menunggu sejenak di area tunggu. Layar ini akan otomatis mengarahkan Anda begitu bilik kosong tersedia.
+              <h1 className="text-xs font-bold text-slate-900 tracking-tight leading-none">PEMIRA UBTH 2026</h1>
+              <p className="text-[10px] font-medium text-slate-500 tracking-wide mt-0.5">KOMISI PEMILIHAN RAYA</p>
+            </div>
+          </div>
+          <span className="text-[11px] font-semibold text-amber-600 bg-amber-50 border border-amber-200/60 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            Antrean Bilik
+          </span>
+        </header>
+
+        <main className="w-full max-w-md mx-auto my-auto py-8">
+          <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm text-center flex flex-col items-center">
+            {/* Radar Animasi Menunggu */}
+            <div className="w-16 h-16 rounded-full bg-amber-50 border border-amber-200/80 flex items-center justify-center mb-4 text-amber-600 shadow-xs relative">
+              <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+
+            <p className="text-[11px] font-bold tracking-widest text-amber-600 uppercase mb-1">
+              Status Bilik Penuh
+            </p>
+
+            <h2 className="text-lg font-bold text-slate-900 leading-snug mb-2">
+              Mohon Menunggu Sejenak
+            </h2>
+
+            <p className="text-xs text-slate-600 leading-relaxed max-w-xs mb-6">
+              {queueMessage || 'Seluruh bilik suara fisik sedang terisi.'}
+            </p>
+
+            <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-4 text-xs text-slate-600 text-left space-y-2 mb-6">
+              <div className="flex items-center gap-2 text-slate-700 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Sistem Alokasi Otomatis Aktif</span>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Anda tidak perlu memindai ulang QR Code. Halaman ini akan <strong>otomatis terbuka</strong> dan mengarahkan Anda ke bilik fisik begitu pemilih di dalam bilik menyelesaikan suaranya.
               </p>
             </div>
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center gap-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce" />
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
-              <span className="text-xs font-bold text-slate-700 ml-1">Menunggu bilik kosong...</span>
-            </div>
-            <p className="text-[11px] text-slate-400">
-              Sistem secara otomatis tersinkronisasi via Neon Fast-Sync
+
+            <p className="text-[10px] text-slate-400">
+              Pemeriksaan ketersediaan bilik fisik secara realtime...
             </p>
           </div>
-        </div>
-        <footer className="w-full py-4 mt-auto text-center border-t border-slate-100 bg-white/50 backdrop-blur-sm">
+        </main>
+
+        <footer className="w-full py-3 text-center">
           <p className="text-[11px] text-slate-400 font-medium tracking-wide">
             KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
           </p>

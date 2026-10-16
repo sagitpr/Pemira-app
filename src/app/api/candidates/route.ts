@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic';
+export const revalidate = 60;
 
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
@@ -6,7 +7,8 @@ import { sql } from '@/lib/db';
 export async function GET() {
   try {
     const candidates = await sql`
-      SELECT id, name, category, type, candidate_number, prodi, slogan, tagline, vision, mission, photo_url
+      SELECT id, name, leader_name, vice_leader_name, category, type, 
+             candidate_number, faculty, prodi, slogan, vision, mission, photo_url
       FROM candidates
       ORDER BY candidate_number ASC
     `;
@@ -14,13 +16,10 @@ export async function GET() {
     return NextResponse.json(candidates || [], {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=43200',
-        'CDN-Cache-Control': 'public, s-maxage=86400',
-        'Vercel-CDN-Cache-Control': 'public, s-maxage=86400',
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
       },
     });
   } catch (err: any) {
-    console.error('Error candidates route:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

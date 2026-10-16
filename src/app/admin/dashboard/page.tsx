@@ -54,162 +54,91 @@ function BoothCard({
   onReset: () => void;
 }) {
   const st = (booth.status || '').toUpperCase();
-  const isAvailable = st === 'AVAILABLE' || st === 'TERSEDIA' || st === 'KOSONG';
+  const isOccupied = st === 'OCCUPIED' || st === 'DIGUNAKAN' || st === 'MENGERJAKAN';
   const isAllocated = st === 'ALLOCATED' || st === 'MENUJU_BILIK' || st === 'MENUJU BILIK';
   const boothNumStr = String(booth.booth_number).padStart(2, '0');
-  const voterName = booth.current_voter_name || 'Mahasiswa Sedang Memilih';
-  const voterNim = booth.current_voter_nim || '-';
-  const voterProdi = booth.current_voter_prodi || '-';
 
-  // Live timer berjalan untuk bilik yang sedang digunakan
-  const [elapsed, setElapsed] = useState<string>('00:00');
-
-  useEffect(() => {
-    if (isAvailable || isAllocated || !booth.started_at) {
-      setElapsed('00:00');
-      return;
-    }
-
-    const calcElapsed = () => {
-      const startTime = new Date(booth.started_at!).getTime();
-      const now = Date.now();
-      const diffSec = Math.max(0, Math.floor((now - startTime) / 1000));
-      const mm = String(Math.floor(diffSec / 60)).padStart(2, '0');
-      const ss = String(diffSec % 60).padStart(2, '0');
-      setElapsed(`${mm}:${ss}`);
-    };
-
-    calcElapsed();
-    const timer = setInterval(calcElapsed, 1000);
-    return () => clearInterval(timer);
-  }, [isAvailable, isAllocated, booth.started_at]);
-
-  // STATUS HIJAU: AVAILABLE (Tersedia)
-  if (isAvailable) {
-    return (
-      <div className="rounded-2xl border border-[#EFECE6] bg-white p-4 shadow-xs flex flex-col justify-between transition-all hover:border-[#E2DDD5]">
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>Tersedia</span>
-            </div>
-          </div>
-          <div className="py-4 text-center">
-            <p className="text-xs text-emerald-600 font-medium">
-              Bilik Siap Digunakan
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={onReset}
-          disabled={isResetting}
-          className="w-full py-1.5 text-xs text-slate-600 border border-[#E2DDD5] bg-white hover:bg-[#F5F2EB] rounded-xl transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-        >
-          <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-          <span>Reset</span>
-        </button>
+  return (
+    <div
+      className={`rounded-2xl border p-4 shadow-xs flex flex-col justify-between transition-all min-h-[170px] ${
+        isOccupied
+          ? 'border-amber-200/80 bg-white'
+          : isAllocated
+          ? 'border-blue-200/80 bg-white'
+          : 'border-[#EFECE6] bg-white hover:border-[#E2DDD5]'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-bold text-slate-900 text-sm">Bilik {boothNumStr}</span>
       </div>
-    );
-  }
 
-  // STATUS BIRU: ALLOCATED / MENUJU BILIK
-  if (isAllocated) {
-    return (
-      <div className="rounded-2xl border border-blue-200/80 bg-white p-4 shadow-xs flex flex-col justify-between transition-all">
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
-              <span>Menuju Bilik</span>
+      {isOccupied ? (
+        // 1. STATUS: SEDANG MEMILIH (KUNING / AMBER)
+        <div className="flex flex-col justify-between h-full py-1">
+          <div>
+            <div className="flex items-center gap-1.5 text-amber-600 font-semibold text-xs mb-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>Sedang Memilih</span>
             </div>
-          </div>
-
-          <div className="py-3 px-3 rounded-xl bg-blue-50/50 border border-blue-100 space-y-1 mb-3 text-center">
-            <p className="font-bold text-blue-900 text-xs">
-              Alokasi Berhasil
+            <h4 className="font-bold text-slate-800 text-xs leading-snug line-clamp-1">
+              {booth.current_voter_name || 'Mahasiswa'}
+            </h4>
+            <p className="font-mono text-[11px] text-slate-500 mt-0.5">
+              NIM: {booth.current_voter_nim || '-'}
             </p>
-            <p className="text-[11px] text-blue-700 font-medium">
-              Menunggu pemilih memverifikasi identitas di bilik.
+            <p className="text-[10px] text-indigo-600 font-medium mt-0.5 line-clamp-1">
+              {booth.current_voter_prodi || '-'}
             </p>
           </div>
-        </div>
-
-        <div>
           <button
             onClick={onReset}
             disabled={isResetting}
-            className="w-full py-1.5 text-xs bg-blue-50 text-blue-800 hover:bg-blue-100 border border-blue-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="mt-3 text-[10px] text-slate-400 hover:text-rose-600 transition pt-1.5 border-t border-slate-100 flex items-center justify-center gap-1 w-full cursor-pointer disabled:opacity-50"
           >
-            <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-            <span>↺ Batalkan Alokasi</span>
+            <RotateCcw className={`w-3 h-3 ${isResetting ? 'animate-spin' : ''}`} />
+            <span>Reset Bilik</span>
           </button>
+        </div>
+      ) : isAllocated ? (
+        // 2. STATUS: MENUJU BILIK (BIRU)
+        <div className="flex flex-col justify-between h-full py-1">
+          <div>
+            <div className="flex items-center gap-1.5 text-blue-600 font-semibold text-xs mb-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+              <span>Menuju Bilik</span>
+            </div>
+            <p className="text-[11px] text-slate-600 leading-tight">
+              QR telah dipindai pemilih.
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1">
+              Menunggu verifikasi identitas fisik di bilik.
+            </p>
+          </div>
           <button
             onClick={onReset}
-            className="mt-2 text-[11px] font-medium text-slate-400 hover:text-rose-600 transition flex items-center justify-center gap-1 w-full pt-2 border-t border-slate-100 cursor-pointer"
+            disabled={isResetting}
+            className="mt-3 text-[10px] text-slate-400 hover:text-rose-600 transition pt-1.5 border-t border-slate-100 flex items-center justify-center gap-1 w-full cursor-pointer disabled:opacity-50"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Reset Bilik ke Tersedia
+            <RotateCcw className={`w-3 h-3 ${isResetting ? 'animate-spin' : ''}`} />
+            <span>Batalkan Alokasi</span>
           </button>
         </div>
-      </div>
-    );
-  }
-
-  // STATUS AMBER: OCCUPIED (Sedang Memilih)
-  return (
-    <div className="rounded-2xl border border-amber-200/80 bg-white p-4 shadow-xs flex flex-col justify-between transition-all">
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <span className="font-bold text-slate-900">Bilik {boothNumStr}</span>
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
-            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-            <span>Sedang Memilih</span>
+      ) : (
+        // 3. STATUS: TERSEDIA (HIJAU)
+        <div className="flex flex-col justify-between h-full py-1 text-center">
+          <div className="my-auto py-2">
+            <span className="text-xs font-medium text-emerald-600">Bilik Siap Digunakan</span>
           </div>
+          <button
+            onClick={onReset}
+            disabled={isResetting}
+            className="text-[10px] text-slate-400 hover:text-slate-600 transition pt-1.5 border-t border-slate-100 flex items-center justify-center gap-1 w-full cursor-pointer disabled:opacity-50"
+          >
+            <RotateCcw className={`w-3 h-3 ${isResetting ? 'animate-spin' : ''}`} />
+            <span>Reset</span>
+          </button>
         </div>
-
-        <div className="py-2.5 px-3 rounded-xl bg-amber-50/60 border border-amber-100 space-y-1 mb-3">
-          <h4 className="font-bold text-slate-800 text-sm leading-snug line-clamp-1" title={voterName}>
-            {voterName}
-          </h4>
-          <p className="font-mono text-xs text-slate-500 mt-0.5">
-            NIM: {voterNim}
-          </p>
-          <p className="text-[11px] text-indigo-600 font-medium mt-0.5 line-clamp-1" title={voterProdi}>
-            {voterProdi}
-          </p>
-          {elapsed !== '00:00' && (
-            <div className="pt-1 flex items-center gap-1 text-[11px] font-mono font-bold text-amber-600">
-              <Clock className="w-3 h-3" />
-              <span>Durasi: {elapsed}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <button
-          onClick={onReset}
-          disabled={isResetting}
-          className="w-full py-1.5 text-xs bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200/80 rounded-xl font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-        >
-          <RotateCcw className={`w-3.5 h-3.5 ${isResetting ? 'animate-spin' : ''}`} />
-          <span>Paksa Reset Bilik</span>
-        </button>
-        <button
-          onClick={onReset}
-          className="mt-2 text-[11px] font-medium text-slate-400 hover:text-rose-600 transition flex items-center justify-center gap-1 w-full pt-2 border-t border-slate-100 cursor-pointer"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          Reset Bilik ke Tersedia
-        </button>
-      </div>
+      )}
     </div>
   );
 }

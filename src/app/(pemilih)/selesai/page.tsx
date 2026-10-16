@@ -22,15 +22,11 @@ export default function SelesaiPage() {
     if (speechIntervalRef.current) clearInterval(speechIntervalRef.current);
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 
-    // 2. Musnahkan semua memori dan token dari HP ini
+    // 2. Musnahkan total semua memori
     sessionStorage.clear();
-    localStorage.removeItem('pemira_booth_session');
-    localStorage.removeItem('pemira_active_token');
-    localStorage.removeItem('pemira_assigned_booth');
-    localStorage.removeItem('pemira_completed_voter');
-    localStorage.removeItem('pemira_candidates_meta_v2');
+    localStorage.clear();
 
-    // 3. Alihkan paksa browser ke about:blank (menimpa history browser)
+    // 3. Paksa ganti URL menjadi about:blank
     window.location.replace('about:blank');
   };
 

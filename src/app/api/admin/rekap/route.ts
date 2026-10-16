@@ -6,13 +6,25 @@ import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    const [voters, bemVotes, himaVotes, rawVotes] = await Promise.all([
+    // 1. Ambil seluruh paslon beserta jumlah suara sah yang masuk dari tabel votes Neon
+    const candidateVotes = await sql`
+      SELECT 
+        c.id, c.name, c.candidate_number, c.category, c.type, c.prodi, c.faculty, 
+        c.slogan, c.photo_url,
+        COUNT(v.id)::int as total_suara
+      FROM candidates c
+      LEFT JOIN votes v ON c.id::text = v.candidate_id::text
+      GROUP BY c.id
+      ORDER BY c.candidate_number ASC
+    `;
+
+    // 2. Ambil seluruh voters untuk matriks 14 prodi & raw votes
+    const [voters, rawVotes] = await Promise.all([
       sql`SELECT id, prodi, faculty, has_voted FROM voters`,
-      sql`SELECT count(*)::int as total FROM votes WHERE category = 'BEM'`,
-      sql`SELECT count(*)::int as total FROM votes WHERE category = 'HIMA'`,
       sql`SELECT candidate_id, category, created_at FROM votes ORDER BY created_at ASC`
     ]);
 
+    // 3. Matriks 14 Program Studi Resmi
     const MASTER_MATRIX = [
       { no: 1, name: 'Bisnis Digital', faculty: 'FTB', match: ['bisnis digital'] },
       { no: 2, name: 'Sistem Informasi', faculty: 'FTB', match: ['sistem informasi'] },
@@ -56,23 +68,32 @@ export async function GET() {
       };
     });
 
+    const bemCandidates = candidateVotes.filter((c: any) => (c.category || c.type || '').toUpperCase() === 'BEM');
+    const himaCandidates = candidateVotes.filter((c: any) => (c.category || c.type || '').toUpperCase() !== 'BEM');
+
     const totalSudahMemilih = voters.filter((v: any) => v.has_voted === true).length;
+    const totalSuaraMasuk = rawVotes.length;
 
     return NextResponse.json({
       success: true,
       matrix,
       rawVotes,
+      bemCandidates,
+      himaCandidates,
+      candidateVotes,
+      totalDpt: voters.length,
+      totalSuaraMasuk,
       summary: {
         totalVoters: voters.length,
         totalSudahMemilih,
         totalBelumMemilih: Math.max(0, voters.length - totalSudahMemilih),
         partisipasi: voters.length > 0 ? ((totalSudahMemilih / voters.length) * 100).toFixed(1) : '0.0',
-        totalBemVotes: bemVotes[0]?.total || 0,
-        totalHimaVotes: himaVotes[0]?.total || 0
+        totalBemVotes: rawVotes.filter((v: any) => (v.category || '').toUpperCase() === 'BEM').length,
+        totalHimaVotes: rawVotes.filter((v: any) => (v.category || '').toUpperCase() === 'HIMA').length
       }
     });
   } catch (err: any) {
-    console.error('Error Rekap route:', err);
+    console.error('Error Rekap Neon:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

@@ -4,50 +4,60 @@ import { sql } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
-    const { nim, booth_number, booth_id } = await req.json();
+    const { nim, name, prodi, booth_number } = await req.json();
 
     if (!nim) {
       return NextResponse.json({ success: false, message: 'NIM wajib diisi.' }, { status: 400 });
     }
 
+    const cleanNim = nim.trim().toLowerCase();
+
+    // 1. Cari data di tabel voters Neon
     const voters = await sql`
-      SELECT id, nim, name, prodi, faculty, has_voted, voting_status
+      SELECT id, nim, name, nama, prodi, prodi_name, faculty, has_voted, voting_status
       FROM voters
-      WHERE TRIM(LOWER(nim)) = TRIM(LOWER(${nim.trim()}))
+      WHERE LOWER(TRIM(nim)) = ${cleanNim}
       LIMIT 1
     `;
 
     if (!voters || voters.length === 0) {
       return NextResponse.json({
         success: false,
-        message: 'NIM tidak terdaftar dalam DPT PEMIRA UBTH 2026.'
+        message: 'NIM tidak terdaftar dalam Daftar Pemilih Tetap (DPT). Anda tidak memiliki akses untuk memberikan suara.'
       }, { status: 404 });
     }
 
     const voter = voters[0];
 
-    if (voter.has_voted) {
+    // 2. Cek apakah sudah pernah memilih
+    if (voter.has_voted === true || voter.voting_status === 'SELESAI') {
       return NextResponse.json({
         success: false,
-        message: 'NIM ini sudah menggunakan hak suaranya.'
+        message: 'Hak suara untuk NIM ini telah digunakan sebelumnya. Pemilihan ulang tidak diizinkan.'
       }, { status: 403 });
     }
 
-    const targetBooth = booth_number ? parseInt(booth_number, 10) : (booth_id && !isNaN(parseInt(booth_id, 10)) ? parseInt(booth_id, 10) : null);
+    const voterOfficialName = voter.name || voter.nama || name;
+    const voterOfficialProdi = voter.prodi || voter.prodi_name || prodi;
 
-    // Update status voter & bilik secara cepat
+    // 3. Update status pemilih menjadi MENGERJAKAN dan status bilik menjadi OCCUPIED
+    const parsedBooth = parseInt(booth_number, 10);
+    const targetBooth = !isNaN(parsedBooth) && parsedBooth > 0 ? parsedBooth : null;
+
     await Promise.all([
       sql`
         UPDATE voters
-        SET voting_status = 'MENGERJAKAN', start_vote_at = NOW(), updated_at = NOW()
+        SET voting_status = 'MENGERJAKAN',
+            start_vote_at = NOW(),
+            updated_at = NOW()
         WHERE id = ${voter.id}
       `,
       targetBooth ? sql`
         UPDATE booths
         SET status = 'OCCUPIED',
-            current_voter_name = ${voter.name},
+            current_voter_name = ${voterOfficialName},
             current_voter_nim = ${voter.nim},
-            current_voter_prodi = ${voter.prodi},
+            current_voter_prodi = ${voterOfficialProdi},
             updated_at = NOW()
         WHERE booth_number = ${targetBooth}
       ` : Promise.resolve()
@@ -55,15 +65,18 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      message: 'Verifikasi DPT berhasil.',
       voter: {
         id: voter.id,
         nim: voter.nim,
-        name: voter.name,
-        prodi: voter.prodi,
+        name: voterOfficialName,
+        prodi: voterOfficialProdi,
         faculty: voter.faculty
       }
     });
+
   } catch (err: any) {
-    return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    console.error('Error verify DPT Neon:', err);
+    return NextResponse.json({ success: false, message: 'Terjadi kendala server: ' + err.message }, { status: 500 });
   }
 }

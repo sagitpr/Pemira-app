@@ -132,12 +132,14 @@ export default function AdminPaslonPage() {
 
   const fetchCandidates = async () => {
     try {
-      const res = await fetch('/api/candidates');
+      setIsLoading(true);
+      const res = await fetch('/api/admin/candidates', { cache: 'no-store' });
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setCandidatesList(data);
+      const list = data.candidates || (Array.isArray(data) ? data : []);
+      if (Array.isArray(list)) {
+        setCandidatesList(list);
         if (typeof window !== 'undefined') {
-          sessionStorage.setItem('pemira_admin_paslon_cache', JSON.stringify(data));
+          sessionStorage.setItem('pemira_admin_paslon_cache', JSON.stringify(list));
         }
       }
     } catch (err: any) {
@@ -204,7 +206,7 @@ export default function AdminPaslonPage() {
   const handleDelete = async (candidateId: string | number) => {
     if (!confirm('Yakin ingin menghapus data pasangan calon ini?')) return;
     try {
-      const res = await fetch(`/api/admin/paslon?id=${encodeURIComponent(String(candidateId))}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/candidates?id=${encodeURIComponent(String(candidateId))}`, { method: 'DELETE' });
       const json = await res.json();
       if (json.success) {
         alert(json.message);
@@ -271,17 +273,18 @@ export default function AdminPaslonPage() {
       const vice = editForm.vice_chairman_name.trim();
       const himaVal = editForm.category === 'HIMA' ? editForm.hima_name.trim() : null;
 
-      const res = await fetch('/api/admin/paslon', {
+      const res = await fetch('/api/admin/candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: editingCandidate.id,
+          name: editForm.category === 'BEM' ? `Paslon ${editForm.candidate_number}` : `${leader} & ${vice}`,
           candidate_number: Number(editForm.candidate_number) || 1,
           leader_name: leader,
           vice_leader_name: vice,
           type: editForm.category,
           category: editForm.category,
-          prodi_id: himaVal,
+          prodi: himaVal,
           vision: editForm.vision.trim(),
           mission: editForm.mission.trim(),
           photo_url: editForm.image_url.trim() || null,
@@ -295,7 +298,7 @@ export default function AdminPaslonPage() {
         setEditingCandidate(null);
         await fetchCandidates();
       } else {
-        alert('Gagal memperbarui: ' + (json.message || 'Error'));
+        alert('Gagal memperbarui: ' + (json.error || json.message || 'Error'));
       }
     } catch (err: any) {
       console.error('Error updating candidate:', err);
@@ -323,17 +326,18 @@ export default function AdminPaslonPage() {
     const himaVal = formType === 'HIMA' ? (formHimaName.trim() || formProdi) : null;
 
     try {
-      const res = await fetch('/api/admin/paslon', {
+      const res = await fetch('/api/admin/candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           candidate_number: formNumber,
+          name: formType === 'BEM' ? `Paslon ${formNumber}` : `${formLeader.trim()} & ${formVice.trim()}`,
           leader_name: formLeader.trim(),
           vice_leader_name: formVice.trim(),
           type: formType,
           category: formType,
-          prodi_id: himaVal,
-          faculty_id: formFaculty,
+          prodi: himaVal,
+          faculty: formFaculty,
           slogan: formSlogan.trim(),
           vision: formVision.trim(),
           mission: formMission.trim(),
@@ -358,7 +362,7 @@ export default function AdminPaslonPage() {
 
         await fetchCandidates();
       } else {
-        alert('Gagal menyimpan paslon: ' + (json.message || 'Error'));
+        alert('Gagal menyimpan paslon: ' + (json.error || json.message || 'Error'));
       }
     } catch (err: any) {
       console.error('Gagal menyimpan paslon:', err);
