@@ -96,7 +96,7 @@ const calculateProdiMatrix = (votersList: any[]) => {
 
 // A. Komponen Skeleton Shimmer untuk Matriks Program Studi
 const MatrixTableSkeleton = () => (
-  <tbody className="divide-y divide-[#EFECE6] animate-pulse">
+  <tbody className="divide-y divide-slate-200/80 animate-pulse">
     {[...Array(8)].map((_, i) => (
       <tr key={i} className="bg-white/70">
         <td className="py-3.5 px-4 text-center">
@@ -674,7 +674,7 @@ export default function AdminRekapPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       {/* Top Header */}
       <AdminHeader />
 
@@ -698,7 +698,7 @@ export default function AdminRekapPage() {
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setIsBeritaAcaraOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-white hover:bg-[#F5F2EB] text-slate-700 border border-[#E2DDD5] text-xs font-semibold flex items-center gap-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-2 transition-all shadow-2xs hover:shadow-xs cursor-pointer"
             >
               <FileText className="w-4 h-4 text-blue-600" />
               <span>Berita Acara</span>
@@ -711,7 +711,7 @@ export default function AdminRekapPage() {
             ========================================================================= */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Total DPT */}
-          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">TOTAL DPT</span>
               <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
@@ -729,7 +729,7 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Card 2: Suara Masuk */}
-          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">SUARA MASUK</span>
               <div className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
@@ -758,7 +758,7 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Card 3: Belum Memilih */}
-          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">BELUM MEMILIH</span>
               <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
@@ -776,7 +776,7 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Card 4: Partisipasi */}
-          <div className="p-5 rounded-2xl bg-white border border-[#EFECE6] shadow-sm flex flex-col justify-between">
+          <div className="p-5 rounded-2xl bg-white border border-slate-200/80 shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-500 mb-2">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">PARTISIPASI</span>
               <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
@@ -816,7 +816,7 @@ export default function AdminRekapPage() {
         {/* =========================================================================
             2. GRAFIK DINAMIKA PEROLEHAN SUARA (INTERVAL 10 MENIT DENGAN BASELINE 0)
             ========================================================================= */}
-        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-sm relative overflow-hidden">
+        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
@@ -840,14 +840,14 @@ export default function AdminRekapPage() {
 
             {/* Filter Tabs: [ BEM Universitas ] dan [ HIMA ] serta Dropdown Prodi HIMA */}
             <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-              <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFECE6] shadow-2xs">
+              <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setChartType('BEM')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'BEM'
-                      ? 'bg-[#0F172A] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   BEM Universitas
@@ -857,8 +857,8 @@ export default function AdminRekapPage() {
                   onClick={() => setChartType('HIMA')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                     chartType === 'HIMA'
-                      ? 'bg-[#0F172A] text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                   }`}
                 >
                   HIMA
@@ -973,8 +973,8 @@ export default function AdminRekapPage() {
         {/* =========================================================================
             3. SECTION 1: HASIL SUARA BEM DENGAN PERSENTASE & PROGRESS BAR
             ========================================================================= */}
-        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
-          <div className="flex items-center justify-between pb-4 border-b border-[#EFECE6] mb-6">
+        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-200/80 shadow-sm">
+          <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 mb-6">
             <div className="flex items-center gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
@@ -988,7 +988,7 @@ export default function AdminRekapPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {(bemCandidates.length > 0 ? bemCandidates : bemList).length === 0 ? (
-              <div className="col-span-2 p-8 rounded-2xl border-2 border-dashed border-[#EFECE6] text-center">
+              <div className="col-span-2 p-8 rounded-2xl border-2 border-dashed border-slate-200 text-center">
                 <p className="text-xs font-bold text-slate-500">Belum ada Paslon BEM terdaftar.</p>
               </div>
             ) : (
@@ -1004,11 +1004,11 @@ export default function AdminRekapPage() {
                 return (
                   <div
                     key={cand.id}
-                    className="p-5 rounded-2xl border border-[#EFECE6] bg-white shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
+                    className="p-5 rounded-2xl border border-slate-200/80 bg-white shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
                   >
                     <div>
                       <div className="flex items-center justify-between mb-3">
-                        <span className="w-8 h-8 rounded-xl bg-[#0F172A] text-white font-mono font-bold text-xs flex items-center justify-center">
+                        <span className="w-8 h-8 rounded-xl bg-slate-900 text-white font-mono font-bold text-xs flex items-center justify-center">
                           {displayNumber}
                         </span>
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -1017,7 +1017,7 @@ export default function AdminRekapPage() {
                       </div>
 
                       {/* Foto Paslon BEM */}
-                      <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-[#FAF8F4] flex items-center justify-center border border-[#EFECE6]">
+                      <div className="relative w-full h-44 mb-3 rounded-xl overflow-hidden bg-slate-50/70 flex items-center justify-center border border-slate-200/80">
                         {photoUrl ? (
                           <img
                             src={photoUrl}
@@ -1037,19 +1037,19 @@ export default function AdminRekapPage() {
                       </p>
 
                       {/* Baris Suara, Persentase, dan Progress Bar Paslon */}
-                      <div className="mt-5 pt-3 border-t border-[#EFECE6]">
+                      <div className="mt-5 pt-3 border-t border-slate-200/80">
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-xl font-black text-slate-800 font-mono">
                             {isSensorActive ? '*** Suara' : `${votes.toLocaleString('id-ID')} Suara`}
                           </span>
-                          <span className="text-sm font-bold text-slate-900 bg-[#F5F2EB] border border-[#E8E4DC] px-2.5 py-0.5 rounded-md">
+                          <span className="text-sm font-bold text-slate-900 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-md">
                             {isSensorActive ? '***%' : `${persentasePaslon}%`}
                           </span>
                         </div>
                         {/* Progress Bar Persentase */}
-                        <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] h-2 rounded-full mt-2.5 overflow-hidden">
+                        <div className="w-full bg-slate-100 border border-slate-200 h-2 rounded-full mt-2.5 overflow-hidden">
                           <div
-                            className="bg-[#0F172A] h-full rounded-full transition-all duration-500"
+                            className="bg-slate-900 h-full rounded-full transition-all duration-500"
                             style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
                           />
                         </div>
@@ -1065,7 +1065,7 @@ export default function AdminRekapPage() {
         {/* =========================================================================
             3. SECTION 2: HASIL SUARA HIMA
             ========================================================================= */}
-        <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-xs mb-8">
+        <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs mb-8">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
@@ -1089,7 +1089,7 @@ export default function AdminRekapPage() {
                 const percentage = totalVotes > 0 ? ((cand.total_suara / totalVotes) * 100).toFixed(1) + '%' : '0.0%';
 
                 return (
-                  <div key={cand.id} className="bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-4 flex flex-col justify-between">
+                  <div key={cand.id} className="bg-slate-50/70 border border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <span className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
@@ -1101,7 +1101,7 @@ export default function AdminRekapPage() {
                       </div>
 
                       {/* Foto Paslon */}
-                      <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-white border border-[#EFECE6] flex items-center justify-center">
+                      <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-white border border-slate-200/80 flex items-center justify-center">
                         {cand.photo_url ? (
                           <img src={cand.photo_url} alt={cand.name} className="w-full h-full object-cover object-top" />
                         ) : (
@@ -1117,12 +1117,12 @@ export default function AdminRekapPage() {
                       </p>
                     </div>
 
-                    <div className="pt-3 border-t border-[#EAE6DF] flex items-center justify-between">
+                    <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between">
                       <div>
                         <span className="text-lg font-bold text-slate-900">{cand.total_suara || 0}</span>
                         <span className="text-xs text-slate-400 ml-1">Suara</span>
                       </div>
-                      <span className="text-xs font-semibold text-indigo-600 bg-white border border-[#E2DDD5] px-2.5 py-1 rounded-lg">
+                      <span className="text-xs font-semibold text-indigo-600 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
                         {percentage}
                       </span>
                     </div>
@@ -1134,8 +1134,8 @@ export default function AdminRekapPage() {
         </div>
 
         {/* SECTION 3: MATRIKS 14 PROGRAM STUDI (DINAMIS DARI DATABASE VOTERS) */}
-        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#EFECE6] mb-6">
+        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-slate-200/80 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 mb-6">
             <div>
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
                 Matriks 14 Program Studi
@@ -1154,18 +1154,18 @@ export default function AdminRekapPage() {
                   placeholder="Cari program studi..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-xl border border-[#E2DDD5] text-xs text-slate-800 bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
-              <div className="flex items-center bg-[#FAF8F4] border border-[#EFECE6] p-1 rounded-xl text-xs font-semibold text-slate-600">
+              <div className="flex items-center bg-slate-50/70 border border-slate-200/80 p-1 rounded-xl text-xs font-semibold text-slate-600">
                 {(['ALL', 'FTB', 'FIKES', 'FARMASI'] as const).map((fac) => (
                   <button
                     key={fac}
                     onClick={() => setActiveFacultyFilter(fac)}
                     className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                       activeFacultyFilter === fac
-                        ? 'bg-[#0F172A] text-white shadow-xs font-bold'
+                        ? 'bg-slate-900 text-white shadow-xs font-bold'
                         : 'hover:text-slate-900'
                     }`}
                   >
@@ -1183,10 +1183,10 @@ export default function AdminRekapPage() {
           </div>
 
           {/* Table */}
-          <div className="w-full overflow-x-auto rounded-xl border border-[#EFECE6]">
+          <div className="w-full overflow-x-auto rounded-xl border border-slate-200/80">
             <table className="w-full min-w-[640px] text-xs text-left">
               <thead>
-                <tr className="bg-[#FAF8F4] text-slate-700 border-b border-[#EFECE6] uppercase tracking-wider text-[11px] font-bold">
+                <tr className="bg-slate-50/80 text-slate-700 border-b border-slate-200/80 uppercase tracking-wider text-[11px] font-bold">
                   <th className="py-3 px-4 w-12 text-center">No</th>
                   <th className="py-3 px-4">Program Studi</th>
                   <th className="py-3 px-3 text-center">Fakultas</th>
@@ -1199,7 +1199,7 @@ export default function AdminRekapPage() {
               {isLoadingMatrix && prodiMatrix.length === 0 ? (
                 <MatrixTableSkeleton />
               ) : filteredProdis.length === 0 ? (
-                <tbody className="divide-y divide-[#EFECE6]">
+                <tbody className="divide-y divide-slate-200/80">
                   <tr>
                     <td colSpan={7} className="text-center py-12 text-slate-400">
                       <p className="text-xs font-medium">Tidak ada program studi yang sesuai kriteria pencarian atau filter.</p>
@@ -1207,9 +1207,9 @@ export default function AdminRekapPage() {
                   </tr>
                 </tbody>
               ) : (
-                <tbody className="divide-y divide-[#EFECE6]">
+                <tbody className="divide-y divide-slate-200/80">
                   {filteredProdis.map((pr, idx) => (
-                    <tr key={pr.no || idx} className="hover:bg-[#FAF8F4]/60 transition-colors">
+                    <tr key={pr.no || idx} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3.5 px-4 text-center font-mono text-slate-400">
                         {pr.no}
                       </td>
@@ -1217,7 +1217,7 @@ export default function AdminRekapPage() {
                         {pr.name}
                       </td>
                       <td className="py-3.5 px-3 text-center">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC]">
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                           {pr.faculty}
                         </span>
                       </td>

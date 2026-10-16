@@ -71,7 +71,7 @@ const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.
 const PaslonCardSkeleton = () => (
   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
     {[1, 2, 3].map((item) => (
-      <div key={item} className="bg-white border border-[#EFECE6] rounded-2xl p-5 shadow-xs">
+      <div key={item} className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs">
         <div className="flex justify-between items-center mb-4">
           <div className="w-8 h-8 bg-slate-200 rounded-lg"></div>
           <div className="w-16 h-4 bg-slate-100 rounded"></div>
@@ -390,7 +390,7 @@ export default function AdminPaslonPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       {/* Top Header */}
       <AdminHeader />
 
@@ -398,7 +398,7 @@ export default function AdminPaslonPage() {
         {/* SECTION HEADER: KELOLA PASLON */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-white text-slate-900 flex items-center justify-center border border-[#EFECE6] shadow-xs">
+            <div className="w-10 h-10 rounded-2xl bg-white text-slate-900 flex items-center justify-center border border-slate-200/80 shadow-xs">
               <Vote className="w-5 h-5 text-slate-900" />
             </div>
             <div>
@@ -418,7 +418,7 @@ export default function AdminPaslonPage() {
                 setFormNumber(currentCandidates.length + 1);
                 setIsAddModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-2 transition-all shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>+ Tambah Paslon</span>
@@ -428,13 +428,13 @@ export default function AdminPaslonPage() {
 
         {/* TAB TOGGLE: BEM vs HIMA + SUB-FILTER HIMA */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-[#EFECE6] shadow-xs w-fit">
+          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-200/80 shadow-xs w-fit">
             <button
               onClick={() => setActiveTab('BEM')}
               className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'BEM'
-                  ? 'bg-[#0F172A] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               BEM Univ ({bemCandidatesList.length})
@@ -444,8 +444,8 @@ export default function AdminPaslonPage() {
               onClick={() => setActiveTab('HIMA')}
               className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                 activeTab === 'HIMA'
-                  ? 'bg-[#0F172A] text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               HIMA Prodi ({himaCandidatesList.length})
@@ -457,7 +457,7 @@ export default function AdminPaslonPage() {
               <select
                 value={selectedHimaFilter}
                 onChange={(e) => setSelectedHimaFilter(e.target.value)}
-                className="text-xs px-3 py-2 border border-[#E2DDD5] rounded-xl bg-[#FAF8F4] font-medium text-slate-700 shadow-xs focus:outline-hidden focus:border-slate-500 cursor-pointer"
+                className="text-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50/70 font-medium text-slate-700 shadow-xs focus:outline-hidden focus:border-slate-500 cursor-pointer"
               >
                 <option value="ALL">Semua HIMA</option>
                 {availableHimaList.map((hima: any) => (
@@ -474,8 +474,8 @@ export default function AdminPaslonPage() {
         {isLoading && candidatesList.length === 0 ? (
           <PaslonCardSkeleton />
         ) : currentCandidates.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 border border-[#EFECE6] shadow-sm text-center flex flex-col items-center">
-            <div className="w-14 h-14 rounded-2xl bg-[#FAF8F4] text-slate-700 flex items-center justify-center mb-3 border border-[#EFECE6]">
+          <div className="bg-white rounded-2xl p-12 border border-slate-200/80 shadow-sm text-center flex flex-col items-center">
+            <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center mb-3 border border-slate-200">
               <User className="w-7 h-7" />
             </div>
             <h3 className="text-base font-bold text-slate-800">
@@ -490,7 +490,7 @@ export default function AdminPaslonPage() {
                 setFormNumber(1);
                 setIsAddModalOpen(true);
               }}
-              className="mt-5 px-5 py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              className="mt-5 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
             >
               + Tambah Paslon
             </button>
@@ -507,13 +507,13 @@ export default function AdminPaslonPage() {
               return (
                 <div
                   key={String(cand.id)}
-                  className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all"
+                  className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all"
                 >
                   <div>
                     {/* Header: Badge Nomor Urut & Aksi Edit + Hapus */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-2">
-                        <span className="w-10 h-10 rounded-2xl bg-[#0F172A] text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
+                        <span className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-mono font-black text-sm flex items-center justify-center shadow-xs">
                           {displayNumber}
                         </span>
                         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -541,7 +541,7 @@ export default function AdminPaslonPage() {
                     </div>
 
                     {/* Thumbnail Foto Paslon (Rasio 3:4) */}
-                    <div className="rounded-2xl overflow-hidden border border-[#EFECE6] aspect-[3/4] max-w-[120px] w-full mx-auto bg-[#FAF8F4] flex items-center justify-center relative shadow-xs mb-4">
+                    <div className="rounded-2xl overflow-hidden border border-slate-200/80 aspect-[3/4] max-w-[120px] w-full mx-auto bg-slate-50/70 flex items-center justify-center relative shadow-xs mb-4">
                       {displayPhoto ? (
                         <img
                           src={displayPhoto}
@@ -570,8 +570,8 @@ export default function AdminPaslonPage() {
                   </div>
 
                   {/* Footer Kartu Paslon: Kategori & Tombol Preview Detail */}
-                  <div className="mt-5 pt-3 border-t border-[#EFECE6] flex items-center justify-between text-xs">
-                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC]">
+                  <div className="mt-5 pt-3 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                    <span className="text-[11px] font-bold px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
                       {(cand as any).category === 'BEM' || cand.type === 'BEM'
                         ? 'BEM Universitas' 
                         : ((cand as any).hima_name || (cand as any).prodi || (cand as any).organization || (cand as any).prodi_name || 'HIMA')}
@@ -595,9 +595,9 @@ export default function AdminPaslonPage() {
       {/* MODAL + TAMBAH PASLON LENGKAP */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-[#EFECE6]">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200/80">
             {/* Modal Header */}
-            <div className="p-6 border-b border-[#EFECE6] flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+            <div className="p-6 border-b border-slate-200/80 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
                   + Tambah Data Pasangan Calon (Paslon)
@@ -625,7 +625,7 @@ export default function AdminPaslonPage() {
                   <select
                     value={formType}
                     onChange={(e) => setFormType(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500"
                   >
                     <option value="BEM">BEM Universitas</option>
                     <option value="HIMA">HIMA Program Studi</option>
@@ -644,20 +644,20 @@ export default function AdminPaslonPage() {
                     value={formNumber}
                     onChange={(e) => setFormNumber(Number(e.target.value))}
                     placeholder="1"
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] font-mono text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 font-bold"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-mono text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500 font-bold"
                   />
                 </div>
               </div>
 
               {/* Dropdown Fakultas & Program Studi (Khusus HIMA) */}
               {formType === 'HIMA' && (
-                <div className="grid grid-cols-2 gap-4 p-3 rounded-2xl bg-[#FAF8F4] border border-[#EFECE6]">
+                <div className="grid grid-cols-2 gap-4 p-3 rounded-2xl bg-slate-50/70 border border-slate-200/80">
                   <div>
                     <label className="font-bold text-slate-700 block mb-1">Fakultas</label>
                     <select
                       value={formFaculty}
                       onChange={(e) => setFormFaculty(e.target.value as any)}
-                      className="w-full p-2 rounded-xl border border-[#E2DDD5] text-xs bg-white font-semibold focus:outline-hidden focus:border-slate-500 cursor-pointer"
+                      className="w-full p-2 rounded-xl border border-slate-200 text-xs bg-white font-semibold focus:outline-hidden focus:border-slate-500 cursor-pointer"
                     >
                       <option value="FTB">FTB (Teknologi &amp; Bisnis)</option>
                       <option value="FIKES">FIKES (Ilmu Kesehatan)</option>
@@ -670,7 +670,7 @@ export default function AdminPaslonPage() {
                     <select
                       value={formProdi}
                       onChange={(e) => setFormProdi(e.target.value)}
-                      className="w-full p-2 rounded-xl border border-[#E2DDD5] text-xs bg-white font-semibold focus:outline-hidden focus:border-slate-500 cursor-pointer"
+                      className="w-full p-2 rounded-xl border border-slate-200 text-xs bg-white font-semibold focus:outline-hidden focus:border-slate-500 cursor-pointer"
                     >
                       {formFaculty === 'FTB' && (
                         <>
@@ -715,7 +715,7 @@ export default function AdminPaslonPage() {
                     placeholder="Contoh: HIMASI (Sistem Informasi), HIMA ARS, HIMA Farmasi"
                     value={formHimaName}
                     onChange={(e) => setFormHimaName(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                   />
                 </div>
               )}
@@ -732,7 +732,7 @@ export default function AdminPaslonPage() {
                     placeholder="Contoh: Muhammad Fikri"
                     value={formLeader}
                     onChange={(e) => setFormLeader(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                   />
                 </div>
 
@@ -746,7 +746,7 @@ export default function AdminPaslonPage() {
                     placeholder="Contoh: Aulia Rahma"
                     value={formVice}
                     onChange={(e) => setFormVice(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                   />
                 </div>
               </div>
@@ -761,22 +761,22 @@ export default function AdminPaslonPage() {
                   placeholder="Contoh: Bersinergi Membangun UBTH yang Inovatif dan Berintegritas"
                   value={formSlogan}
                   onChange={(e) => setFormSlogan(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
               {/* 3. Foto Paslon + Preview Rasio 3:4 */}
-              <div className="p-3.5 rounded-2xl border border-[#EFECE6] bg-[#FAF8F4] space-y-3">
+              <div className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-3">
                 <label className="font-bold text-slate-800 block">
                   Foto Paslon Resmi (Rasio 3:4)
                 </label>
 
                 <div className="flex items-center gap-4">
                   {/* Kotak Preview Rasio 3:4 */}
-                  <div className="rounded-2xl overflow-hidden border border-[#EFECE6] aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
+                  <div className="rounded-2xl overflow-hidden border border-slate-200/80 aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
                     {isCompressing ? (
                       <div className="text-center p-2">
-                        <div className="w-5 h-5 border-2 border-[#0F172A] border-t-transparent rounded-full animate-spin mx-auto mb-1" />
+                        <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-1" />
                         <span className="text-[9px] font-bold text-slate-900 block">
                           Mengompres...
                         </span>
@@ -810,13 +810,13 @@ export default function AdminPaslonPage() {
                           placeholder="https://.../foto-paslon.jpg atau /candidates/01.png"
                           value={formPhotoUrl}
                           onChange={(e) => setFormPhotoUrl(e.target.value)}
-                          className="w-full pl-8 pr-3 py-2 rounded-xl border border-[#E2DDD5] text-xs bg-white focus:outline-hidden focus:border-slate-500"
+                          className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-hidden focus:border-slate-500"
                         />
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 pt-1">
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E2DDD5] bg-white hover:bg-[#F5F2EB] text-slate-700 font-bold text-xs cursor-pointer shadow-xs">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs cursor-pointer shadow-xs">
                         <Upload className="w-3.5 h-3.5 text-slate-600" />
                         <span>Unggah Foto dari Perangkat</span>
                         <input
@@ -850,7 +850,7 @@ export default function AdminPaslonPage() {
                   placeholder="Tuliskan visi utama yang diusung pasangan calon..."
                   value={formVision}
                   onChange={(e) => setFormVision(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
@@ -864,7 +864,7 @@ export default function AdminPaslonPage() {
                   placeholder="1. Mewujudkan advokasi aspirasi yang responsif&#10;2. Menumbuhkan iklim riset dan kompetisi mahasiswa&#10;3. Mempererat relasi kolaboratif lintas ormawa"
                   value={formMission}
                   onChange={(e) => setFormMission(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
@@ -886,23 +886,23 @@ export default function AdminPaslonPage() {
               </div>
 
               {/* Modal Buttons */}
-              <div className="pt-4 flex gap-3 border-t border-[#EFECE6]">
+              <div className="pt-4 flex gap-3 border-t border-slate-200/80">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="w-1/2 py-2.5 rounded-xl border border-[#E2DDD5] text-slate-700 font-bold hover:bg-[#F5F2EB] cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || isSaving || isCompressing}
-                  className="w-1/2 py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {isSubmitting || isSaving ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Menyimpan Data Paslon...</span>
+                      <span>Menyimpan Paslon...</span>
                     </>
                   ) : isCompressing ? (
                     <>
@@ -922,9 +922,9 @@ export default function AdminPaslonPage() {
       {/* MODAL EDIT PASLON */}
       {editingCandidate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-[#EFECE6]">
+          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200/80">
             {/* Modal Header */}
-            <div className="p-6 border-b border-[#EFECE6] flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+            <div className="p-6 border-b border-slate-200/80 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
                   Edit Data Pasangan Calon (Paslon)
@@ -952,7 +952,7 @@ export default function AdminPaslonPage() {
                   <select
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value as any })}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500"
                   >
                     <option value="BEM">BEM Universitas</option>
                     <option value="HIMA">HIMA Program Studi</option>
@@ -970,7 +970,7 @@ export default function AdminPaslonPage() {
                     required
                     value={editForm.candidate_number}
                     onChange={(e) => setEditForm({ ...editForm, candidate_number: Number(e.target.value) })}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] font-mono text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 font-bold"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 font-mono text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500 font-bold"
                   />
                 </div>
               </div>
@@ -987,7 +987,7 @@ export default function AdminPaslonPage() {
                     placeholder="Contoh: HIMASI (Sistem Informasi), HIMA ARS, HIMA Farmasi"
                     value={editForm.hima_name}
                     onChange={(e) => setEditForm({ ...editForm, hima_name: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                   />
                 </div>
               )}
@@ -1004,7 +1004,7 @@ export default function AdminPaslonPage() {
                     placeholder="Contoh: Muhammad Fikri"
                     value={editForm.chairman_name}
                     onChange={(e) => setEditForm({ ...editForm, chairman_name: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                   />
                 </div>
 
@@ -1018,19 +1018,19 @@ export default function AdminPaslonPage() {
                     placeholder="Contoh: Aulia Rahma"
                     value={editForm.vice_chairman_name}
                     onChange={(e) => setEditForm({ ...editForm, vice_chairman_name: e.target.value })}
-                    className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                    className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                   />
                 </div>
               </div>
 
               {/* 3. Foto Paslon + Preview */}
-              <div className="p-3.5 rounded-2xl border border-[#EFECE6] bg-[#FAF8F4] space-y-3">
+              <div className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 space-y-3">
                 <label className="font-bold text-slate-800 block">
                   Foto Paslon Resmi (Rasio 3:4)
                 </label>
 
                 <div className="flex items-center gap-4">
-                  <div className="rounded-2xl overflow-hidden border border-[#EFECE6] aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
+                  <div className="rounded-2xl overflow-hidden border border-slate-200/80 aspect-[3/4] max-w-[110px] w-full bg-white flex items-center justify-center shrink-0 shadow-xs">
                     {isCompressing ? (
                       <div className="text-center p-2">
                         <div className="w-5 h-5 border-2 border-[#0F172A] border-t-transparent rounded-full animate-spin mx-auto mb-1" />
@@ -1066,13 +1066,13 @@ export default function AdminPaslonPage() {
                           placeholder="https://... atau /candidates/01.png"
                           value={editForm.image_url}
                           onChange={(e) => setEditForm({ ...editForm, image_url: e.target.value })}
-                          className="w-full pl-8 pr-3 py-2 rounded-xl border border-[#E2DDD5] text-xs bg-white focus:outline-hidden focus:border-slate-500"
+                          className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 text-xs bg-white focus:outline-hidden focus:border-slate-500"
                         />
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 pt-1">
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[#E2DDD5] bg-white hover:bg-[#F5F2EB] text-slate-700 font-bold text-xs cursor-pointer shadow-xs">
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs cursor-pointer shadow-xs">
                         <Upload className="w-3.5 h-3.5 text-slate-600" />
                         <span>Ganti Foto dari Perangkat</span>
                         <input
@@ -1106,7 +1106,7 @@ export default function AdminPaslonPage() {
                   placeholder="Tuliskan visi utama..."
                   value={editForm.vision}
                   onChange={(e) => setEditForm({ ...editForm, vision: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
@@ -1120,7 +1120,7 @@ export default function AdminPaslonPage() {
                   placeholder="Tuliskan poin-poin misi..."
                   value={editForm.mission}
                   onChange={(e) => setEditForm({ ...editForm, mission: e.target.value })}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] text-xs bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 text-xs bg-slate-50/70 focus:outline-hidden focus:border-slate-500"
                 />
               </div>
 
@@ -1142,18 +1142,18 @@ export default function AdminPaslonPage() {
               </div>
 
               {/* Modal Buttons */}
-              <div className="pt-4 flex gap-3 border-t border-[#EFECE6]">
+              <div className="pt-4 flex gap-3 border-t border-slate-200/80">
                 <button
                   type="button"
                   onClick={() => setEditingCandidate(null)}
-                  className="w-1/2 py-2.5 rounded-xl border border-[#E2DDD5] text-slate-700 font-bold hover:bg-[#F5F2EB] cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || isSaving || isCompressing}
-                  className="w-1/2 py-2.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {isSubmitting || isSaving ? (
                     <>

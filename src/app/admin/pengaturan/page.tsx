@@ -297,7 +297,7 @@ export default function AdminPengaturanPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       <AdminHeader />
 
       <main className="p-6 sm:p-8 space-y-6 max-w-5xl w-full mx-auto">
@@ -311,8 +311,8 @@ export default function AdminPengaturanPage() {
         </div>
 
         {/* 1. MANAJEMEN BILIK SUARA */}
-        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-xs">
-          <div className="flex items-center gap-3 pb-4 mb-5 border-b border-[#EFECE6]">
+        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="flex items-center gap-3 pb-4 mb-5 border-b border-slate-200/80">
             <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
               <Monitor className="w-5 h-5" />
             </div>
@@ -334,7 +334,7 @@ export default function AdminPengaturanPage() {
                   max="32"
                   value={totalBooths}
                   onChange={(e) => setTotalBooths(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] text-xs font-semibold text-slate-900 focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-900 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
                   Standar: 3 bilik suara fisik di lokasi TPS
@@ -352,7 +352,7 @@ export default function AdminPengaturanPage() {
                   step="10"
                   value={sessionTimeout}
                   onChange={(e) => setSessionTimeout(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] text-xs font-semibold text-slate-900 focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-semibold text-slate-900 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
                 <span className="text-[10px] text-slate-400 mt-1 block">
                   Contoh: 60 detik (1 menit per sesi coblos)
@@ -365,7 +365,7 @@ export default function AdminPengaturanPage() {
                 type="button"
                 onClick={handleResetAllBooths}
                 disabled={saving}
-                className="py-2 px-3.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] hover:bg-[#F5F2EB] text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                className="py-2 px-3.5 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Semua Bilik ke Tersedia</span>
@@ -374,7 +374,7 @@ export default function AdminPengaturanPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="py-2 px-5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                className="py-2 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
               >
                 {saving ? (
                   <span>Menyimpan...</span>
@@ -390,8 +390,8 @@ export default function AdminPengaturanPage() {
         </section>
 
         {/* 2. MANAJEMEN AKUN ADMIN */}
-        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-xs">
-          <div className="flex items-center justify-between pb-4 mb-5 border-b border-[#EFECE6]">
+        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between pb-4 mb-5 border-b border-slate-200/80">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
                 <Users className="w-5 h-5" />
@@ -404,7 +404,7 @@ export default function AdminPengaturanPage() {
 
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="py-2 px-3.5 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+              className="py-2 px-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Admin</span>
@@ -414,7 +414,7 @@ export default function AdminPengaturanPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-[#EFECE6] text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                <tr className="border-b border-slate-200/80 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                   <th className="py-2.5 px-3">No</th>
                   <th className="py-2.5 px-3">Nama Admin</th>
                   <th className="py-2.5 px-3">Email / Username</th>
@@ -422,7 +422,7 @@ export default function AdminPengaturanPage() {
                   <th className="py-2.5 px-3 text-right">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#EFECE6]">
+              <tbody className="divide-y divide-slate-200/80">
                 {loadingAdmins ? (
                   <tr>
                     <td colSpan={5} className="py-8 text-center text-slate-400 font-medium">
@@ -437,7 +437,7 @@ export default function AdminPengaturanPage() {
                   </tr>
                 ) : (
                   adminList.map((adm, idx) => (
-                    <tr key={adm.id || idx} className="hover:bg-[#FAF8F4] transition-colors">
+                    <tr key={adm.id || idx} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-3 font-mono text-slate-400">{idx + 1}</td>
                       <td className="py-3 px-3 font-bold text-slate-900">{adm.name || 'Admin KPUM'}</td>
                       <td className="py-3 px-3 font-mono text-slate-600">{adm.email}</td>
@@ -471,8 +471,8 @@ export default function AdminPengaturanPage() {
         </section>
 
         {/* 3. STATUS PEMILIHAN (NEON FAST-SYNC) */}
-        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-xs">
-          <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#EFECE6]">
+        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-200/80">
             <div>
               <h3 className="text-sm font-bold text-slate-900">Status Pemilihan (Neon Realtime)</h3>
               <p className="text-xs text-slate-400">
@@ -498,7 +498,7 @@ export default function AdminPengaturanPage() {
               className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                 currentElectionStatus === 'AKTIF'
                   ? 'border-emerald-600 bg-emerald-50/50 shadow-xs'
-                  : 'border-[#E2DDD5] bg-[#FAF8F4] hover:bg-white'
+                  : 'border-slate-200 bg-slate-50/70 hover:bg-white'
               }`}
             >
               <span className="text-xs font-bold text-emerald-700 block">AKTIF (OPEN)</span>
@@ -512,7 +512,7 @@ export default function AdminPengaturanPage() {
               className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                 currentElectionStatus === 'JEDA'
                   ? 'border-amber-500 bg-amber-50/50 shadow-xs'
-                  : 'border-[#E2DDD5] bg-[#FAF8F4] hover:bg-white'
+                  : 'border-slate-200 bg-slate-50/70 hover:bg-white'
               }`}
             >
               <span className="text-xs font-bold text-amber-700 block">JEDA (PAUSED)</span>
@@ -526,7 +526,7 @@ export default function AdminPengaturanPage() {
               className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                 currentElectionStatus === 'TUTUP'
                   ? 'border-slate-700 bg-slate-100 shadow-xs'
-                  : 'border-[#E2DDD5] bg-[#FAF8F4] hover:bg-white'
+                  : 'border-slate-200 bg-slate-50/70 hover:bg-white'
               }`}
             >
               <span className="text-xs font-bold text-slate-700 block">TUTUP (CLOSED)</span>
@@ -552,7 +552,7 @@ export default function AdminPengaturanPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] flex flex-col justify-between">
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col justify-between">
               <div>
                 <h4 className="text-xs font-bold text-slate-900 mb-1">Reset Status DPT</h4>
                 <p className="text-[11px] text-slate-500 mb-3">
@@ -580,7 +580,7 @@ export default function AdminPengaturanPage() {
                     alert('Gagal mereset status DPT: ' + err.message);
                   }
                 }}
-                className="w-full py-2 px-3 rounded-lg bg-white border border-[#E2DDD5] text-slate-700 hover:bg-[#F5F2EB] text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
+                className="w-full py-2 px-3 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Reset Status Kehadiran</span>
@@ -646,8 +646,8 @@ export default function AdminPengaturanPage() {
       {/* MODAL TAMBAH ADMIN */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6]">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EFECE6] mb-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200/80">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 mb-4">
               <h3 className="text-sm font-bold text-slate-900">+ Tambah Akun Admin &amp; Panitia</h3>
               <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <X className="w-4 h-4" />
@@ -663,7 +663,7 @@ export default function AdminPengaturanPage() {
                   placeholder="Contoh: Budi Santoso"
                   value={newAdminName}
                   onChange={(e) => setNewAdminName(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
               </div>
 
@@ -675,7 +675,7 @@ export default function AdminPengaturanPage() {
                   placeholder="admin@pemira2026.ac.id"
                   value={newAdminEmail}
                   onChange={(e) => setNewAdminEmail(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
               </div>
 
@@ -687,7 +687,7 @@ export default function AdminPengaturanPage() {
                   placeholder="••••••••••••"
                   value={newAdminPassword}
                   onChange={(e) => setNewAdminPassword(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
               </div>
 
@@ -696,7 +696,7 @@ export default function AdminPengaturanPage() {
                 <select
                   value={newAdminRole}
                   onChange={(e) => setNewAdminRole(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500 focus:bg-white cursor-pointer"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500 focus:bg-white cursor-pointer"
                 >
                   <option value="Super Admin">Super Admin</option>
                   <option value="Operator Bilik">Operator Bilik</option>
@@ -708,13 +708,13 @@ export default function AdminPengaturanPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="w-1/2 py-2.5 rounded-xl border border-[#E2DDD5] text-slate-700 font-bold hover:bg-[#F5F2EB] cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-[#0F172A] text-white font-semibold hover:bg-[#1E293B] transition-all shadow-xs cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition-all shadow-xs cursor-pointer"
                 >
                   Simpan Akun
                 </button>
@@ -727,8 +727,8 @@ export default function AdminPengaturanPage() {
       {/* MODAL EDIT ADMIN */}
       {editingAdmin && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-[#EFECE6]">
-            <div className="flex items-center justify-between pb-3 border-b border-[#EFECE6] mb-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200/80">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200/80 mb-4">
               <h3 className="text-sm font-bold text-slate-900">Edit Akun Admin</h3>
               <button onClick={() => setEditingAdmin(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                 <X className="w-4 h-4" />
@@ -743,7 +743,7 @@ export default function AdminPengaturanPage() {
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
               </div>
 
@@ -754,7 +754,7 @@ export default function AdminPengaturanPage() {
                   required
                   value={editEmail}
                   onChange={(e) => setEditEmail(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] focus:outline-hidden focus:border-slate-500 focus:bg-white"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 focus:outline-hidden focus:border-slate-500 focus:bg-white"
                 />
               </div>
 
@@ -763,7 +763,7 @@ export default function AdminPengaturanPage() {
                 <select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-[#E2DDD5] bg-[#FAF8F4] font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500 focus:bg-white cursor-pointer"
+                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500 focus:bg-white cursor-pointer"
                 >
                   <option value="Super Admin">Super Admin</option>
                   <option value="Operator Bilik">Operator Bilik</option>
@@ -775,13 +775,13 @@ export default function AdminPengaturanPage() {
                 <button
                   type="button"
                   onClick={() => setEditingAdmin(null)}
-                  className="w-1/2 py-2.5 rounded-xl border border-[#E2DDD5] text-slate-700 font-bold hover:bg-[#F5F2EB] cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 rounded-xl bg-[#0F172A] text-white font-semibold hover:bg-[#1E293B] transition-all shadow-xs cursor-pointer"
+                  className="w-1/2 py-2.5 rounded-xl bg-slate-900 text-white font-semibold hover:bg-slate-800 transition-all shadow-xs cursor-pointer"
                 >
                   Perbarui Akun
                 </button>
