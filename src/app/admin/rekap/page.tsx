@@ -31,6 +31,18 @@ export default function AdminRekapPage() {
   const [totalBemSuara, setTotalBemSuara] = useState<number>(0);
   const [totalDpt, setTotalDpt] = useState<number>(0);
   const [timelineData, setTimelineData] = useState<any[]>([]);
+  const [metrics, setMetrics] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const c = sessionStorage.getItem('rekap_cache_metrics');
+      if (c) try { return JSON.parse(c); } catch (e) {}
+    }
+    return {
+      totalDpt: 0,
+      suaraMasuk: 0,
+      belumMemilih: 0,
+      partisipasi: '0.0%'
+    };
+  });
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
   const [selectedFacultyFilter, setSelectedFacultyFilter] = useState<string>('SEMUA');
   const [searchProdi, setSearchProdi] = useState<string>('');
@@ -58,7 +70,8 @@ export default function AdminRekapPage() {
           bem: data.bemCandidates?.map((c: any) => ({ id: c.id, v: c.total_suara })),
           hima: data.himaCandidates?.map((c: any) => ({ id: c.id, v: c.total_suara })),
           mat: data.matrix?.map((m: any) => ({ no: m.no, in: m.suaraMasuk, tot: m.totalDpt })),
-          tot: data.totalBemSuaraSah
+          tot: data.totalBemSuaraSah,
+          met: data.metrics
         });
 
         // KUNCI ANTI-GLITCH: JANGAN update state jika data suara sama persis!
@@ -71,12 +84,18 @@ export default function AdminRekapPage() {
           setTotalBemSuara(data.totalBemSuaraSah || 0);
           setTotalDpt(data.totalDpt || 0);
           setTimelineData(data.timeline || []);
+          if (data.metrics) {
+            setMetrics(data.metrics);
+          }
 
           // Simpan ke cache agar refresh berikutnya instan
           try {
             sessionStorage.setItem('rekap_cache_bem', JSON.stringify(data.bemCandidates || []));
             sessionStorage.setItem('rekap_cache_hima', JSON.stringify(data.himaCandidates || []));
             sessionStorage.setItem('rekap_cache_matrix', JSON.stringify(data.matrix || []));
+            if (data.metrics) {
+              sessionStorage.setItem('rekap_cache_metrics', JSON.stringify(data.metrics));
+            }
           } catch (e) {}
         }
       }
@@ -121,6 +140,69 @@ export default function AdminRekapPage() {
         <p className="text-xs text-slate-500 mt-1">
           Penghitungan suara sah masuk, persentase partisipasi per kandidat, dan matriks 14 program studi secara realtime.
         </p>
+      </div>
+
+      {/* 4 KOTAK KAD METRIK RINGKASAN REKAPITULASI (DIKEMBALIKAN SEMULA) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {/* KOTAK 1: TOTAL DPT */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">TOTAL DPT</p>
+            <h3 className="text-2xl font-bold text-slate-900 mt-1">
+              {metrics.totalDpt.toLocaleString('id-ID')}
+            </h3>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-200/60 flex items-center justify-center text-slate-500">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* KOTAK 2: SUARA MASUK */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">SUARA MASUK</p>
+            <h3 className="text-2xl font-bold text-slate-900 mt-1">
+              {metrics.suaraMasuk.toLocaleString('id-ID')}
+            </h3>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-emerald-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* KOTAK 3: BELUM MEMILIH */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">BELUM MEMILIH</p>
+            <h3 className="text-2xl font-bold text-slate-900 mt-1">
+              {metrics.belumMemilih.toLocaleString('id-ID')}
+            </h3>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-amber-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* KOTAK 4: PERATUSAN PARTISIPASI */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">PARTISIPASI</p>
+            <h3 className="text-2xl font-bold text-blue-600 mt-1">
+              {metrics.partisipasi}
+            </h3>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+        </div>
       </div>
 
       {/* KOTAK GRAFIK LINIMASA PEROLEHAN SUARA (DIKEMBALIKAN UTUH) */}

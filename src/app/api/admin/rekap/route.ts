@@ -114,7 +114,12 @@ export async function GET() {
       return !cat.includes('BEM');
     });
 
+    const totalDptCount = voters.length;
     const totalSudahMemilih = voters.filter((v: any) => v.has_voted === true).length;
+    const totalBelumMemilih = Math.max(0, totalDptCount - totalSudahMemilih);
+    const totalPartisipasi = totalDptCount > 0 
+      ? ((totalSudahMemilih / totalDptCount) * 100).toFixed(1) + '%' 
+      : '0.0%';
 
     return new NextResponse(
       JSON.stringify({
@@ -123,14 +128,20 @@ export async function GET() {
         bemCandidates,
         himaCandidates,
         candidateVotes,
-        totalDpt: voters.length,
+        totalDpt: totalDptCount,
         totalBemSuaraSah,
         timeline: timelineRes || [],
+        metrics: {
+          totalDpt: totalDptCount,
+          suaraMasuk: totalSudahMemilih,
+          belumMemilih: totalBelumMemilih,
+          partisipasi: totalPartisipasi
+        },
         summary: {
-          totalVoters: voters.length,
+          totalVoters: totalDptCount,
           totalSudahMemilih,
-          totalBelumMemilih: Math.max(0, voters.length - totalSudahMemilih),
-          partisipasi: voters.length > 0 ? ((totalSudahMemilih / voters.length) * 100).toFixed(1) : '0.0',
+          totalBelumMemilih,
+          partisipasi: totalDptCount > 0 ? ((totalSudahMemilih / totalDptCount) * 100).toFixed(1) : '0.0',
           totalBemVotes: totalBemSuaraSah
         },
         timestamp: currentServerTime
