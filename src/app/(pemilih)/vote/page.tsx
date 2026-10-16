@@ -863,121 +863,100 @@ function VoteContent() {
     }
   };
 
-  // TAHAP 4: SUBMIT SUARA, RESET BILIK OTOMATIS, & REDIRECT KE /selesai
+  // TAHAP 4: ULTRA FAST-RESPONSE VOTE INGESTION & SUBMIT HANDLER
   const handleSubmitVote = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     setIsConfirmModalOpen(false);
 
     try {
-      // 1. Validasi pilihan BEM
       if (!selectedBem) {
-        alert("Silakan pilih pasangan calon Presiden BEM terlebih dahulu.");
+        alert("Silakan tentukan pilihan Presiden BEM.");
         setIsSubmitting(false);
         return;
       }
 
-      // 2. Tandai bahwa proses submit dimulai agar Realtime Listener tidak memicu 'CANCELLED'
+      // Tandai bahwa proses submit dimulai agar Realtime Listener tidak memicu 'CANCELLED'
       isVoteFinishedRef.current = true;
 
-      // 3. Simpan suara BEM ke tabel votes (HANYA candidate_id dan category, JANGAN sertakan booth_number!)
+      // Matikan channel realtime di HP ini agar tidak mendengarkan event bilik lagi
+      if (boothChannelRef.current) {
+        try {
+          supabase.removeChannel(boothChannelRef.current);
+        } catch {}
+      }
+
+      // Siapkan payload rekaman suara murni (ringan & instan)
       const votesPayload: any[] = [
-        {
-          candidate_id: selectedBem.id,
-          category: 'BEM',
-        }
+        { candidate_id: selectedBem.id, category: 'BEM' }
       ];
 
-      // Jika ada pilihan HIMA, tambahkan ke payload
       if (selectedHima && selectedHima.id !== 'none') {
-        votesPayload.push({
-          candidate_id: selectedHima.id,
-          category: 'HIMA',
-        });
+        votesPayload.push({ candidate_id: selectedHima.id, category: 'HIMA' });
       }
 
-      const { error: voteErr } = await supabase.from('votes').insert(votesPayload);
-      if (voteErr) throw voteErr;
+      const voterNim = verifiedVoter?.nim || detectedVoter?.nim || inputNim.trim();
 
-      // 4. Update status voter menjadi SUDAH
-      const voterNimToUpdate = verifiedVoter?.nim || detectedVoter?.nim || inputNim.trim();
-      if (voterNimToUpdate) {
-        await supabase
-          .from('voters')
-          .update({
-            has_voted: true,
-            voting_status: 'SUDAH',
-            updated_at: new Date().toISOString()
-          })
-          .eq('nim', voterNimToUpdate);
-      }
+      // 1. PARALLEL EXECUTION: Jalankan Insert Suara & Update Voter bersamaan
+      const [voteRes, voterRes] = await Promise.all([
+        supabase.from('votes').insert(votesPayload),
+        voterNim
+          ? supabase.from('voters').update({
+              has_voted: true,
+              voting_status: 'SUDAH',
+              updated_at: new Date().toISOString()
+            }).eq('nim', voterNim)
+          : Promise.resolve({ error: null })
+      ]);
 
-      // 5. Simpan identitas pemilih ke sessionStorage untuk dibaca di halaman /selesai
+      if (voteRes.error) throw voteRes.error;
+
+      // 2. Simpan identitas pemilih ke sessionStorage untuk layar selesai
       sessionStorage.setItem('pemira_completed_voter', JSON.stringify({
         name: verifiedVoter?.name || detectedVoter?.name || inputName.trim() || 'Mahasiswa UBTH',
-        nim: voterNimToUpdate || '-',
+        nim: voterNim || '-',
         prodi: verifiedVoter?.prodi || detectedVoter?.prodi || inputProdi.trim() || '-',
         booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
         voted_at: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
       }));
 
-      // 6. Matikan channel realtime di HP ini agar tidak mendengarkan event bilik lagi
-      if (boothChannelRef.current) {
-        supabase.removeChannel(boothChannelRef.current);
-      }
-
-      // 7. Reset bilik menjadi AVAILABLE
-      if (assignedBooth?.id) {
-        await supabase
-          .from('booths')
-          .update({
-            status: 'AVAILABLE',
-            current_voter_name: null,
-            current_voter_nim: null,
-            current_voter_prodi: null,
-            session_token: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', assignedBooth.id);
-      } else if (assignedBoothId) {
-        await supabase
-          .from('booths')
-          .update({
-            status: 'AVAILABLE',
-            current_voter_name: null,
-            current_voter_nim: null,
-            current_voter_prodi: null,
-            session_token: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', assignedBoothId);
-      } else {
-        await supabase
-          .from('booths')
-          .update({
-            status: 'AVAILABLE',
-            current_voter_name: null,
-            current_voter_nim: null,
-            current_voter_prodi: null,
-            session_token: null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('booth_number', assignedBooth?.booth_number || assignedBoothNumber || 1);
-      }
-
-      // 8. Hapus cache lokal bilik dan alihkan ke halaman selesai
+      // Bersihkan cache sesi lokal
       localStorage.removeItem('pemira_booth_session');
       localStorage.removeItem('pemira_session');
       localStorage.removeItem('pemira_session_token');
       localStorage.removeItem('pemira_voter_session');
       localStorage.removeItem('pemira_booth');
       sessionStorage.removeItem('pemira_session_token');
+
+      // 3. Reset bilik secara asinkron di latar belakang (background task)
+      const targetBoothId = assignedBooth?.id || assignedBoothId;
+      if (targetBoothId) {
+        supabase.from('booths').update({
+          status: 'AVAILABLE',
+          current_voter_name: null,
+          current_voter_nim: null,
+          current_voter_prodi: null,
+          session_token: null,
+          updated_at: new Date().toISOString()
+        }).eq('id', targetBoothId).then(() => {});
+      } else {
+        supabase.from('booths').update({
+          status: 'AVAILABLE',
+          current_voter_name: null,
+          current_voter_nim: null,
+          current_voter_prodi: null,
+          session_token: null,
+          updated_at: new Date().toISOString()
+        }).eq('booth_number', assignedBooth?.booth_number || assignedBoothNumber || 1).then(() => {});
+      }
+
+      // 4. Pengalihan Instan: Langsung buka halaman selesai dalam milidetik!
       router.replace('/selesai');
 
     } catch (err: any) {
-      console.error("Gagal submit suara:", err);
+      console.error("Gagal merekam suara:", err);
       isVoteFinishedRef.current = false;
-      alert("Terjadi kendala saat merekam suara: " + (err.message || 'Silakan coba lagi'));
+      alert("Gagal menyimpan suara: " + (err.message || 'Silakan ulangi'));
       setIsSubmitting(false);
     }
   };
