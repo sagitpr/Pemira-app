@@ -173,6 +173,34 @@ export default function AdminPengaturanPage() {
 
   const handleSaveBoothConfig = handleSaveConfig;
 
+  // Tombol Reset Seluruh Pemilihan ke 0 & Buka Kembali Hak Suara DPT (Gladi Bersih -> Hari H)
+  const handleResetAllElection = async () => {
+    const confirm1 = confirm("PERINGATAN KRUSIAL: Apakah Anda yakin ingin mereset SELURUH perolehan suara menjadi 0 dan membuka kembali hak suara seluruh DPT?");
+    if (!confirm1) return;
+    const confirm2 = prompt("Ketik 'RESET2026' untuk mengonfirmasi tindakan pembersihan:");
+    if (confirm2 !== 'RESET2026') {
+      alert("Konfirmasi dibatalkan.");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin/reset-election', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESET_ALL_ELECTION' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        window.location.reload();
+      } else {
+        alert(data.error || 'Gagal mereset.');
+      }
+    } catch (e) {
+      alert('Terjadi kesalahan jaringan.');
+    }
+  };
+
   // Tambah Admin ke tabel admin_users_rows Neon
   const handleAddAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -593,6 +621,24 @@ export default function AdminPengaturanPage() {
                 <span>Nolkan Seluruh Suara</span>
               </button>
             </div>
+          </div>
+
+          {/* ZONA PEMBERSIHAN DATA (GLADI BERSIH) */}
+          <div className="bg-rose-50/50 border border-rose-200/80 rounded-2xl p-5 mt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+              <h4 className="font-bold text-rose-900 text-xs uppercase tracking-wider">Zona Pembersihan Data (Gladi Bersih)</h4>
+            </div>
+            <p className="text-xs text-rose-700/80 mb-4 leading-relaxed">
+              Gunakan tombol ini setelah gladi bersih selesai untuk mengosongkan kotak suara digital kembali ke 0 dan mengizinkan seluruh mahasiswa di DPT memberikan suara kembali pada hari pemilihan resmi.
+            </p>
+            <button
+              type="button"
+              onClick={handleResetAllElection}
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
+            >
+              Reset Kotak Suara ke 0 &amp; Buka Kembali Seluruh DPT
+            </button>
           </div>
         </section>
       </main>

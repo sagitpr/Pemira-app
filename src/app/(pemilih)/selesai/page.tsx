@@ -9,29 +9,24 @@ export default function SelesaiPage() {
     prodi: string;
     voted_at: string;
   } | null>(null);
-  const [countdown, setCountdown] = useState(60); // 1 Menit (60 Detik)
+  const [countdown, setCountdown] = useState(60); // 1 Menit Penuh
   const speechIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hasExitedRef = useRef(false);
 
-  // FUNGSI UTAMA KELUAR & ALIHKAN KE about:blank
   const handleExitToAboutBlank = () => {
     if (hasExitedRef.current) return;
     hasExitedRef.current = true;
 
-    // 1. Matikan audio
     if (speechIntervalRef.current) clearInterval(speechIntervalRef.current);
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
 
-    // 2. Musnahkan total semua memori
     sessionStorage.clear();
     localStorage.clear();
 
-    // 3. Paksa ganti URL menjadi about:blank
     window.location.replace('about:blank');
   };
 
   useEffect(() => {
-    // Validasi Sesi: Jika halaman dibuka tanpa data selesai yang sah, langsung buang ke about:blank
     const stored = sessionStorage.getItem('pemira_completed_voter');
     if (!stored) {
       handleExitToAboutBlank();
@@ -44,7 +39,7 @@ export default function SelesaiPage() {
       console.error(e);
     }
 
-    // Audio Suara Ucapan Terima Kasih (Web Speech API Indonesia)
+    // Pemutaran Audio Suara Terima Kasih Resmi
     const speakThankYou = () => {
       try {
         if ('speechSynthesis' in window) {
@@ -60,20 +55,14 @@ export default function SelesaiPage() {
     };
 
     speakThankYou();
+    speechIntervalRef.current = setInterval(speakThankYou, 20000);
 
-    // Looping suara setiap 20 detik selama 1 menit
-    speechIntervalRef.current = setInterval(() => {
-      speakThankYou();
-    }, 20000);
-
-    // Kunci tombol navigasi Back browser
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
     };
     window.addEventListener('popstate', handlePopState);
 
-    // Hitung Mundur 60 Detik menuju about:blank
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -167,7 +156,7 @@ export default function SelesaiPage() {
 
           <button
             onClick={handleExitToAboutBlank}
-            className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99]"
+            className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99] cursor-pointer"
           >
             Selesai & Keluar dari Bilik
           </button>

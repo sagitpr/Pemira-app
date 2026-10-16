@@ -6,23 +6,20 @@ import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    // 1. Ambil seluruh paslon beserta jumlah suara sah yang masuk dari tabel votes Neon
+    // 1. Ambil data seluruh paslon beserta perolehan suara sahnya
     const candidateVotes = await sql`
       SELECT 
-        c.id, c.name, c.candidate_number, c.category, c.type, c.prodi, c.faculty, 
-        c.slogan, c.photo_url,
+        c.id, c.name, c.leader_name, c.vice_leader_name, c.candidate_number, 
+        c.category, c.type, c.prodi, c.faculty, c.slogan, c.photo_url,
         COUNT(v.id)::int as total_suara
       FROM candidates c
       LEFT JOIN votes v ON c.id::text = v.candidate_id::text
       GROUP BY c.id
-      ORDER BY c.candidate_number ASC
+      ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Ambil seluruh voters untuk matriks 14 prodi & raw votes
-    const [voters, rawVotes] = await Promise.all([
-      sql`SELECT id, prodi, faculty, has_voted FROM voters`,
-      sql`SELECT candidate_id, category, created_at FROM votes ORDER BY created_at ASC`
-    ]);
+    // 2. Ambil seluruh voters untuk perhitungan matriks prodi
+    const voters = await sql`SELECT id, prodi, faculty, has_voted FROM voters`;
 
     // 3. Matriks 14 Program Studi Resmi
     const MASTER_MATRIX = [
@@ -68,32 +65,43 @@ export async function GET() {
       };
     });
 
-    const bemCandidates = candidateVotes.filter((c: any) => (c.category || c.type || '').toUpperCase() === 'BEM');
-    const himaCandidates = candidateVotes.filter((c: any) => (c.category || c.type || '').toUpperCase() !== 'BEM');
+    // Klasifikasi BEM vs HIMA yang toleran huruf besar/kecil
+    const bemCandidates = candidateVotes.filter((c: any) => {
+      const cat = (c.category || c.type || '').toUpperCase().trim();
+      return cat.includes('BEM');
+    });
+
+    const himaCandidates = candidateVotes.filter((c: any) => {
+      const cat = (c.category || c.type || '').toUpperCase().trim();
+      return !cat.includes('BEM');
+    });
+
+    const totalBemSuara = bemCandidates.reduce((acc: number, curr: any) => acc + (curr.total_suara || 0), 0);
+    const totalHimaSuara = himaCandidates.reduce((acc: number, curr: any) => acc + (curr.total_suara || 0), 0);
 
     const totalSudahMemilih = voters.filter((v: any) => v.has_voted === true).length;
-    const totalSuaraMasuk = rawVotes.length;
 
     return NextResponse.json({
       success: true,
       matrix,
-      rawVotes,
       bemCandidates,
       himaCandidates,
       candidateVotes,
       totalDpt: voters.length,
-      totalSuaraMasuk,
+      totalBemSuara,
+      totalHimaSuara,
       summary: {
         totalVoters: voters.length,
         totalSudahMemilih,
         totalBelumMemilih: Math.max(0, voters.length - totalSudahMemilih),
         partisipasi: voters.length > 0 ? ((totalSudahMemilih / voters.length) * 100).toFixed(1) : '0.0',
-        totalBemVotes: rawVotes.filter((v: any) => (v.category || '').toUpperCase() === 'BEM').length,
-        totalHimaVotes: rawVotes.filter((v: any) => (v.category || '').toUpperCase() === 'HIMA').length
+        totalBemVotes: totalBemSuara,
+        totalHimaVotes: totalHimaSuara
       }
     });
+
   } catch (err: any) {
-    console.error('Error Rekap Neon:', err);
+    console.error('Error /api/admin/rekap:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

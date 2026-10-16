@@ -195,6 +195,9 @@ function VoteContent() {
     return () => clearInterval(interval);
   }, []);
 
+  const isSubmittingVoteRef = useRef(false);
+  const heartbeatTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   // Helper Pencatatan Event Kunjungan Fisik Bilik ke activity_logs
   const lastLoggedVisitRef = useRef<number>(0);
   const recordBoothVisit = useCallback(async (boothNum: number) => {
@@ -392,7 +395,10 @@ function VoteContent() {
     if (!isAccessGranted || !assignedBooth?.booth_number || isWaitingQueue) return;
 
     // Jalankan pemeriksaan status bilik setiap 2 detik ke database Neon
-    const heartbeatTimer = setInterval(async () => {
+    heartbeatTimerRef.current = setInterval(async () => {
+      // JANGAN JALANKAN HEARTBEAT JIKA SUARA SEDANG/SUDAH DISUBMIT!
+      if (isSubmittingVoteRef.current) return;
+
       try {
         const activeSession = sessionStorage.getItem('pemira_active_session');
         const token = activeSession ? JSON.parse(activeSession).token : null;
@@ -404,9 +410,9 @@ function VoteContent() {
 
         const data = await res.json();
 
-        // JIKA ADMIN MEMBATALKAN ALOKASI ATAU MERESET BILIK:
-        if (data.valid === false && data.reason === 'CANCELLED_BY_ADMIN') {
-          clearInterval(heartbeatTimer);
+        // Hanya terminate jika benar-benar dibatalkan admin SEBELUM submit suara
+        if (!isSubmittingVoteRef.current && data.valid === false && data.reason === 'CANCELLED_BY_ADMIN') {
+          if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
           terminateSessionToBlank(); // LANGSUNG NGE-BLANK KE about:blank SEKETIKA!
         }
       } catch (e) {
@@ -414,7 +420,9 @@ function VoteContent() {
       }
     }, 2000);
 
-    return () => clearInterval(heartbeatTimer);
+    return () => {
+      if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+    };
   }, [isAccessGranted, assignedBooth?.booth_number, isWaitingQueue]);
 
   // 3. Penanganan Waktu Sesi Habis (Reset Bilik di Neon via API)
@@ -645,14 +653,17 @@ function VoteContent() {
     setIsSubmitting(true);
     setIsConfirmModalOpen(false);
 
+    // KUNCI UTAMA: Matikan heartbeat seketika agar tidak memicu false exit ke about:blank
+    isSubmittingVoteRef.current = true;
+    if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
+
     try {
       if (!selectedBem) {
         alert("Silakan tentukan pilihan Presiden BEM.");
         setIsSubmitting(false);
+        isSubmittingVoteRef.current = false;
         return;
       }
-
-      isVoteFinishedRef.current = true;
 
       const voterNim = verifiedVoter?.nim || detectedVoter?.nim || inputNim.trim();
 
@@ -682,21 +693,16 @@ function VoteContent() {
         voted_at: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       }));
 
-      // Bersihkan cache sesi lokal
-      localStorage.removeItem('pemira_booth_session');
-      localStorage.removeItem('pemira_session');
-      localStorage.removeItem('pemira_session_token');
-      localStorage.removeItem('pemira_voter_session');
-      localStorage.removeItem('pemira_booth');
-      sessionStorage.removeItem('pemira_session_token');
+      // Hapus sesi bilik aktif
       sessionStorage.removeItem('pemira_active_session');
+      sessionStorage.removeItem('pemira_session_token');
 
       // 4. Pengalihan Instan ke Halaman Selesai
       router.replace('/selesai');
 
     } catch (err: any) {
       console.error("Gagal merekam suara:", err);
-      isVoteFinishedRef.current = false;
+      isSubmittingVoteRef.current = false;
       alert("Gagal menyimpan suara: " + (err.message || 'Silakan ulangi'));
       setIsSubmitting(false);
     }

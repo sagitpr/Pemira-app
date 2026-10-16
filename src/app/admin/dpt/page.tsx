@@ -184,6 +184,24 @@ export default function AdminDptPage() {
     }
   };
 
+  const handleResetSingleVoter = async (nim: string, name: string) => {
+    if (!confirm(`Buka kembali hak suara untuk mahasiswa ${name} (${nim})? Mahasiswa ini akan dapat diverifikasi dan mencoblos ulang di bilik.`)) return;
+    try {
+      const res = await fetch('/api/admin/reset-election', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESET_SINGLE_VOTER', nim })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        fetchDptData(false); // Refresh tabel
+      }
+    } catch (e) {
+      alert('Gagal mereset hak suara pemilih.');
+    }
+  };
+
   // Kosongkan Seluruh Data DPT
   const handleResetAllVoters = async () => {
     if (!confirm('PERINGATAN: Apakah Anda yakin ingin MENGHAPUS SEMUA DATA DPT dari database? Tindakan ini tidak dapat dibatalkan.')) return;
@@ -593,16 +611,30 @@ export default function AdminDptPage() {
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          {/* Kolom Aksi Hapus Per Baris */}
+                          {/* Kolom Aksi Hapus & Reset Per Baris */}
                           <td className="px-6 py-4 text-center">
-                            <button
-                              onClick={() => handleDeleteVoter(v)}
-                              disabled={isDeletingThis}
-                              title="Hapus Pemilih"
-                              className="inline-flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
-                            >
-                              <Trash2 className={`h-4 w-4 ${isDeletingThis ? 'animate-pulse text-rose-500' : ''}`} />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              {isSelesai && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetSingleVoter(v.nim, displayName)}
+                                  title="Reset Hak Suara Mahasiswa Ini"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                  </svg>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteVoter(v)}
+                                disabled={isDeletingThis}
+                                title="Hapus Pemilih"
+                                className="inline-flex items-center justify-center p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
+                              >
+                                <Trash2 className={`h-4 w-4 ${isDeletingThis ? 'animate-pulse text-rose-500' : ''}`} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

@@ -165,6 +165,8 @@ export default function AdminRekapPage() {
   const [candidatePhotos, setCandidatePhotos] = useState<Record<string, string>>({});
   const [bemList, setBemList] = useState<Candidate[]>(contextBem || []);
   const [himaList, setHimaList] = useState<Candidate[]>(contextHima || []);
+  const [bemCandidates, setBemCandidates] = useState<any[]>([]);
+  const [himaCandidates, setHimaCandidates] = useState<any[]>([]);
   const [selectedHimaProdi, setSelectedHimaProdi] = useState<string>('');
 
   // Chart State
@@ -185,6 +187,14 @@ export default function AdminRekapPage() {
           if (typeof window !== 'undefined') {
             sessionStorage.setItem('pemira_admin_rekap_matrix', JSON.stringify(data.matrix));
           }
+        }
+        if (data.bemCandidates) {
+          setBemCandidates(data.bemCandidates);
+          setBemList(data.bemCandidates);
+        }
+        if (data.himaCandidates) {
+          setHimaCandidates(data.himaCandidates);
+          setHimaList(data.himaCandidates);
         }
         if (data.rawVotes) {
           setRawVotes(data.rawVotes);
@@ -1042,146 +1052,75 @@ export default function AdminRekapPage() {
         </section>
 
         {/* =========================================================================
-            3. SECTION 2: HASIL SUARA HIMA PER FAKULTAS DENGAN PERSENTASE & PROGRESS BAR
+            3. SECTION 2: HASIL SUARA HIMA
             ========================================================================= */}
-        <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
-          <div className="flex items-center justify-between pb-4 border-b border-[#EFECE6] mb-6">
+        <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-xs mb-8">
+          <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              <h3 className="font-bold text-slate-800 text-sm">
                 Hasil Suara Himpunan Mahasiswa (HIMA)
               </h3>
             </div>
             <span className="text-xs font-semibold text-slate-400">
-              {himaList.length} Paslon HIMA Terdaftar
+              {himaCandidates.length} Paslon HIMA Terdaftar
             </span>
           </div>
 
-          {himaList.length === 0 ? (
-            <div className="p-10 rounded-2xl border-2 border-dashed border-[#EFECE6] text-center flex flex-col items-center">
-              <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3 border border-amber-200/60">
-                <BookOpen className="w-6 h-6" />
-              </div>
-              <h4 className="text-sm font-bold text-slate-800">Belum ada data paslon himpunan.</h4>
-              <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                Silakan tambahkan kandidat himpunan mahasiswa melalui menu Kelola Paslon.
-              </p>
-              <Link
-                href="/admin/paslon"
-                className="mt-4 px-4 py-2 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] text-white text-xs font-medium shadow-xs transition-all"
-              >
-                + Tambah Paslon
-              </Link>
+          {himaCandidates.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">
+              <p className="text-xs">Belum ada data paslon himpunan mahasiswa.</p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {facultyHimaSections.map((fac) => {
-                const facCandidates = fac.candidates;
-                const facTotalVotes = facCandidates.reduce((sum, c) => {
-                  return sum + (candidateVoteCounts[c.id] ?? candidateVoteCounts[String(c.id)] ?? (c as any).votes ?? (c as any).vote_count ?? 0);
-                }, 0);
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {himaCandidates.map((cand) => {
+                const totalVotes = himaCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0);
+                const percentage = totalVotes > 0 ? ((cand.total_suara / totalVotes) * 100).toFixed(1) + '%' : '0.0%';
 
                 return (
-                  <div key={fac.id} className="p-5 rounded-2xl bg-[#FAF8F4]/60 border border-[#EFECE6] space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-[#EFECE6]">
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900 tracking-tight">
-                          {fac.name}
-                        </h4>
-                        <span className="text-[11px] text-slate-500 font-semibold">
-                          {facCandidates.length} Pasangan Calon Terdaftar • Total Suara: {isSensorActive ? '***' : facTotalVotes.toLocaleString('id-ID')}
+                  <div key={cand.id} className="bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-4 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
+                          {cand.candidate_number || '1'}
+                        </span>
+                        <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200/60 px-2.5 py-0.5 rounded-full">
+                          {cand.prodi || cand.faculty || 'HIMA'}
                         </span>
                       </div>
-                      <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-[#F5F2EB] text-slate-700 border border-[#E8E4DC] uppercase">
-                        {fac.shortName}
-                      </span>
+
+                      {/* Foto Paslon */}
+                      <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-white border border-[#EFECE6] flex items-center justify-center">
+                        {cand.photo_url ? (
+                          <img src={cand.photo_url} alt={cand.name} className="w-full h-full object-cover object-top" />
+                        ) : (
+                          <div className="text-slate-400 text-xs font-medium">Foto Paslon Resmi</div>
+                        )}
+                      </div>
+
+                      <h4 className="font-bold text-slate-800 text-sm leading-snug line-clamp-1 mb-1">
+                        {cand.name}
+                      </h4>
+                      <p className="text-[11px] text-slate-400 italic line-clamp-1 mb-4">
+                        &ldquo;{cand.slogan || 'Sinergi Bersama Memajukan HIMA'}&rdquo;
+                      </p>
                     </div>
 
-                    {facCandidates.length === 0 ? (
-                      <div className="p-6 rounded-2xl bg-white border border-dashed border-[#EFECE6] text-center">
-                        <p className="text-xs font-semibold text-slate-400">
-                          Belum ada pasangan calon terdaftar di fakultas/himpunan ini.
-                        </p>
+                    <div className="pt-3 border-t border-[#EAE6DF] flex items-center justify-between">
+                      <div>
+                        <span className="text-lg font-bold text-slate-900">{cand.total_suara || 0}</span>
+                        <span className="text-xs text-slate-400 ml-1">Suara</span>
                       </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {facCandidates.map((cand: any) => {
-                          const candVotes = candidateVoteCounts[cand.id] ?? candidateVoteCounts[String(cand.id)] ?? cand.votes ?? cand.vote_count ?? 0;
-                          const persentasePaslon = facTotalVotes > 0 ? ((candVotes / facTotalVotes) * 100).toFixed(1) : '0.0';
-                          const displayNumber = cand.candidate_number || cand.paslon_number || cand.number || cand.no_urut || cand.candidateNumber || '1';
-                          const candProdi = cand.prodi || cand.prodiId || cand.prodi_id || fac.shortName;
-                          const candidatePhoto = candidatePhotos[cand.id] || cand.image_url || cand.photo_url || cand.foto || cand.imageUrl || cand.photoUrl || null;
-                          const candidateName = cand.name || cand.nama || cand.candidate_name || cand.ketua_name || cand.leaderName || cand.leader_name || `Paslon ${displayNumber}` || 'Nama Paslon';
-                          const candidateSlogan = cand.slogan || cand.vision || cand.visi || cand.tagline || 'Sinergi Bersama Memajukan HIMA';
-
-                          return (
-                            <div
-                              key={cand.id}
-                              className="p-5 rounded-2xl border border-[#EFECE6] bg-white shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex items-center justify-between mb-3">
-                                  <span className="w-7 h-7 rounded-lg bg-[#0F172A] text-white font-mono font-bold text-xs flex items-center justify-center">
-                                    {displayNumber}
-                                  </span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC] truncate max-w-[140px]">
-                                    {candProdi}
-                                  </span>
-                                </div>
-
-                                {/* Foto Paslon HIMA */}
-                                {candidatePhoto ? (
-                                  <div className="w-full h-44 rounded-xl overflow-hidden mb-3 bg-[#FAF8F4] flex items-center justify-center border border-[#EFECE6]">
-                                    <img 
-                                      src={candidatePhoto} 
-                                      alt={candidateName || 'Paslon HIMA'} 
-                                      className="w-full h-full object-cover object-top"
-                                      loading="lazy"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="w-full h-44 rounded-xl bg-[#FAF8F4] border border-dashed border-[#EFECE6] flex items-center justify-center text-xs text-slate-400 font-medium mb-3">
-                                    Foto Belum Diunggah
-                                  </div>
-                                )}
-
-                                <h3 className="font-bold text-slate-800 text-sm leading-snug line-clamp-1">
-                                  {candidateName}
-                                </h3>
-                                <p className="text-[11px] text-slate-400 italic mt-0.5 line-clamp-1">
-                                  &ldquo;{candidateSlogan}&rdquo;
-                                </p>
-                              </div>
-
-                              {/* Baris Suara, Persentase, dan Progress Bar Paslon HIMA */}
-                              <div className="mt-4 pt-3 border-t border-[#EFECE6]">
-                                <div className="flex items-center justify-between mt-2">
-                                  <span className="text-xl font-black text-slate-800 font-mono">
-                                    {isSensorActive ? '*** Suara' : `${candVotes.toLocaleString('id-ID')} Suara`}
-                                  </span>
-                                  <span className="text-sm font-bold text-slate-900 bg-[#F5F2EB] border border-[#E8E4DC] px-2 py-0.5 rounded-md">
-                                    {isSensorActive ? '***%' : `${persentasePaslon}%`}
-                                  </span>
-                                </div>
-                                {/* Progress Bar Persentase */}
-                                <div className="w-full bg-[#FAF8F4] border border-[#EFECE6] h-2 rounded-full mt-2 overflow-hidden">
-                                  <div
-                                    className="bg-[#0F172A] h-full rounded-full transition-all duration-500"
-                                    style={{ width: `${isSensorActive ? 50 : Number(persentasePaslon)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                      <span className="text-xs font-semibold text-indigo-600 bg-white border border-[#E2DDD5] px-2.5 py-1 rounded-lg">
+                        {percentage}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </section>
+        </div>
 
         {/* SECTION 3: MATRIKS 14 PROGRAM STUDI (DINAMIS DARI DATABASE VOTERS) */}
         <section className="bg-white rounded-2xl p-6 sm:p-7 border border-[#EFECE6] shadow-sm">
