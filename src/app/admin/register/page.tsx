@@ -3,7 +3,6 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase/client';
 import { Eye, EyeOff, Lock, Mail, User, ShieldCheck, UserPlus, ArrowLeft } from 'lucide-react';
 
 export default function AdminRegisterPage() {

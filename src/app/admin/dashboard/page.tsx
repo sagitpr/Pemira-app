@@ -218,13 +218,38 @@ export default function AdminDashboardPage() {
   const { isSensorActive, showToast } = useAdmin();
   const isSensorMode = isSensorActive;
 
-  const [metrics, setMetrics] = useState({
-    totalDpt: 0,
-    suaraMasuk: 0,
-    availableBooths: 3,
-    occupiedBooths: 0,
+  const [metrics, setMetrics] = useState<{
+    totalDpt: number;
+    suaraMasuk: number;
+    availableBooths: number | null;
+    occupiedBooths: number | null;
+  }>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('pemira_dashboard_metrics');
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch (e) {}
+      }
+    }
+    return {
+      totalDpt: 0,
+      suaraMasuk: 0,
+      availableBooths: null, // JANGAN di-hardcode ke angka 3!
+      occupiedBooths: null,
+    };
   });
-  const [booths, setBooths] = useState<BoothItem[]>([]);
+  const [booths, setBooths] = useState<BoothItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('pemira_dashboard_booths');
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch (e) {}
+      }
+    }
+    return [];
+  });
   const [electionStatus, setElectionStatus] = useState<'AKTIF' | 'JEDA' | 'TUTUP'>('AKTIF');
   const [isLoadingBooths, setIsLoadingBooths] = useState<boolean>(true);
   const [resettingBoothId, setResettingBoothId] = useState<number | null>(null);
@@ -238,13 +263,22 @@ export default function AdminDashboardPage() {
       if (!res.ok) return;
       const data = await res.json();
       if (data.success) {
-        setMetrics(data.metrics || {
-          totalDpt: 0,
-          suaraMasuk: 0,
-          availableBooths: 3,
-          occupiedBooths: 0,
-        });
-        setBooths(data.booths || []);
+        if (data.metrics) {
+          setMetrics(data.metrics);
+          if (typeof window !== 'undefined') {
+            try {
+              sessionStorage.setItem('pemira_dashboard_metrics', JSON.stringify(data.metrics));
+            } catch (e) {}
+          }
+        }
+        if (data.booths) {
+          setBooths(data.booths);
+          if (typeof window !== 'undefined') {
+            try {
+              sessionStorage.setItem('pemira_dashboard_booths', JSON.stringify(data.booths));
+            } catch (e) {}
+          }
+        }
         if (data.config) {
           const rawStatus = String(data.config.election_status || '').toUpperCase();
           if (rawStatus === 'OPEN' || rawStatus === 'AKTIF') setElectionStatus('AKTIF');
@@ -433,7 +467,11 @@ export default function AdminDashboardPage() {
                 BILIK TERSEDIA
               </span>
               <span className="text-2xl font-black text-emerald-600 font-mono">
-                {metrics.availableBooths}
+                {metrics.availableBooths !== null ? (
+                  metrics.availableBooths
+                ) : (
+                  <span className="text-slate-300 animate-pulse">-</span>
+                )}
               </span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -447,7 +485,11 @@ export default function AdminDashboardPage() {
                 BILIK DIGUNAKAN
               </span>
               <span className="text-2xl font-black text-amber-600 font-mono">
-                {metrics.occupiedBooths}
+                {metrics.occupiedBooths !== null ? (
+                  metrics.occupiedBooths
+                ) : (
+                  <span className="text-slate-300 animate-pulse">-</span>
+                )}
               </span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -525,11 +567,11 @@ export default function AdminDashboardPage() {
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 font-medium text-emerald-600">
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                Tersedia ({metrics.availableBooths})
+                Tersedia ({metrics.availableBooths !== null ? metrics.availableBooths : '-'})
               </span>
               <span className="flex items-center gap-1.5 font-medium text-amber-600">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                Digunakan ({metrics.occupiedBooths})
+                Digunakan ({metrics.occupiedBooths !== null ? metrics.occupiedBooths : '-'})
               </span>
             </div>
           </div>
@@ -537,10 +579,21 @@ export default function AdminDashboardPage() {
           {/* DYNAMIC GRID BOOTHS */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {isLoadingBooths && booths.length === 0 ? (
-              <div className="col-span-full py-12 text-center text-xs text-slate-500 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-[#EFECE6] flex flex-col items-center justify-center gap-2">
-                <div className="w-6 h-6 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
-                <span className="font-semibold text-slate-700">Memuat status bilik suara Neon...</span>
-              </div>
+              <>
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-[#EFECE6] bg-white p-4 shadow-xs h-36 animate-pulse flex flex-col justify-between"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div className="h-4 bg-slate-200 rounded w-16" />
+                      <div className="h-3 bg-slate-200 rounded w-12" />
+                    </div>
+                    <div className="h-4 bg-slate-100 rounded w-24 mx-auto" />
+                    <div className="h-7 bg-slate-100 rounded-xl w-full" />
+                  </div>
+                ))}
+              </>
             ) : booths.length === 0 ? (
               <div className="col-span-full py-10 px-4 text-center bg-slate-50/60 border border-dashed border-[#EFECE6] rounded-2xl flex flex-col items-center justify-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">

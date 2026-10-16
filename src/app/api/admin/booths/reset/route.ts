@@ -4,19 +4,21 @@ import { sql } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
-    const { boothId, boothNumber } = await req.json();
+    const body = await req.json();
+    const bId = body.boothId || body.booth_id;
+    const bNum = body.boothNumber || body.booth_number;
 
-    if (boothId) {
+    if (bId) {
       await sql`
         UPDATE booths 
         SET status = 'AVAILABLE', current_voter_name = null, current_voter_nim = null, current_voter_prodi = null, session_token = null, updated_at = NOW()
-        WHERE id = ${boothId}
+        WHERE id = ${bId}
       `;
-    } else if (boothNumber) {
+    } else if (bNum) {
       await sql`
         UPDATE booths 
         SET status = 'AVAILABLE', current_voter_name = null, current_voter_nim = null, current_voter_prodi = null, session_token = null, updated_at = NOW()
-        WHERE booth_number = ${boothNumber}
+        WHERE booth_number = ${parseInt(bNum, 10)}
       `;
     }
 

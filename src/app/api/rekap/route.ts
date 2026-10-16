@@ -1,36 +1,26 @@
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Cache rekap selama 5 detik di Vercel CDN agar database tidak overload saat admin memantau live
+export const dynamic = 'force-dynamic';
 export const revalidate = 5;
+
+import { NextResponse } from 'next/server';
+import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const [votesRes, sudahRes, totalRes] = await Promise.all([
+      sql`SELECT count(*)::int as total FROM votes`,
+      sql`SELECT count(*)::int as sudah FROM voters WHERE has_voted = true`,
+      sql`SELECT count(*)::int as total FROM voters`,
+    ]);
 
-    // 1. Ambil agregasi suara masuk secara efisien
-    const { count: totalVotes } = await supabase
-      .from('votes')
-      .select('*', { count: 'exact', head: true });
-
-    // 2. Ambil total partisipasi DPT
-    const { count: sudahMemilih } = await supabase
-      .from('voters')
-      .select('*', { count: 'exact', head: true })
-      .eq('has_voted', true);
-
-    const { count: totalDpt } = await supabase
-      .from('voters')
-      .select('*', { count: 'exact', head: true });
+    const totalVotes = votesRes[0]?.total || 0;
+    const sudahMemilih = sudahRes[0]?.sudah || 0;
+    const totalDpt = totalRes[0]?.total || 0;
 
     return NextResponse.json({
-      totalDpt: totalDpt || 0,
-      sudahMemilih: sudahMemilih || 0,
-      belumMemilih: (totalDpt || 0) - (sudahMemilih || 0),
-      totalSuaraTerekam: totalVotes || 0,
+      totalDpt,
+      sudahMemilih,
+      belumMemilih: Math.max(0, totalDpt - sudahMemilih),
+      totalSuaraTerekam: totalVotes,
       timestamp: Date.now()
     }, {
       status: 200,

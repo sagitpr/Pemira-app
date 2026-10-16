@@ -317,7 +317,7 @@ export default function AdminDptPage() {
         setCsvText('');
         fetchDptData(false);
       } else {
-        alert('Gagal mengimpor: ' + json.message);
+        alert(json.error || json.message || 'Gagal mengimpor data.');
       }
     } catch (err: any) {
       console.error('Error import DPT:', err);

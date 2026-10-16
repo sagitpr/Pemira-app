@@ -35,29 +35,19 @@ export default function QrScreenPage() {
     setTokenTime(now);
     setTimeLeft(20);
 
-    // Simpan token aktif ini ke tabel/state Supabase sebagai token sah yang siap di-claim
     try {
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabaseClient = createClient();
-      await supabaseClient.from('activity_logs').insert([
-        {
+      fetch('/api/admin/activity-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           event_type: 'QR_SESSION_GENERATED',
           message: `Token Sesi QR Baru Dibuat Bilik ${bNum}: ${sessionUuid}`,
           description: sessionUuid,
-          created_at: new Date(now).toISOString(),
-        },
-      ]);
-
-      // Update session_token pada bilik
-      await supabaseClient
-        .from('booths')
-        .update({
-          session_token: sessionUuid,
-          updated_at: new Date(now).toISOString(),
-        })
-        .eq('booth_number', bNum);
+          booth_number: bNum,
+        }),
+      }).catch(() => {});
     } catch (saveErr) {
-      console.warn('Simpan token ke Supabase log:', saveErr);
+      console.warn('Simpan token log:', saveErr);
     }
   };
 
@@ -90,30 +80,8 @@ export default function QrScreenPage() {
     checkStatus();
     const interval = setInterval(checkStatus, 3000);
 
-    let channel: any = null;
-    import('@/lib/supabase/client').then(({ createClient }) => {
-      const supabaseClient = createClient();
-      channel = supabaseClient
-        .channel('qr_system_config_realtime')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'system_config' }, (payload: any) => {
-          const raw = payload?.new?.election_status || payload?.new?.status;
-          if (raw) {
-            const s = String(raw).toUpperCase();
-            if (s === 'JEDA' || s === 'DIJEDA') setElectionStatus('JEDA');
-            else if (s === 'TUTUP' || s === 'DITUTUP') setElectionStatus('TUTUP');
-            else setElectionStatus('AKTIF');
-          }
-        })
-        .subscribe();
-    });
-
     return () => {
       clearInterval(interval);
-      if (channel) {
-        import('@/lib/supabase/client').then(({ createClient }) => {
-          createClient().removeChannel(channel);
-        });
-      }
     };
   }, []);
 

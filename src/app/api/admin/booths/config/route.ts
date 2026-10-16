@@ -1,82 +1,43 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { sql } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const total = Math.max(1, Math.min(50, parseInt(body?.totalBooths || '16', 10)));
 
-    // 1. Coba panggil RPC set_total_booths atau sync_booths_count jika ada
-    try {
-      const { data, error } = await supabaseAdmin.rpc('set_total_booths', {
-        target_count: total,
-      });
-      if (!error && data?.success) {
-        return NextResponse.json({
-          success: true,
-          totalBooths: total,
-          message: `Konfigurasi bilik diperbarui menjadi ${total} bilik aktif`,
-        });
+    // Sinkronkan ke tabel booths di Neon
+    const existingBooths = await sql`
+      SELECT booth_number FROM booths ORDER BY booth_number ASC
+    `;
+
+    const existingNumbers = new Set((existingBooths || []).map((b: any) => b.booth_number));
+
+    for (let i = 1; i <= total; i++) {
+      if (!existingNumbers.has(i)) {
+        await sql`
+          INSERT INTO booths (booth_number, name, status, updated_at)
+          VALUES (${i}, ${`Bilik ${String(i).padStart(2, '0')}`}, 'AVAILABLE', NOW())
+          ON CONFLICT (booth_number) DO NOTHING
+        `;
       }
-    } catch (e) {
-      // RPC fallback
     }
 
-    try {
-      const { data, error } = await supabaseAdmin.rpc('sync_booths_count', {
-        p_target_count: total,
-      });
-      if (!error && data?.success) {
-        return NextResponse.json({
-          success: true,
-          totalBooths: total,
-          message: `Konfigurasi bilik diperbarui menjadi ${total} bilik aktif`,
-        });
-      }
-    } catch (e) {
-      // RPC fallback to direct table operation
+    if (existingBooths.length > total) {
+      await sql`
+        DELETE FROM booths WHERE booth_number > ${total}
+      `;
     }
 
-    // 2. Direct table fallback pada tabel 'booths'
+    // Update total_booths pada system_config
     try {
-      const { data: existingBooths } = await supabaseAdmin
-        .from('booths')
-        .select('booth_number')
-        .order('booth_number', { ascending: true });
-
-      const currentTotal = existingBooths?.length || 0;
-
-      if (total > currentTotal) {
-        const existingNumbers = new Set((existingBooths || []).map((b: any) => b.booth_number));
-        const newBooths = [];
-        for (let i = 1; i <= total; i++) {
-          if (!existingNumbers.has(i)) {
-            newBooths.push({
-              booth_number: i,
-              name: `Bilik ${String(i).padStart(2, '0')}`,
-              status: 'TERSEDIA',
-              is_active: true,
-              updated_at: new Date().toISOString(),
-            });
-          }
-        }
-        if (newBooths.length > 0) {
-          await supabaseAdmin.from('booths').insert(newBooths);
-        }
-      } else if (total < currentTotal) {
-        await supabaseAdmin.from('booths').delete().gt('booth_number', total);
-      }
-
-      // Pastikan bilik 1..total aktif
-      await supabaseAdmin
-        .from('booths')
-        .update({ is_active: true, status: 'TERSEDIA', updated_at: new Date().toISOString() })
-        .lte('booth_number', total);
-    } catch (tableErr) {
-      console.warn('Table update booths note:', tableErr);
-    }
+      await sql`
+        UPDATE system_config
+        SET total_booths = ${total}, updated_at = NOW()
+      `;
+    } catch {}
 
     return NextResponse.json({
       success: true,

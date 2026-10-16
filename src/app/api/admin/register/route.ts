@@ -1,12 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ckcaqprcakvuaisdhybx.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNrY2FxcHJjYWt2dWFpc2RoeWJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNjUzNjgsImV4cCI6MjEwNjk0MTM2OH0.ToG4iiG4Ar1z_2fLn1KfxwZFaD-8mCpRaZDK0S6OU7I';
-
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);
+import { sql } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
@@ -17,33 +12,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nama, email, dan kata sandi wajib diisi' }, { status: 400 });
     }
 
-    // Cek apakah email sudah ada di tabel admin_users
-    const { data: existingUser } = await supabaseAdmin
-      .from('admin_users')
-      .select('id')
-      .eq('email', email.trim().toLowerCase())
-      .maybeSingle();
+    const cleanEmail = email.trim().toLowerCase();
 
-    if (existingUser) {
+    // Cek apakah email sudah ada di tabel admin_users_rows
+    const existing = await sql`
+      SELECT id FROM admin_users_rows WHERE TRIM(LOWER(email)) = ${cleanEmail} LIMIT 1
+    `;
+
+    if (existing && existing.length > 0) {
       return NextResponse.json({ error: 'Email sudah terdaftar. Silakan langsung login di /admin/login' }, { status: 400 });
     }
 
-    const { data, error } = await supabaseAdmin
-      .from('admin_users')
-      .insert([{
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        password: password,
-        role: role || 'panitia'
-      }])
-      .select();
+    const inserted = await sql`
+      INSERT INTO admin_users_rows (name, email, password, role, created_at, updated_at)
+      VALUES (${name.trim()}, ${cleanEmail}, ${password}, ${role || 'panitia'}, NOW(), NOW())
+      RETURNING id, name, email, role
+    `;
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true, user: data?.[0] });
+    return NextResponse.json({ success: true, user: inserted?.[0] });
   } catch (err: any) {
+    console.error('Register admin error:', err);
     return NextResponse.json({ error: err.message || 'Terjadi kesalahan server' }, { status: 500 });
   }
 }

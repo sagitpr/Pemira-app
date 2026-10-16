@@ -18,7 +18,6 @@ import {
   Upload,
   CheckCircle2,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
 
 // Fungsi Helper Kompresi Gambar Otomatis (Canvas Compressor Anti-Lemot)
 const compressImage = (file: File, maxWidth = 600, maxHeight = 600, quality = 0.75): Promise<string> => {
@@ -133,13 +132,8 @@ export default function AdminPaslonPage() {
 
   const fetchCandidates = async () => {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('candidates')
-        .select('*')
-        .order('candidate_number', { ascending: true });
-
-      if (error) throw error;
+      const res = await fetch('/api/candidates');
+      const data = await res.json();
       if (Array.isArray(data)) {
         setCandidatesList(data);
         if (typeof window !== 'undefined') {
@@ -147,17 +141,7 @@ export default function AdminPaslonPage() {
         }
       }
     } catch (err: any) {
-      console.warn('Fetch candidates direct Supabase fallback note:', err?.message);
-      try {
-        const res = await fetch('/api/admin/paslon');
-        const json = await res.json();
-        if (json?.success && Array.isArray(json?.candidates)) {
-          setCandidatesList(json.candidates);
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('pemira_admin_paslon_cache', JSON.stringify(json.candidates));
-          }
-        }
-      } catch {}
+      console.warn('Fetch candidates note:', err?.message);
     } finally {
       setIsLoading(false);
     }
@@ -179,18 +163,8 @@ export default function AdminPaslonPage() {
     }
 
     fetchCandidates();
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel('realtime_candidates_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
-        fetchCandidates();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const interval = setInterval(fetchCandidates, 4000);
+    return () => clearInterval(interval);
   }, []);
 
   const availableHimaList = Array.from(
@@ -228,17 +202,17 @@ export default function AdminPaslonPage() {
   };
 
   const handleDelete = async (candidateId: string | number) => {
-    if (!confirm('Yakin ingin menghapus data pasangan calon ini dari database Supabase?')) return;
+    if (!confirm('Yakin ingin menghapus data pasangan calon ini?')) return;
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('candidates').delete().eq('id', String(candidateId));
-      if (error) {
-        alert('Gagal menghapus paslon: ' + error.message);
-        throw error;
+      const res = await fetch(`/api/admin/paslon?id=${encodeURIComponent(String(candidateId))}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message);
+        showToast(json.message, 'info');
+        await fetchCandidates();
+      } else {
+        alert('Gagal menghapus paslon: ' + (json.message || 'Error'));
       }
-      alert('Paslon berhasil dihapus dari database!');
-      showToast('Paslon berhasil dihapus dari database.', 'info');
-      await fetchCandidates();
     } catch (err: any) {
       alert('Gagal menghapus paslon: ' + (err?.message || 'Terjadi kesalahan'));
     }
@@ -293,58 +267,36 @@ export default function AdminPaslonPage() {
     setIsSaving(true);
     setIsSubmitting(true);
     try {
-      const supabase = createClient();
       const leader = editForm.chairman_name.trim();
       const vice = editForm.vice_chairman_name.trim();
-      const fullName = `${leader} & ${vice}`;
       const himaVal = editForm.category === 'HIMA' ? editForm.hima_name.trim() : null;
 
-      const baseUpdate: any = {
-        candidate_number: Number(editForm.candidate_number) || 1,
-        number: String(editForm.candidate_number || '1'),
-        name: fullName,
-        chairman_name: leader,
-        leader_name: leader,
-        vice_chairman_name: vice,
-        vice_leader_name: vice,
-        category: editForm.category,
-        type: editForm.category,
-        prodi: himaVal,
-        prodi_name: himaVal,
-        vision: editForm.vision.trim(),
-        visi: editForm.vision.trim(),
-        mission: editForm.mission.trim(),
-        misi: editForm.mission.trim(),
-        photo_url: editForm.image_url.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
+      const res = await fetch('/api/admin/paslon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingCandidate.id,
+          candidate_number: Number(editForm.candidate_number) || 1,
+          leader_name: leader,
+          vice_leader_name: vice,
+          type: editForm.category,
+          category: editForm.category,
+          prodi_id: himaVal,
+          vision: editForm.vision.trim(),
+          mission: editForm.mission.trim(),
+          photo_url: editForm.image_url.trim() || null,
+        }),
+      });
 
-      let { error } = await supabase
-        .from('candidates')
-        .update({
-          ...baseUpdate,
-          hima_name: himaVal,
-          image_url: editForm.image_url.trim() || null,
-        })
-        .eq('id', editingCandidate.id);
-
-      if (error && error.message.includes('column')) {
-        const retryRes = await supabase
-          .from('candidates')
-          .update(baseUpdate)
-          .eq('id', editingCandidate.id);
-        error = retryRes.error;
+      const json = await res.json();
+      if (json.success) {
+        alert('Data paslon berhasil diperbarui!');
+        showToast('Data paslon berhasil diperbarui!', 'success');
+        setEditingCandidate(null);
+        await fetchCandidates();
+      } else {
+        alert('Gagal memperbarui: ' + (json.message || 'Error'));
       }
-
-      if (error) {
-        alert('Gagal memperbarui: ' + error.message);
-        return;
-      }
-
-      alert('Data paslon berhasil diperbarui!');
-      showToast('Data paslon berhasil diperbarui!', 'success');
-      setEditingCandidate(null);
-      await fetchCandidates();
     } catch (err: any) {
       console.error('Error updating candidate:', err);
       alert('Gagal memperbarui: ' + (err?.message || 'Terjadi kesalahan sistem'));
@@ -369,76 +321,45 @@ export default function AdminPaslonPage() {
     setIsSaving(true);
     setIsSubmitting(true);
     const himaVal = formType === 'HIMA' ? (formHimaName.trim() || formProdi) : null;
-    const formData = {
-      nomorUrut: formNumber,
-      candidate_number: formNumber,
-      number: formNumber,
-      ketua: formLeader.trim(),
-      leader_name: formLeader.trim(),
-      wakil: formVice.trim(),
-      vice_leader_name: formVice.trim(),
-      kategori: formType,
-      type: formType,
-      prodi: himaVal,
-      visi: formVision.trim(),
-      vision: formVision.trim(),
-      misi: formMission.trim(),
-      mission: formMission.trim(),
-      photo_url: formPhotoUrl.trim() || null,
-    };
 
     try {
-      const supabase = createClient();
-      const candId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined;
-      const baseInsert: any = {
-        ...(candId ? { id: candId } : {}),
-        candidate_number: Number(formData.candidate_number || formData.nomorUrut || '1') || 1,
-        number: String(formData.candidate_number || formData.nomorUrut || '1'),
-        name: `${formData.leader_name || formData.ketua} & ${formData.vice_leader_name || formData.wakil}`,
-        leader_name: formData.leader_name || formData.ketua,
-        chairman_name: formData.leader_name || formData.ketua,
-        vice_leader_name: formData.vice_leader_name || formData.wakil,
-        vice_chairman_name: formData.vice_leader_name || formData.wakil,
-        category: formData.type || formData.kategori || 'BEM',
-        type: formData.type || formData.kategori || 'BEM',
-        prodi: himaVal,
-        prodi_name: himaVal,
-        faculty: 'FTB',
-        vision: formData.vision || formData.visi || '',
-        mission: formData.mission || formData.misi || '',
-        photo_url: formData.photo_url || null,
-      };
+      const res = await fetch('/api/admin/paslon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidate_number: formNumber,
+          leader_name: formLeader.trim(),
+          vice_leader_name: formVice.trim(),
+          type: formType,
+          category: formType,
+          prodi_id: himaVal,
+          faculty_id: formFaculty,
+          slogan: formSlogan.trim(),
+          vision: formVision.trim(),
+          mission: formMission.trim(),
+          photo_url: formPhotoUrl.trim() || null,
+        }),
+      });
 
-      let { data, error } = await supabase.from('candidates').insert([{
-        ...baseInsert,
-        hima_name: himaVal,
-        image_url: formData.photo_url || null,
-      }]);
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message);
+        showToast(json.message, 'success');
+        setIsAddModalOpen(false);
 
-      if (error && error.message.includes('column')) {
-        const retryRes = await supabase.from('candidates').insert([baseInsert]);
-        error = retryRes.error;
+        // Reset Form
+        setFormLeader('');
+        setFormVice('');
+        setFormSlogan('');
+        setFormHimaName('');
+        setFormPhotoUrl('');
+        setFormVision('');
+        setFormMission('');
+
+        await fetchCandidates();
+      } else {
+        alert('Gagal menyimpan paslon: ' + (json.message || 'Error'));
       }
-
-      if (error) {
-        alert('Gagal menyimpan paslon: ' + error.message);
-        throw error;
-      }
-
-      alert('Paslon berhasil disimpan ke database Supabase!');
-      showToast('Paslon berhasil disimpan ke database Supabase!', 'success');
-      setIsAddModalOpen(false);
-
-      // Reset Form
-      setFormLeader('');
-      setFormVice('');
-      setFormSlogan('');
-      setFormHimaName('');
-      setFormPhotoUrl('');
-      setFormVision('');
-      setFormMission('');
-
-      await fetchCandidates();
     } catch (err: any) {
       console.error('Gagal menyimpan paslon:', err);
       alert('Gagal menyimpan paslon: ' + (err?.message || 'Terjadi kesalahan sistem'));

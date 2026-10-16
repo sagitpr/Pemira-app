@@ -8,7 +8,6 @@ import { useAdmin } from '@/context/AdminContext';
 import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
 import AdminHeader from '@/components/admin/AdminHeader';
 import BeritaAcaraModal from '@/components/admin/BeritaAcaraModal';
-import { createClient } from '@/lib/supabase/client';
 import {
   ResponsiveContainer,
   LineChart,
@@ -145,8 +144,18 @@ export default function AdminRekapPage() {
     partisipasi: '0.0',
   });
 
-  // Real-time DPT & Votes State dari Supabase
-  const [rawVoters, setRawVoters] = useState<any[]>([]);
+  // Real-time Matriks 14 Prodi & Votes State dari Neon
+  const [prodiMatrix, setProdiMatrix] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('pemira_admin_rekap_matrix');
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch (e) {}
+      }
+    }
+    return [];
+  });
   const [rawVotes, setRawVotes] = useState<any[]>([]);
   const [totalDptCount, setTotalDptCount] = useState<number>(0);
   const [isLoadingMatrix, setIsLoadingMatrix] = useState<boolean>(true);
@@ -163,90 +172,51 @@ export default function AdminRekapPage() {
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  // B. Ambil Seluruh Data Pemilih untuk Matriks 14 Program Studi (> 1.000 data)
-  const fetchVotersForMatrix = async () => {
+  // Fetch data rekap matriks 14 prodi, votes, dan summary langsung dari Neon
+  const fetchRekapData = async () => {
     try {
-      const supabase = createClient();
-      let allVoters: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('voters')
-          .select('*')
-          .range(from, from + step - 1);
-
-        if (error || !data || data.length === 0) {
-          hasMore = false;
-          break;
+      const res = await fetch('/api/admin/rekap', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success) {
+        if (data.matrix) {
+          setProdiMatrix(data.matrix);
+          setIsLoadingMatrix(false);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_rekap_matrix', JSON.stringify(data.matrix));
+          }
         }
+        if (data.rawVotes) {
+          setRawVotes(data.rawVotes);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_rekap_votes', JSON.stringify(data.rawVotes));
+          }
+        }
+        if (data.summary) {
+          const total = data.summary.totalVoters || 0;
+          const masuk = data.summary.totalSudahMemilih || 0;
+          const sisa = data.summary.totalBelumMemilih ?? Math.max(0, total - masuk);
+          const pct = data.summary.partisipasi ?? (total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0');
 
-        allVoters = [...allVoters, ...data];
-        if (data.length < step) {
-          hasMore = false;
-        } else {
-          from += step;
+          const newMetrics = {
+            totalDpt: total,
+            suaraMasuk: masuk,
+            belumMemilih: sisa,
+            partisipasi: pct,
+          };
+          setMetrics(newMetrics);
+          setTotalDptCount(total);
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('pemira_admin_rekap_metrics', JSON.stringify(newMetrics));
+          }
         }
       }
-
-      // Kalkulasi matriks 14 prodi menggunakan allVoters (panjang 2.096)
-      setRawVoters(allVoters);
-      calculateProdiMatrix(allVoters);
-      setIsLoadingMatrix(false);
-
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('pemira_admin_rekap_raw_voters', JSON.stringify(allVoters));
-      }
-    } catch (err) {
-      console.error('Error fetching voters for matrix:', err);
-      setIsLoadingMatrix(false);
-    }
-  };
-
-  // 1. Fetch DPT & Realtime Metric Data (Sinkron 100% dengan Dashboard)
-  const fetchMetricData = async () => {
-    try {
-      const supabase = createClient();
-
-      // A. Sinkronkan Metrik 4 Kotak Teratas ({ count: 'exact', head: true }):
-      const { count: totalCount } = await supabase
-        .from('voters')
-        .select('*', { count: 'exact', head: true });
-
-      const { count: suaraMasukCount } = await supabase
-        .from('voters')
-        .select('*', { count: 'exact', head: true })
-        .eq('has_voted', true);
-
-      const total = totalCount || 0;
-      const masuk = suaraMasukCount || 0;
-      const sisa = Math.max(0, total - masuk);
-      const pct = total > 0 ? ((masuk / total) * 100).toFixed(1) : '0.0';
-
-      const newMetrics = {
-        totalDpt: total,
-        suaraMasuk: masuk,
-        belumMemilih: sisa,
-        partisipasi: pct,
-      };
-
-      setMetrics(newMetrics);
-      setTotalDptCount(total);
-
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('pemira_admin_rekap_metrics', JSON.stringify(newMetrics));
-      }
-
-      // Ambil seluruh pemilih untuk matriks prodi
-      await fetchVotersForMatrix();
     } catch (e) {
-      console.error('Fetch metric data error in rekap:', e);
+      console.warn('Gagal load rekap Neon:', e);
     }
   };
 
-  const fetchVotersAndRefreshMatrix = fetchMetricData;
+  const fetchVotersAndRefreshMatrix = fetchRekapData;
 
   // 2. Fetch Candidates & Votes (Vercel Edge CDN Caching /api/candidates)
   const fetchCandidates = async () => {
@@ -317,24 +287,7 @@ export default function AdminRekapPage() {
     }
   };
 
-  const fetchVotes = async () => {
-    try {
-      const supabase = createClient();
-      const { data: votesData } = await supabase
-        .from('votes')
-        .select('candidate_id, category, created_at')
-        .order('created_at', { ascending: true });
-
-      if (votesData) {
-        setRawVotes(votesData);
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('pemira_admin_rekap_votes', JSON.stringify(votesData));
-        }
-      }
-    } catch (err) {
-      console.warn('Fetch rekap votes error:', err);
-    }
-  };
+  const fetchVotes = fetchRekapData;
 
   // 2. Perhitungan Suara Paslon yang Fleksibel (Dukung UUID, string ID, dan nomor urut)
   const calculateCandidateVotes = (candidates: any[], votes: any[]) => {
@@ -500,7 +453,7 @@ export default function AdminRekapPage() {
     setTimelineData(chartRows);
   }, [rawVotes, bemList, activeHimaCandidates, chartType]);
 
-  // 4. Supabase Realtime Listener (Update Instan < 0.5 Detik Tanpa Delay)
+  // 4. Live Sync Polling ke API Neon (/api/admin/rekap)
   useEffect(() => {
     setIsMounted(true);
 
@@ -516,12 +469,11 @@ export default function AdminRekapPage() {
           }
         }
 
-        const cachedVoters = sessionStorage.getItem('pemira_admin_rekap_raw_voters');
-        if (cachedVoters) {
-          const parsed = JSON.parse(cachedVoters);
+        const cachedMatrix = sessionStorage.getItem('pemira_admin_rekap_matrix');
+        if (cachedMatrix) {
+          const parsed = JSON.parse(cachedMatrix);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setRawVoters(parsed);
-            calculateProdiMatrix(parsed);
+            setProdiMatrix(parsed);
             setIsLoadingMatrix(false);
           }
         }
@@ -548,41 +500,11 @@ export default function AdminRekapPage() {
       }
     }
 
-    fetchMetricData();
+    fetchRekapData();
     fetchCandidates();
-    fetchVotes();
 
-    const supabase = createClient();
-    const channel = supabase
-      .channel('rekap-instant-stream')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'votes' }, () => {
-        // Begitu suara baru masuk, cukup refresh suara & metrik seketika (tanpa re-fetch candidates)
-        fetchVotes();
-        fetchMetricData();
-      })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'voters' }, () => {
-        fetchMetricData();
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'voters' }, () => {
-        fetchMetricData();
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'voters' }, () => {
-        fetchMetricData();
-      })
-      .subscribe();
-
-    // E. Realtime Supabase Listener untuk Matriks Voters
-    const matrixChannel = supabase
-      .channel('matrix-voters-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchVotersAndRefreshMatrix(); // Refresh matriks secara instan saat data DPT berubah
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-      supabase.removeChannel(matrixChannel);
-    };
+    const interval = setInterval(fetchRekapData, 3000); // Live sync tiap 3s
+    return () => clearInterval(interval);
   }, []);
 
   // =========================================================================
@@ -686,10 +608,7 @@ export default function AdminRekapPage() {
   // Normalisasi string pencarian
   const normalizeText = (text: string) => (text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  // Matriks 14 Program Studi Realtime
-  const prodiMatrix = useMemo(() => {
-    return calculateProdiMatrix(rawVoters);
-  }, [rawVoters]);
+
 
   const filteredProdis = useMemo(() => {
     return prodiMatrix.filter((p) => {
@@ -1023,7 +942,7 @@ export default function AdminRekapPage() {
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium mt-2">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Realtime Supabase Channel Aktif</span>
+              <span>Realtime Live Stream Aktif</span>
             </span>
             <span className="font-mono text-slate-400">
               Kategori: {chartType === 'BEM' ? 'Presiden BEM-U' : `HIMA (${selectedHimaProdi || 'Semua Prodi'})`}
@@ -1327,7 +1246,7 @@ export default function AdminRekapPage() {
                   <th className="py-3 px-3 text-center">Partisipasi</th>
                 </tr>
               </thead>
-              {isLoadingMatrix && rawVoters.length === 0 ? (
+              {isLoadingMatrix && prodiMatrix.length === 0 ? (
                 <MatrixTableSkeleton />
               ) : filteredProdis.length === 0 ? (
                 <tbody className="divide-y divide-[#EFECE6]">

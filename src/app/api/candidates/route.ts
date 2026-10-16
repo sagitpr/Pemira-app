@@ -1,11 +1,12 @@
 export const dynamic = 'force-dynamic';
+
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
     const candidates = await sql`
-      SELECT *
+      SELECT id, name, category, type, candidate_number, prodi, slogan, tagline, vision, mission, photo_url
       FROM candidates
       ORDER BY candidate_number ASC
     `;
@@ -13,11 +14,13 @@ export async function GET() {
     return NextResponse.json(candidates || [], {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=1800',
+        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=43200',
+        'CDN-Cache-Control': 'public, s-maxage=86400',
+        'Vercel-CDN-Cache-Control': 'public, s-maxage=86400',
       },
     });
   } catch (err: any) {
-    console.error('Error fetching candidates Neon:', err);
+    console.error('Error candidates route:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

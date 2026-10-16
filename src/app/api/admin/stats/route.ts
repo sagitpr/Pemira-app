@@ -1,46 +1,37 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    // 1. Hitung total DPT & yang sudah memilih dengan count query efisien Supabase
-    const { count: totalDptCount } = await supabaseAdmin
-      .from('voters')
-      .select('*', { count: 'exact', head: true });
+    const [votersRes, boothsRes, votesRes] = await Promise.all([
+      sql`
+        SELECT 
+          count(*)::int as total,
+          count(*) FILTER (WHERE has_voted = true OR voting_status = 'SELESAI')::int as sudah
+        FROM voters
+      `,
+      sql`
+        SELECT 
+          count(*)::int as total,
+          count(*) FILTER (WHERE status = 'AVAILABLE' OR status = 'TERSEDIA' OR status = 'KOSONG')::int as tersedia,
+          count(*) FILTER (WHERE status = 'OCCUPIED' OR status = 'DIGUNAKAN' OR status = 'TERISI')::int as digunakan
+        FROM booths
+      `,
+      sql`SELECT count(*)::int as total FROM votes`
+    ]);
 
-    const { count: sudahMemilihCount } = await supabaseAdmin
-      .from('voters')
-      .select('*', { count: 'exact', head: true })
-      .or('has_voted.eq.true,voting_status.eq.SELESAI');
-
-    // Ambil data voters untuk pemetaan matriks jurusan (hanya kolom perlu)
-    const { data: voters, error: votersErr } = await supabaseAdmin
-      .from('voters')
-      .select('id, nim, prodi, prodi_name, has_voted, voting_status');
-
-    if (votersErr) {
-      console.warn('Warning fetching voters in stats API:', votersErr);
-    }
-
-    const totalDpt = totalDptCount !== null && totalDptCount !== undefined ? totalDptCount : (voters?.length || 0);
-    const sudahMemilih = sudahMemilihCount !== null && sudahMemilihCount !== undefined
-      ? sudahMemilihCount
-      : (voters?.filter((v: any) => v.has_voted || v.voting_status === 'SELESAI').length || 0);
+    const totalDpt = votersRes[0]?.total || 0;
+    const sudahMemilih = votersRes[0]?.sudah || 0;
     const belumMemilih = Math.max(0, totalDpt - sudahMemilih);
     const partisipasi = totalDpt > 0 ? Number(((sudahMemilih / totalDpt) * 100).toFixed(1)) : 0;
 
-    // 2. Ambil data bilik
-    const { data: booths } = await supabaseAdmin.from('booths').select('status');
-    const totalBooths = booths?.length || 0;
-    const bilikTersedia = booths?.filter((b: any) => b.status === 'TERSEDIA' || b.status === 'KOSONG' || b.status === 'Tersedia').length || 0;
-    const bilikDigunakan = booths?.filter((b: any) => b.status === 'DIGUNAKAN' || b.status === 'TERISI' || b.status === 'Sedang Memilih').length || 0;
+    const totalBooths = boothsRes[0]?.total || 0;
+    const bilikTersedia = boothsRes[0]?.tersedia || 0;
+    const bilikDigunakan = boothsRes[0]?.digunakan || 0;
 
-    // 3. Ambil total suara masuk dari tabel votes
-    const { count: totalVotes } = await supabaseAdmin
-      .from('votes')
-      .select('*', { count: 'exact', head: true });
+    const totalVotes = votesRes[0]?.total || sudahMemilih;
 
     return NextResponse.json({
       success: true,
@@ -49,15 +40,14 @@ export async function GET() {
         sudahMemilih,
         belumMemilih,
         partisipasi,
-        suaraMasuk: totalVotes || sudahMemilih,
+        suaraMasuk: totalVotes,
         totalBooths,
         bilikTersedia,
         bilikDigunakan,
       },
-      voters: voters || [],
       summary: {
         totalDpt,
-        totalVotes: totalVotes || sudahMemilih,
+        totalVotes,
         turnoutPercentage: partisipasi,
         abstainCount: belumMemilih,
       },

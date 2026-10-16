@@ -1,65 +1,48 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { sql } from '@/lib/db';
 
-// Standar 16 bilik suara fisik PEMIRA UBTH 2026 (tanpa IP fiktif — kolom ip_address
-// dibiarkan null sampai panitia mengisi alamat fisik jaringan masing-masing bilik)
-const DEFAULT_BOOTHS = Array.from({ length: 16 }, (_, i) => ({
-  booth_number: i + 1,
-  name: `Bilik ${String(i + 1).padStart(2, '0')}`,
-  status: 'TERSEDIA',
-}));
-
-// GET: Ambil status seluruh bilik suara
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('booths')
-      .select('*')
-      .order('booth_number', { ascending: true });
+    const booths = await sql`
+      SELECT id, booth_number, name, status, current_voter_name, current_voter_nim, current_voter_prodi, updated_at
+      FROM booths
+      ORDER BY booth_number ASC
+    `;
 
-    if (error) {
-      console.warn('Booths fetch note:', error.message);
-      return NextResponse.json({ success: false, booths: [], data: [], message: error.message });
-    }
-
-    if (!data || data.length === 0) {
-      // Database kosong: kembalikan array kosong, JANGAN data tiruan.
-      return NextResponse.json({ success: true, booths: [], data: [] });
-    }
-
-    return NextResponse.json({ success: true, booths: data, data: data });
+    return NextResponse.json({
+      success: true,
+      booths: booths || [],
+      data: booths || [],
+    });
   } catch (error: any) {
-    return NextResponse.json({ success: false, booths: [], data: [], message: error?.message });
+    return NextResponse.json({ success: false, booths: [], data: [], message: error?.message }, { status: 500 });
   }
 }
 
-// POST: Inisialisasi atau reset 16 bilik suara ke database Supabase
 export async function POST() {
   try {
-    const { data: existing } = await supabaseAdmin.from('booths').select('id');
-    if (!existing || existing.length === 0) {
-      const { data: inserted, error: insErr } = await supabaseAdmin
-        .from('booths')
-        .insert(DEFAULT_BOOTHS)
-        .select();
+    const existing = await sql`SELECT count(*)::int as count FROM booths`;
+    const count = existing[0]?.count || 0;
 
-      if (insErr) {
-        throw insErr;
+    if (count === 0) {
+      for (let i = 1; i <= 16; i++) {
+        await sql`
+          INSERT INTO booths (booth_number, name, status, updated_at)
+          VALUES (${i}, ${`Bilik ${String(i).padStart(2, '0')}`}, 'AVAILABLE', NOW())
+          ON CONFLICT (booth_number) DO NOTHING
+        `;
       }
-
       return NextResponse.json({
         success: true,
-        message: '16 bilik suara berhasil dibuat di database Supabase.',
-        data: inserted,
+        message: '16 bilik suara berhasil disinkronkan ke database Neon.',
       });
     }
 
     return NextResponse.json({
       success: true,
-      message: 'Bilik suara sudah terdaftar di database.',
-      data: existing,
+      message: `${count} bilik suara sudah terdaftar di database Neon.`,
     });
   } catch (err: any) {
     return NextResponse.json(

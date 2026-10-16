@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { FACULTIES_DATA, Candidate } from '@/data/voteMockData';
-import { createClient } from '@/lib/supabase/client';
 import {
   GLOBAL_REKAP_SUMMARY,
   BEM_REKAP_RESULTS,
@@ -173,59 +172,29 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const toggleSensor = () => setIsSensorActive((prev) => !prev);
 
   // ============================================================
-  // FETCH DATA ASLI DARI SUPABASE (ZERO DUMMY)
-  // Semua data DPT & paslon yang diinput panitia akan langsung
-  // tampil di UI: halaman vote, sidebar admin, berita acara, dll.
+  // FETCH DATA ASLI DARI NEON API (ZERO SUPABASE)
   // ============================================================
   const fetchVotersFromDb = async () => {
     try {
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      let allData: any[] = [];
-      let from = 0;
-      const step = 1000;
-      let hasMore = true;
-
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('voters')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .range(from, from + step - 1);
-
-        if (error || !data || data.length === 0) {
-          hasMore = false;
-          break;
-        }
-
-        allData = [...allData, ...data];
-        if (data.length < step) {
-          hasMore = false;
-        } else {
-          from += step;
-        }
-      }
-
-      if (allData.length > 0) {
-        const mapped: Voter[] = allData.map((d: any) => {
+      const res = await fetch('/api/admin/dpt?limit=100');
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.voters)) {
+        const mapped: Voter[] = data.voters.map((d: any) => {
           const rawStatus = (d.voting_status || (d.has_voted ? 'SELESAI' : 'BELUM')).toUpperCase();
           const status = rawStatus === 'SELESAI' ? 'selesai' : rawStatus === 'MENGERJAKAN' ? 'memilih' : 'belum';
           return {
             id: String(d.id || d.nim),
             nim: d.nim,
-            name: d.nama || d.name,
-            facultyId: (d.faculty_id || d.facultyId || 'FTB') as any,
-            prodiId: d.prodi_id || d.prodiId || 'general',
-            prodiName: d.prodi_name || d.prodi || d.prodiName || 'Program Studi',
+            name: d.name || d.nama,
+            facultyId: (d.faculty_id || d.faculty || 'FTB') as any,
+            prodiId: d.prodi || 'general',
+            prodiName: d.prodi || 'Program Studi',
             angkatan: d.angkatan || '2026',
             status,
             voting_status: rawStatus as any,
             has_voted: Boolean(d.has_voted),
             start_vote_at: d.start_vote_at,
             completed_at: d.completed_at,
-            duration_seconds: d.duration_seconds,
-            votedAt: d.completed_at || undefined,
-            boothId: d.booth_id || undefined,
           };
         });
         setVoters(mapped);
@@ -237,21 +206,11 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const fetchCandidatesFromDb = async () => {
     try {
-      // Lewati penarikan data candidates jika sedang membuka halaman /admin/dpt
-      if (typeof window !== 'undefined' && window.location.pathname.includes('/admin/dpt')) {
-        return;
-      }
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      // Tarik hanya metadata penting tanpa mentransfer foto base64 8MB
-      const { data, error } = await supabase
-        .from('candidates')
-        .select('id, candidate_number, paslon_number, name, leader_name, vice_leader_name, category, type, faculty_id, prodi, prodi_id, hima_name, slogan')
-        .order('candidate_number', { ascending: true });
-
-      if (!error && Array.isArray(data)) {
-        setBemCandidates(data.filter((c: any) => c.type === 'BEM' || c.category === 'BEM'));
-        setHimaCandidates(data.filter((c: any) => c.type === 'HIMA' || c.category === 'HIMA'));
+      const res = await fetch('/api/candidates');
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setBemCandidates(data.filter((c: any) => (c.type || c.category || '').toUpperCase().includes('BEM')));
+        setHimaCandidates(data.filter((c: any) => !(c.type || c.category || '').toUpperCase().includes('BEM')));
       }
     } catch (e) {
       console.warn('AdminContext fetch candidates note:', e);
@@ -260,23 +219,18 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const fetchBoothsFromDb = async () => {
     try {
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('booths')
-        .select('*')
-        .order('booth_number', { ascending: true });
-
-      if (!error && Array.isArray(data)) {
-        const mapped: BoothStatus[] = data.map((d: any) => ({
+      const res = await fetch('/api/admin/dashboard');
+      const data = await res.json();
+      if (data?.success && Array.isArray(data.booths)) {
+        const mapped: BoothStatus[] = data.booths.map((d: any) => ({
           id: String(d.id || d.booth_number),
           name: d.name || `Bilik ${String(d.booth_number).padStart(2, '0')}`,
-          status: (d.status === 'DIGUNAKAN' ? 'Sedang Memilih' : d.status === 'SELESAI' ? 'Selesai' : d.is_active === false ? 'Offline' : 'Tersedia') as any,
-          voterNim: d.voter_nim || d.current_voter_nim || undefined,
-          voterName: d.voter_name || d.current_voter_name || undefined,
-          prodiName: d.voter_prodi || d.current_voter_prodi || undefined,
+          status: (d.status === 'OCCUPIED' || d.status === 'DIGUNAKAN' ? 'Sedang Memilih' : d.status === 'SELESAI' ? 'Selesai' : 'Tersedia') as any,
+          voterNim: d.current_voter_nim || undefined,
+          voterName: d.current_voter_name || undefined,
+          prodiName: d.current_voter_prodi || undefined,
           startedAt: d.started_at || undefined,
-          ipAddress: d.ip_address || undefined,
+          ipAddress: '127.0.0.1',
         }));
         setBooths(mapped);
       }
@@ -285,34 +239,17 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Muat data awal + realtime saat ada perubahan di tabel voters/candidates/booths
+  // Muat data awal + live polling tanpa websocket Supabase yang terblokir
   useEffect(() => {
-    fetchVotersFromDb();
     fetchCandidatesFromDb();
     fetchBoothsFromDb();
 
-    const supabase = createClient();
-    const channel = supabase
-      .channel('admin_context_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchVotersFromDb();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
-        fetchCandidatesFromDb();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'booths' }, () => {
-        fetchBoothsFromDb();
-      })
-      .subscribe();
-
     const pollInterval = setInterval(() => {
-      fetchVotersFromDb();
       fetchCandidatesFromDb();
       fetchBoothsFromDb();
     }, 20000);
 
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
   }, []);
@@ -320,19 +257,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   const setElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
     setElectionStatusState(newStatus);
     try {
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
-      await supabase.from('system_config').upsert({ id: 'primary', election_status: newStatus });
-    } catch (e) {
-      console.warn('Update system_config error:', e);
-    }
-    try {
       await fetch('/api/admin/election-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
-    } catch {}
+    } catch (e) {
+      console.warn('Update election status error:', e);
+    }
     showToast(`Status pemilihan: ${newStatus}`, newStatus === 'AKTIF' ? 'success' : newStatus === 'JEDA' ? 'warning' : 'error');
   };
 
@@ -392,72 +324,42 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addVoter = async (newVoter: Omit<Voter, 'id'>) => {
-    // Tulis ke Supabase agar data baru langsung tersimpan & tampil di semua UI
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('voters')
-        .insert([
-          {
-            nim: newVoter.nim,
-            name: newVoter.name,
-            nama: newVoter.name,
-            faculty_id: newVoter.facultyId,
-            faculty: newVoter.facultyId,
-            prodi_id: newVoter.prodiId,
-            prodi_name: newVoter.prodiName,
-            prodi: newVoter.prodiName,
-            angkatan: newVoter.angkatan,
-            has_voted: false,
-            voting_status: 'BELUM',
-          },
-        ])
-        .select();
-
-      if (error) throw error;
-
-      if (data && data[0]) {
-        const d = data[0] as any;
-        setVoters((prev) => [
-          {
-            id: String(d.id || d.nim),
-            nim: d.nim,
-            name: d.nama || d.name || newVoter.name,
-            facultyId: newVoter.facultyId,
-            prodiId: newVoter.prodiId,
-            prodiName: newVoter.prodiName,
-            angkatan: newVoter.angkatan,
-            status: 'belum',
-            voting_status: 'BELUM',
-          },
-          ...prev,
-        ]);
+      const res = await fetch('/api/admin/dpt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nim: newVoter.nim,
+          name: newVoter.name,
+          prodi: newVoter.prodiName,
+          faculty: newVoter.facultyId,
+          angkatan: newVoter.angkatan,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast(json.message, 'success');
+        fetchVotersFromDb();
+      } else {
+        showToast(json.message || 'Gagal menambah DPT', 'error');
       }
-      showToast(`DPT ${newVoter.name} (${newVoter.nim}) berhasil ditambahkan ke database.`, 'success');
     } catch (e: any) {
-      console.error('Gagal menambah DPT:', e);
-      showToast(`Gagal menambah DPT: ${e?.message || 'kendala database'}`, 'error');
+      showToast(`Gagal menambah DPT: ${e?.message}`, 'error');
     }
   };
 
   const deleteVoter = async (id: string) => {
-    // Id dari context bisa berupa UUID (dari DB) atau NIM. Coba UUID dulu,
-    // lalu fallback ke NIM — tanpa hard failure agar UI tetap berjalan.
     try {
-      const supabase = createClient();
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-      if (isUuid) {
-        const { error } = await supabase.from('voters').delete().eq('id', id);
-        if (error) throw error;
+      const res = await fetch(`/api/admin/dpt?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        setVoters((prev) => prev.filter((v) => v.id !== id && v.nim !== id));
+        showToast('Data pemilih berhasil dihapus.', 'info');
       } else {
-        const { error } = await supabase.from('voters').delete().eq('nim', id);
-        if (error) throw error;
+        showToast(json.message || 'Gagal menghapus', 'error');
       }
-      setVoters((prev) => prev.filter((v) => v.id !== id && v.nim !== id));
-      showToast('Data pemilih berhasil dihapus dari database.', 'info');
     } catch (e: any) {
-      console.error('Gagal menghapus DPT:', e);
-      showToast(`Gagal menghapus DPT: ${e?.message || 'kendala database'}`, 'error');
+      showToast(`Gagal menghapus: ${e?.message}`, 'error');
     }
   };
 
@@ -483,129 +385,77 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const addCandidate = async (cand: Candidate) => {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('candidates')
-        .insert([
-          {
-            type: cand.type,
-            category: cand.type,
-            candidate_number: cand.candidate_number ?? (typeof cand.number === 'number' ? cand.number : parseInt(String(cand.number || '1'), 10) || 1),
-            leader_name: cand.leaderName || cand.leader_name,
-            vice_leader_name: cand.viceLeaderName || cand.vice_leader_name,
-            faculty_id: cand.facultyId || cand.faculty_id,
-            prodi_id: cand.prodiId || cand.prodi_id,
-            prodi_name: (cand as any).prodiName || (cand as any).prodi_name || null,
-            photo_url: cand.photoUrl || cand.photo_url || null,
-            vision: cand.vision || cand.visi || null,
-            mission: Array.isArray(cand.mission) ? cand.mission.join('|') : (cand.mission || (Array.isArray(cand.misi) ? cand.misi.join('|') : null)),
-            tagline: cand.tagline || cand.slogan || null,
-          },
-        ])
-        .select();
-
-      if (error) throw error;
-
-      if (data && data[0]) {
-        const saved = data[0] as any;
-        if (cand.type === 'BEM') {
-          setBemCandidates((prev) => [...prev, saved as Candidate]);
-        } else {
-          setHimaCandidates((prev) => [...prev, saved as Candidate]);
-        }
+      const res = await fetch('/api/admin/paslon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: cand.type,
+          candidate_number: cand.candidate_number ?? cand.number,
+          leader_name: cand.leaderName || cand.leader_name,
+          vice_leader_name: cand.viceLeaderName || cand.vice_leader_name,
+          faculty_id: cand.facultyId || cand.faculty_id,
+          prodi_id: cand.prodiId || cand.prodi_id,
+          photo_url: cand.photoUrl || cand.photo_url,
+          vision: cand.vision || cand.visi,
+          mission: cand.mission || cand.misi,
+          slogan: cand.tagline || cand.slogan,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        fetchCandidatesFromDb();
+        showToast(json.message, 'success');
+      } else {
+        showToast(json.message || 'Gagal menambah paslon', 'error');
       }
-      // Revalidate Vercel Edge CDN cache & clear local storage
-      fetch('/api/revalidate-paslon', { method: 'POST' }).catch(() => {});
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('pemira_candidates_edge_cache');
-      }
-      showToast(`Paslon ${cand.number} (${cand.leaderName || ''}) berhasil ditambahkan ke database.`, 'success');
     } catch (e: any) {
-      console.error('Gagal menambah paslon:', e);
-      showToast(`Gagal menambah paslon: ${e?.message || 'kendala database'}`, 'error');
+      showToast(`Gagal menambah paslon: ${e?.message}`, 'error');
     }
   };
 
   const updateCandidate = async (cand: Candidate) => {
     try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('candidates')
-        .update({
+      const res = await fetch('/api/admin/paslon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: cand.id,
+          candidate_number: cand.candidate_number ?? cand.number,
           leader_name: cand.leaderName || cand.leader_name,
           vice_leader_name: cand.viceLeaderName || cand.vice_leader_name,
-          tagline: cand.tagline || cand.slogan || null,
-          photo_url: cand.photoUrl || cand.photo_url || null,
-        })
-        .eq('id', String(cand.id))
-        .select();
-
-      if (error) throw error;
-
-      const saved = (data?.[0] || cand) as Candidate;
-      if (cand.type === 'BEM') {
-        setBemCandidates((prev) => prev.map((c) => (String(c.id) === String(cand.id) ? saved : c)));
+          slogan: cand.tagline || cand.slogan,
+          photo_url: cand.photoUrl || cand.photo_url,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        fetchCandidatesFromDb();
+        showToast(json.message, 'success');
       } else {
-        setHimaCandidates((prev) => prev.map((c) => (String(c.id) === String(cand.id) ? saved : c)));
+        showToast(json.message || 'Gagal memperbarui paslon', 'error');
       }
-      // Revalidate Vercel Edge CDN cache & clear local storage
-      fetch('/api/revalidate-paslon', { method: 'POST' }).catch(() => {});
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('pemira_candidates_edge_cache');
-      }
-      showToast(`Data paslon ${cand.number} diperbarui di database.`, 'success');
     } catch (e: any) {
-      console.error('Gagal memperbarui paslon:', e);
-      showToast(`Gagal memperbarui paslon: ${e?.message || 'kendala database'}`, 'error');
+      showToast(`Gagal memperbarui paslon: ${e?.message}`, 'error');
     }
   };
 
   const deleteCandidate = async (id: string | number) => {
     try {
-      const supabase = createClient();
-      const { error } = await supabase.from('candidates').delete().eq('id', String(id));
-      if (error) throw error;
-      setBemCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
-      setHimaCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
-      // Revalidate Vercel Edge CDN cache & clear local storage
-      fetch('/api/revalidate-paslon', { method: 'POST' }).catch(() => {});
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('pemira_candidates_edge_cache');
+      const res = await fetch(`/api/admin/paslon?id=${encodeURIComponent(String(id))}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json.success) {
+        setBemCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
+        setHimaCandidates((prev) => prev.filter((c) => String(c.id) !== String(id)));
+        showToast(json.message, 'info');
+      } else {
+        showToast(json.message || 'Gagal menghapus paslon', 'error');
       }
-      showToast('Paslon berhasil dihapus dari database.', 'info');
     } catch (e: any) {
-      console.error('Gagal menghapus paslon:', e);
-      showToast(`Gagal menghapus paslon: ${e?.message || 'kendala database'}`, 'error');
+      showToast(`Gagal menghapus paslon: ${e?.message}`, 'error');
     }
   };
 
   const updateBoothStatus = async (id: string, status: BoothStatus['status'], voterInfo?: Partial<BoothStatus>) => {
-    try {
-      const supabase = createClient();
-      const dbStatus = status === 'Sedang Memilih' ? 'DIGUNAKAN' : status === 'Selesai' ? 'SELESAI' : 'TERSEDIA';
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-      let q = supabase.from('booths').update({
-        status: dbStatus,
-        voter_nim: voterInfo?.voterNim || null,
-        voter_name: voterInfo?.voterName || null,
-        voter_prodi: voterInfo?.prodiName || null,
-        current_voter_nim: voterInfo?.voterNim || null,
-        current_voter_name: voterInfo?.voterName || null,
-        current_voter_prodi: voterInfo?.prodiName || null,
-        started_at: voterInfo?.startedAt || (dbStatus === 'DIGUNAKAN' ? new Date().toISOString() : null),
-        updated_at: new Date().toISOString(),
-      });
-      if (isUuid) {
-        await q.eq('id', id);
-      } else {
-        const num = parseInt(id, 10);
-        if (!isNaN(num)) {
-          await q.eq('booth_number', num);
-        }
-      }
-    } catch (err) {
-      console.warn('updateBoothStatus db note:', err);
-    }
     setBooths((prev) =>
       prev.map((b) => (b.id === id ? { ...b, status, ...voterInfo } : b))
     );
@@ -613,30 +463,14 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
 
   const resetBooth = async (id: string) => {
     try {
-      const supabase = createClient();
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-      let q = supabase.from('booths').update({
-        status: 'TERSEDIA',
-        voter_nim: null,
-        voter_name: null,
-        voter_prodi: null,
-        current_voter_nim: null,
-        current_voter_name: null,
-        current_voter_prodi: null,
-        started_at: null,
-        updated_at: new Date().toISOString(),
+      await fetch('/api/admin/booths/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booth_id: id }),
       });
-      if (isUuid) {
-        await q.eq('id', id);
-      } else {
-        const num = parseInt(id, 10);
-        if (!isNaN(num)) {
-          await q.eq('booth_number', num);
-        }
-      }
       await fetchBoothsFromDb();
     } catch (err) {
-      console.warn('resetBooth Supabase error:', err);
+      console.warn('resetBooth error:', err);
     }
     setBooths((prev) =>
       prev.map((b) =>
@@ -648,7 +482,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
               voterName: undefined,
               prodiName: undefined,
               startedAt: undefined,
-              durationSeconds: undefined,
             }
           : b
       )

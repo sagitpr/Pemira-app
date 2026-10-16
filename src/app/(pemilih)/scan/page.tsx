@@ -4,7 +4,6 @@ export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient'; // sesuaikan path import supabase Anda
 
 export default function ScanPage() {
   const router = useRouter();
@@ -18,60 +17,35 @@ export default function ScanPage() {
     if (isAllocatedRef.current) return;
 
     try {
-      // 1. Ambil seluruh data bilik dari Supabase terurut dari nomor bilik terkecil
-      const { data: booths, error } = await supabase
-        .from('booths')
-        .select('*')
-        .order('booth_number', { ascending: true });
+      const res = await fetch('/api/vote/assign-booth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
 
-      if (error || !booths || booths.length === 0) {
-        setQueueMessage('Sistem bilik belum dikonfigurasi oleh Panitia KPUM.');
-        setIsAllocating(false);
-        return;
-      }
-
-      // 2. Cari bilik pertama yang benar-benar AVAILABLE
-      const availableBooth = booths.find(b => b.status === 'AVAILABLE');
-
-      if (availableBooth) {
-        // ADA BILIK KOSONG! (Bilik 1, atau Bilik 2, atau Bilik 3, dst.)
+      if (data.success && data.booth_number) {
         isAllocatedRef.current = true;
-        const generatedToken = `UBTH-B${availableBooth.booth_number}-${Date.now()}`;
+        const generatedToken = data.session_token || data.token || `UBTH-B${data.booth_number}-${Date.now()}`;
 
-        // 3. KUNCI BILIK DI DATABASE SUPABASE SECARA INSTAN AGAR PEMILIH LAIN TIDAK MASUK KE BILIK INI
-        const { error: lockErr } = await supabase
-          .from('booths')
-          .update({
-            status: 'ALLOCATED',
-            session_token: generatedToken,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', availableBooth.id);
-
-        if (lockErr) {
-          // Jika terjadi benturan (race condition) dengan pemilih lain, coba lagi
-          isAllocatedRef.current = false;
-          setTimeout(tryAllocateBooth, 500);
-          return;
-        }
-
-        // 4. Bersihkan memori lama & simpan sesi bilik di HP pemilih
+        // Bersihkan memori lama & simpan sesi bilik di HP pemilih
         sessionStorage.clear();
         localStorage.removeItem('pemira_booth_session');
         localStorage.removeItem('pemira_completed_voter');
-        
+
         sessionStorage.setItem('pemira_active_token', generatedToken);
         sessionStorage.setItem('pemira_assigned_booth', JSON.stringify({
-          ...availableBooth,
+          id: data.booth_id || `booth-${data.booth_number}`,
+          booth_number: data.booth_number,
+          name: data.booth_name || `Bilik ${String(data.booth_number).padStart(2, '0')}`,
           status: 'ALLOCATED',
-          session_token: generatedToken
+          session_token: generatedToken,
         }));
         sessionStorage.setItem('pemira_access_verified', 'true');
 
-        // 5. Alihkan ke halaman /vote dengan parameter token & nomor bilik yang sah
-        router.replace(`/vote?booth=${availableBooth.booth_number}&token=${generatedToken}&src=qr`);
+        // Alihkan ke halaman /vote dengan parameter token & nomor bilik yang sah
+        router.replace(`/vote?booth=${data.booth_number}&token=${generatedToken}&src=qr`);
       } else {
-        // SEMUA BILIK SEDANG PENUH / TERPAKAI!
+        // SEMUA BILIK SEDANG PENUH / TERPAKAI
         setIsAllocating(false);
         setIsQueueing(true);
         setQueueMessage('Seluruh bilik suara fisik saat ini sedang digunakan. Anda berada dalam antrean otomatis, mohon menunggu...');
@@ -85,22 +59,7 @@ export default function ScanPage() {
   useEffect(() => {
     tryAllocateBooth();
 
-    // REALTIME LISTENER: Jika semua bilik penuh, dengarkan perubahan tabel booths
-    // Begitu ada bilik yang selesai mencoblos (berubah jadi 'AVAILABLE'), langsung ambil bilik tersebut!
-    const channel = supabase
-      .channel('booths_queue_channel')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'booths' },
-        (payload) => {
-          if (payload.new && payload.new.status === 'AVAILABLE' && !isAllocatedRef.current) {
-            tryAllocateBooth();
-          }
-        }
-      )
-      .subscribe();
-
-    // Polling cadangan setiap 3 detik jika realtime terkendala
+    // Polling setiap 3 detik jika antrean penuh
     const interval = setInterval(() => {
       if (!isAllocatedRef.current) {
         tryAllocateBooth();
@@ -108,7 +67,6 @@ export default function ScanPage() {
     }, 3000);
 
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(interval);
     };
   }, []);

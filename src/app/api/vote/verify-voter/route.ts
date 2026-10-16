@@ -1,14 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
-
-function normalizeString(val: string): string {
-  return String(val || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
+import { sql } from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
@@ -16,10 +9,6 @@ export async function POST(request: Request) {
     const { nim, name, prodi } = body || {};
 
     const cleanNim = String(nim || '').trim();
-    const cleanName = String(name || '').trim();
-    const inputProdi = String(prodi || '').trim();
-
-    // 1. Validasi input NIM
     if (!cleanNim) {
       return NextResponse.json(
         { success: false, message: 'Silakan masukkan NIM Anda.' },
@@ -27,16 +16,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Validasi status pemilihan aktif
+    // 1. Cek status pemilihan dari system_config
     try {
-      const { data: configData } = await supabaseAdmin
-        .from('system_config')
-        .select('election_status')
-        .limit(1)
-        .maybeSingle();
-
-      if (configData?.election_status) {
-        const st = String(configData.election_status).toUpperCase();
+      const config = await sql`SELECT election_status FROM system_config LIMIT 1`;
+      if (config && config[0]?.election_status) {
+        const st = String(config[0].election_status).toUpperCase();
         if (st === 'JEDA' || st === 'DIJEDA') {
           return NextResponse.json(
             { success: false, message: 'Pemilihan sedang dijeda sementara oleh panitia KPUM.' },
@@ -50,151 +34,41 @@ export async function POST(request: Request) {
           );
         }
       }
-    } catch (confErr) {
-      console.warn('Config check note in verify-voter:', confErr);
-    }
+    } catch {}
 
-    // 3. Cari record pemilih di DPT berdasarkan NIM
-    const { data: voter, error: voterErr } = await supabaseAdmin
-      .from('voters')
-      .select('*')
-      .eq('nim', cleanNim)
-      .maybeSingle();
+    // 2. Cari pemilih di DPT
+    const voters = await sql`
+      SELECT id, nim, name, prodi, faculty, has_voted, voting_status
+      FROM voters
+      WHERE TRIM(LOWER(nim)) = TRIM(LOWER(${cleanNim}))
+      LIMIT 1
+    `;
 
-    if (voterErr) {
-      console.error('Database query error in verify-voter:', voterErr);
+    if (!voters || voters.length === 0) {
       return NextResponse.json(
-        { success: false, message: 'Terjadi kendala saat memeriksa database DPT. Silakan coba lagi.' },
-        { status: 500 }
-      );
-    }
-
-    // Jika NIM tidak ada di DPT
-    if (!voter) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: 'NIM tidak terdaftar di DPT Pemira UBTH 2026!',
-        },
+        { success: false, message: 'NIM tidak terdaftar di DPT Pemira UBTH 2026!' },
         { status: 404 }
       );
     }
 
-    // 4. Validasi Status Hak Suara
-    const isVoted = voter.has_voted === true || 
-      String(voter.voting_status || '').toUpperCase() === 'SELESAI' || 
-      String(voter.voting_status || '').toUpperCase() === 'SUDAH';
-    if (isVoted) {
+    const voter = voters[0];
+
+    if (voter.has_voted) {
       return NextResponse.json(
-        {
-          success: false,
-          message: 'Hak suara untuk NIM ini sudah digunakan!',
-        },
+        { success: false, message: 'Hak suara untuk NIM ini sudah digunakan!' },
         { status: 409 }
       );
     }
 
-    // Validasi Nama jika disertakan
-    if (cleanName) {
-      const normInput = normalizeString(cleanName);
-      const normDb = normalizeString(voter.name || voter.nama || '');
-      if (normInput !== normDb && !normDb.includes(normInput) && !normInput.includes(normDb)) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: 'Nama lengkap tidak sesuai dengan data DPT!',
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Validasi Program Studi jika disertakan
-    if (inputProdi) {
-      const normInputProdi = normalizeString(inputProdi).replace(/\s+/g, '');
-      const normDbProdi = normalizeString(voter.prodi || voter.prodi_name || '').replace(/\s+/g, '');
-      if (normInputProdi !== normDbProdi && !normDbProdi.includes(normInputProdi) && !normInputProdi.includes(normDbProdi)) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: 'Program studi yang Anda pilih tidak sesuai dengan data DPT Anda!',
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-
-    if (String(voter.voting_status || '').toUpperCase() === 'MENGERJAKAN') {
-      // Auto-release sesi macet (> 20 menit tanpa submit): anggap browser pemilih crash,
-      // lepaskan bilik & pulihkan status pemilih agar tidak terblokir permanen.
-      const startAtMs = voter.start_vote_at ? new Date(voter.start_vote_at).getTime() : 0;
-      const stalledMs = Date.now() - startAtMs;
-      if (startAtMs > 0 && stalledMs > 20 * 60 * 1000) {
-        const nowIso = new Date().toISOString();
-        try {
-          await supabaseAdmin
-            .from('voters')
-            .update({ voting_status: 'BELUM', start_vote_at: null, updated_at: nowIso })
-            .eq('nim', cleanNim)
-            .eq('voting_status', 'MENGERJAKAN');
-          await supabaseAdmin
-            .from('booths')
-            .update({
-              status: 'TERSEDIA',
-              voter_name: null,
-              voter_nim: null,
-              voter_prodi: null,
-              current_voter_name: null,
-              current_voter_nim: null,
-              current_voter_prodi: null,
-              started_at: null,
-              updated_at: nowIso,
-            })
-            .eq('voter_nim', cleanNim);
-          voter.voting_status = 'BELUM';
-        } catch (releaseErr) {
-          console.warn('Auto-release sesi macet gagal:', releaseErr);
-          return NextResponse.json(
-            {
-              success: false,
-              message: 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, mintalah panitia untuk me-reset sesi bilik Anda.',
-            },
-            { status: 409 }
-          );
-        }
-      } else {
-        return NextResponse.json(
-          {
-            success: false,
-            message: startAtMs > 0
-              ? 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, tunggu 20 menit untuk pelepasan otomatis atau mintalah panitia me-reset sesi bilik Anda.'
-              : 'Sesi Anda sedang aktif di bilik suara. Jika mengalami kendala layar terputus, mintalah panitia untuk me-reset sesi bilik Anda.',
-          },
-          { status: 409 }
-        );
-      }
-    }
-
-    const voterName = voter.nama || voter.name || 'Mahasiswa';
-    const voterProdi = voter.prodi || voter.prodi_name || 'Kewirausahaan';
-    const voterFaculty = voter.faculty || voter.faculty_id || 'FTB';
-
-    // 5. Verifikasi Berhasil: Kembalikan data pemilih lengkap
     return NextResponse.json({
       success: true,
-      message: 'Identitas berhasil diverifikasi. Silakan masuk ke bilik suara.',
+      message: 'Identitas berhasil diverifikasi.',
       voter: {
         id: voter.id,
         nim: voter.nim,
-        name: voterName,
-        nama: voterName,
-        prodi: voterProdi,
-        prodiName: voterProdi,
-        prodi_name: voterProdi,
-        faculty: voterFaculty,
-        facultyId: voterFaculty,
-        facultyName: voter.faculty_name || `Fakultas ${voterFaculty}`,
+        name: voter.name,
+        prodi: voter.prodi,
+        faculty: voter.faculty,
         hasVoted: false,
         voting_status: 'BELUM',
       },

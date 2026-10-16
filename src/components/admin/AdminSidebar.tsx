@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
-import { createClient } from '@/lib/supabase/client';
 import {
   LayoutGrid,
   Clock,
@@ -17,57 +16,12 @@ import {
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { voters, isMobileSidebarOpen, setIsMobileSidebarOpen } = useAdmin();
-  const [dptBadgeCount, setDptBadgeCount] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const cached = sessionStorage.getItem('pemira_admin_voters_cache');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed.length;
-        }
-      } catch (e) {}
-    }
-    return voters?.length || 2096;
-  });
-
-  const fetchDptCount = async () => {
-    try {
-      const supabase = createClient();
-      const { count, error } = await supabase
-        .from('voters')
-        .select('*', { count: 'exact', head: true });
-
-      if (!error && count !== null && count !== undefined) {
-        setDptBadgeCount(count); // Menyimpan angka 2096 murni
-      }
-    } catch (err) {
-      console.error("Gagal fetch badge DPT:", err);
-    }
-  };
-
-  useEffect(() => {
-    fetchDptCount();
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel('sidebar-dpt-count-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'voters' }, () => {
-        fetchDptCount();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const badgeValue = (dptBadgeCount > 0 ? dptBadgeCount : (voters?.length || 2096)).toString();
+  const { isMobileSidebarOpen, setIsMobileSidebarOpen } = useAdmin();
 
   const MENU_ITEMS = [
     { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutGrid },
     { href: '/admin/rekap', label: 'Rekap Suara', icon: Clock },
-    { href: '/admin/dpt', label: 'DPT & Pemilih', icon: Users, badge: badgeValue },
+    { href: '/admin/dpt', label: 'DPT & Pemilih', icon: Users },
     { href: '/admin/paslon', label: 'Kelola Paslon', icon: UserCheck },
     { href: '/admin/pengaturan', label: 'Pengaturan', icon: Settings },
   ];
@@ -128,32 +82,18 @@ export default function AdminSidebar() {
                 onClick={() => {
                   if (isMobile) setIsMobileSidebarOpen(false);
                 }}
-                className={`flex items-center justify-between px-4 py-3 rounded-2xl text-xs transition-all duration-150 ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition-all duration-150 ${
                   isActive
                     ? 'bg-white border border-[#E8E4DC] text-slate-900 font-semibold shadow-xs border-l-4 border-l-[#0F172A]'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Icon
-                    className={`w-4 h-4 shrink-0 ${
-                      isActive ? 'text-slate-900' : 'text-slate-400'
-                    }`}
-                  />
-                  <span>{item.label}</span>
-                </div>
-
-                {item.badge !== undefined && (
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                      isActive
-                        ? 'bg-[#FAF8F4] text-slate-700 border border-[#E8E4DC]'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
+                <Icon
+                  className={`w-4 h-4 shrink-0 ${
+                    isActive ? 'text-slate-900' : 'text-slate-400'
+                  }`}
+                />
+                <span>{item.label}</span>
               </Link>
             );
           })}

@@ -1,26 +1,27 @@
 export const dynamic = 'force-dynamic';
 
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { sql } from '@/lib/db';
 
-// In-memory fallback if database table is not present
 let globalElectionStatus: 'AKTIF' | 'JEDA' | 'TUTUP' = 'AKTIF';
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseAdmin
-      .from('system_config')
-      .select('election_status')
-      .limit(1)
-      .single();
+    const config = await sql`
+      SELECT election_status
+      FROM system_config
+      LIMIT 1
+    `;
 
-    if (!error && data?.election_status) {
-      const raw = data.election_status.toUpperCase();
+    if (config && config[0]?.election_status) {
+      const raw = String(config[0].election_status).toUpperCase();
       if (raw === 'JEDA' || raw === 'DIJEDA') globalElectionStatus = 'JEDA';
       else if (raw === 'TUTUP' || raw === 'DITUTUP' || raw === 'SELESAI') globalElectionStatus = 'TUTUP';
       else globalElectionStatus = 'AKTIF';
     }
-  } catch {}
+  } catch (err) {
+    console.warn('Get election status note:', err);
+  }
 
   return NextResponse.json({
     success: true,
@@ -37,11 +38,13 @@ export async function POST(request: Request) {
       globalElectionStatus = status;
 
       try {
-        await supabaseAdmin
-          .from('system_config')
-          .update({ election_status: status })
-          .neq('id', 'placeholder');
-      } catch {}
+        await sql`
+          UPDATE system_config
+          SET election_status = ${status}, updated_at = NOW()
+        `;
+      } catch (err) {
+        console.warn('Update election status DB note:', err);
+      }
 
       return NextResponse.json({
         success: true,
