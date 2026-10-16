@@ -7,9 +7,9 @@ import AdminSidebar from '@/components/admin/AdminSidebar';
 
 function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#FBF9F5] font-sans text-slate-900 w-full relative">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 w-full relative">
       <AdminSidebar />
-      <div className="pl-0 md:pl-64 w-full flex flex-col min-h-screen min-w-0 bg-[#FBF9F5]">
+      <div className="pl-0 md:pl-64 w-full flex flex-col min-h-screen min-w-0 bg-slate-50">
         {children}
       </div>
     </div>

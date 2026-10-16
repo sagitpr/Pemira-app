@@ -283,6 +283,22 @@ function VoteContent() {
     loadBallotCandidates();
   }, [setCandidates]);
 
+  // Fungsi Masuk Mode Layar Penuh (Menyembunyikan Address Bar HP)
+  const triggerFullscreenMode = () => {
+    try {
+      const elem = document.documentElement as any;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    } catch (e) {
+      // Abaikan jika browser membatasi gesture
+    }
+  };
+
   // 1. Validasi Token Cerdas & Anti-Share (Dukungan Pinjam HP & Resilient Fallback)
   const attemptBoothAllocation = async (targetBoothNum?: number) => {
     try {
@@ -344,24 +360,67 @@ function VoteContent() {
 
   useEffect(() => {
     setMounted(true);
+
+    // Cegah klik kanan & tahan layar untuk menyalin URL/teks
+    const blockContext = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener('contextmenu', blockContext);
+
     const params = new URLSearchParams(window.location.search);
     const boothParam = params.get('booth') || params.get('b');
+    const tokenParam = params.get('token') || params.get('t');
 
-    // Bersihkan sesi lama dari HP ini jika scan baru
     if (boothParam) {
+      const boothNo = parseInt(boothParam, 10);
       sessionStorage.clear();
       localStorage.removeItem('pemira_booth_session');
       localStorage.removeItem('pemira_completed_voter');
       localStorage.removeItem('pemira_active_token');
       localStorage.removeItem('pemira_assigned_booth');
       localStorage.removeItem('pemira_access_verified');
+
+      fetch('/api/booths/allocate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ booth_number: boothNo, token: tokenParam })
+      }).catch(console.error);
+
+      sessionStorage.setItem('pemira_active_session', JSON.stringify({
+        booth_number: boothNo,
+        token: tokenParam
+      }));
+      setAssignedBooth({ booth_number: boothNo });
+      setAssignedBoothNumber(boothNo);
+
+      // HAPUS URL TOKEN DARI ADDRESS BAR SECARA INSTAN
+      window.history.replaceState(null, '', window.location.pathname);
+      setIsAccessGranted(true);
+      setIsCheckingAccess(false);
+
+      // Coba sinkronisasi penuh
+      attemptBoothAllocation(boothNo);
+    } else {
+      const active = sessionStorage.getItem('pemira_active_session');
+      if (active) {
+        try {
+          const parsed = JSON.parse(active);
+          setAssignedBooth(parsed);
+          setAssignedBoothNumber(Number(parsed.booth_number) || 1);
+          setIsAccessGranted(true);
+          setIsCheckingAccess(false);
+          setLoading(false);
+        } catch {
+          window.location.replace('about:blank');
+        }
+      } else {
+        window.location.replace('about:blank');
+      }
+      setIsCheckingAccess(false);
+      setLoading(false);
     }
 
-    // Bersihkan URL dari address bar agar link tidak bisa dibagikan
-    window.history.replaceState({}, document.title, window.location.pathname);
-
-    // Coba alokasi awal
-    attemptBoothAllocation(boothParam ? parseInt(boothParam, 10) : undefined);
+    return () => {
+      document.removeEventListener('contextmenu', blockContext);
+    };
   }, []);
 
   // Polling Otomatis Saat Berada di Antrean (Mengecek Bilik Kosong Tiap 2 Detik)
@@ -581,6 +640,7 @@ function VoteContent() {
 
   // TAHAP 1 -> TAHAP 2: Tombol Tunggal "Saya Sudah Berada di Bilik"
   const handleArrivedAtBooth = async () => {
+    triggerFullscreenMode();
     try {
       await recordBoothVisit(assignedBoothNumber || assignedBooth?.booth_number || 1);
     } catch (e) {
@@ -592,6 +652,7 @@ function VoteContent() {
   // TAHAP 2: VALIDASI KETAT DPT VIA NEON ROUTE (/api/vote/verify)
   const handleVerifyDPT = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    triggerFullscreenMode();
 
     const cleanNim = inputNim.trim();
     const cleanName = inputName.trim();
@@ -912,7 +973,7 @@ function VoteContent() {
   // SCREEN: ANTREAN BILIK PENUH
   if (isWaitingQueue) {
     return (
-      <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
+      <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased select-none">
         {/* Header Resmi Identik */}
         <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
           <div className="flex items-center gap-2.5">
@@ -1133,7 +1194,10 @@ function VoteContent() {
 
             {/* TOMBOL TUNGGAL: [ Saya Sudah Berada di Bilik ] */}
             <button
-              onClick={handleArrivedAtBooth}
+              onClick={() => {
+                triggerFullscreenMode();
+                handleArrivedAtBooth();
+              }}
               className="w-full py-4 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20 cursor-pointer active:scale-95"
             >
               <span>Saya Sudah Berada di Bilik</span>
@@ -1274,6 +1338,7 @@ function VoteContent() {
 
                 <button
                   type="submit"
+                  onClick={() => triggerFullscreenMode()}
                   disabled={isVerifying || !inputNim.trim() || !inputName.trim() || !inputProdi.trim()}
                   className={`w-full sm:w-auto px-6 py-3 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 ${
                     isVerifying || !inputNim.trim() || !inputName.trim() || !inputProdi.trim()

@@ -82,15 +82,15 @@ export default function AdminSidebar() {
                 onClick={() => {
                   if (isMobile) setIsMobileSidebarOpen(false);
                 }}
-                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs transition-all duration-150 ${
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs transition-all duration-150 ${
                   isActive
-                    ? 'bg-white border border-[#E8E4DC] text-slate-900 font-semibold shadow-xs border-l-4 border-l-[#0F172A]'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60 font-medium'
+                    ? 'bg-slate-900 text-white font-semibold shadow-xs'
+                    : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 transition font-medium'
                 }`}
               >
                 <Icon
                   className={`w-4 h-4 shrink-0 ${
-                    isActive ? 'text-slate-900' : 'text-slate-400'
+                    isActive ? 'text-white' : 'text-slate-400'
                   }`}
                 />
                 <span>{item.label}</span>
@@ -109,7 +109,7 @@ export default function AdminSidebar() {
             onClick={() => {
               if (isMobile) setIsMobileSidebarOpen(false);
             }}
-            className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white/70 hover:bg-white border border-[#E2DDD5] transition-colors shadow-2xs"
+            className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 transition-colors shadow-2xs"
           >
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -124,7 +124,7 @@ export default function AdminSidebar() {
             onClick={() => {
               if (isMobile) setIsMobileSidebarOpen(false);
             }}
-            className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white/70 hover:bg-white border border-[#E2DDD5] transition-colors shadow-2xs"
+            className="flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 transition-colors shadow-2xs"
           >
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#0F172A]" />
@@ -140,7 +140,7 @@ export default function AdminSidebar() {
   return (
     <>
       {/* Desktop Sidebar (hidden on mobile, fixed on desktop) */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#FBF9F5] border-r border-[#EFECE6] justify-between h-screen z-30 select-none font-sans">
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-white border-r border-slate-200/80 justify-between h-screen z-30 select-none font-sans">
         {renderNavContent(false)}
       </aside>
 
@@ -155,7 +155,7 @@ export default function AdminSidebar() {
           />
 
           {/* Drawer Panel */}
-          <div className="relative w-72 max-w-[85vw] bg-[#FBF9F5] border-r border-[#EFECE6] h-full flex flex-col justify-between shadow-2xl z-50 animate-in slide-in-from-left duration-200">
+          <div className="relative w-72 max-w-[85vw] bg-white border-r border-slate-200/80 h-full flex flex-col justify-between shadow-2xl z-50 animate-in slide-in-from-left duration-200">
             {renderNavContent(true)}
           </div>
         </div>

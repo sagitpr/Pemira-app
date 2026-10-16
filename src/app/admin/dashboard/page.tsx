@@ -65,7 +65,7 @@ function BoothCard({
           ? 'border-amber-200/80 bg-white'
           : isAllocated
           ? 'border-blue-200/80 bg-white'
-          : 'border-[#EFECE6] bg-white hover:border-[#E2DDD5]'
+          : 'border-slate-200/80 bg-white hover:border-slate-300'
       }`}
     >
       <div className="flex items-center justify-between mb-2">
@@ -297,7 +297,7 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen bg-[#FBF9F5] font-sans text-slate-800">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
       <AdminHeader />
 
       <main className="p-6 sm:p-8 space-y-6 max-w-7xl w-full mx-auto">
@@ -313,13 +313,13 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Master 3 Toggle Status (AKTIF, JEDA, TUTUP) */}
-          <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-[#EFECE6] shadow-2xs">
+          <div className="flex items-center gap-1.5 p-1 bg-white rounded-2xl border border-slate-200/80 shadow-2xs">
             <button
               onClick={() => handleUpdateStatus('AKTIF')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 electionStatus === 'AKTIF'
                   ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <Play className="w-3 h-3 fill-current" />
@@ -331,7 +331,7 @@ export default function AdminDashboardPage() {
               className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 electionStatus === 'JEDA'
                   ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <Pause className="w-3 h-3 fill-current" />
@@ -343,7 +343,7 @@ export default function AdminDashboardPage() {
               className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                 electionStatus === 'TUTUP'
                   ? 'bg-slate-700 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-[#F5F2EB]'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               <StopCircle className="w-3 h-3" />
@@ -354,7 +354,7 @@ export default function AdminDashboardPage() {
 
         {/* 4 STAT CARDS REAL-TIME */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
                 TOTAL DPT
@@ -368,7 +368,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">
                 SUARA MASUK
@@ -393,7 +393,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-emerald-600 uppercase tracking-wide block">
                 BILIK TERSEDIA
@@ -411,7 +411,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-white border border-[#EFECE6] shadow-xs flex items-center justify-between">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-amber-600 uppercase tracking-wide block">
                 BILIK DIGUNAKAN
@@ -431,7 +431,7 @@ export default function AdminDashboardPage() {
         </div>
 
         {/* SECTION: TRAFIK PENGUNJUNG BILIK */}
-        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-xs relative overflow-hidden">
+        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs relative overflow-hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
@@ -480,7 +480,7 @@ export default function AdminDashboardPage() {
         </section>
 
         {/* SECTION: BILIK SUARA FISIK */}
-        <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-xs">
+        <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
@@ -515,7 +515,7 @@ export default function AdminDashboardPage() {
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="rounded-2xl border border-[#EFECE6] bg-white p-4 shadow-xs h-36 animate-pulse flex flex-col justify-between"
+                    className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs h-36 animate-pulse flex flex-col justify-between"
                   >
                     <div className="flex justify-between items-center">
                       <div className="h-4 bg-slate-200 rounded w-16" />
@@ -527,7 +527,7 @@ export default function AdminDashboardPage() {
                 ))}
               </>
             ) : booths.length === 0 ? (
-              <div className="col-span-full py-10 px-4 text-center bg-slate-50/60 border border-dashed border-[#EFECE6] rounded-2xl flex flex-col items-center justify-center gap-3">
+              <div className="col-span-full py-10 px-4 text-center bg-slate-50/60 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
                   <Monitor className="w-5 h-5" />
                 </div>
@@ -553,7 +553,7 @@ export default function AdminDashboardPage() {
 
         {/* SECTION: LIVE ACTIVITY LOG STREAM */}
         <div className="grid grid-cols-1 gap-6">
-          <section className="bg-white rounded-2xl p-6 border border-[#EFECE6] shadow-xs flex flex-col justify-between">
+          <section className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
                 <div className="flex items-center gap-2">
@@ -571,14 +571,14 @@ export default function AdminDashboardPage() {
               {/* Feed Stream List */}
               <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
                 {activityLogs.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-[#EFECE6]">
+                  <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                     Belum ada aktivitas bilik terbaru tercatat.
                   </div>
                 ) : (
                   activityLogs.map((log) => (
                     <div
                       key={log.id}
-                      className="p-3 rounded-2xl border border-[#EFECE6] bg-[#FAF8F4]/50 hover:bg-[#FAF8F4] transition-colors flex items-start gap-2.5 text-xs"
+                      className="p-3 rounded-2xl border border-slate-200/70 bg-slate-50/70 hover:bg-slate-100/70 transition-colors flex items-start gap-2.5 text-xs"
                     >
                       <span className="font-mono text-[10px] font-bold text-slate-400 shrink-0 pt-0.5">
                         [{log.time}]
