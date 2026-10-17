@@ -64,38 +64,96 @@ const MASTER_PRODI = [
 ];
 
 
-// Helper Pencocokan Program Studi & HIMA Resmi (Fuzzy Matching Anti-Meleset)
-const isProdiMatching = (candidateProdi: string = '', voterProdi: string = '') => {
-  const rawC = candidateProdi.toLowerCase();
-  const rawV = voterProdi.toLowerCase();
+// Helper Normalisasi Program Studi & HIMA Resmi (Pemisahan Ketat Jenjang S1, D3, S2, dan Profesi Apoteker)
+const getCanonicalProdiKey = (str: string = ''): string => {
+  const s = str.toLowerCase().trim();
+  if (!s) return '';
 
-  // Strict separator for S1 vs S2 Farmasi
-  if (rawV.includes('s2') && !rawC.includes('s2') && !rawC.includes('magister')) return false;
-  if (!rawV.includes('s2') && !rawV.includes('magister') && (rawC.includes('s2') || rawC.includes('magister'))) return false;
+  // 1. S2 Farmasi / Magister Farmasi
+  if ((s.includes('s2') || s.includes('magister')) && s.includes('farmasi')) {
+    return 's2_farmasi';
+  }
 
-  // Strict separator for S1 Keperawatan vs D3 Keperawatan
-  if (rawV.includes('s1') && rawV.includes('keperawatan') && rawC.includes('d3')) return false;
-  if (rawV.includes('d3') && rawV.includes('keperawatan') && rawC.includes('s1')) return false;
+  // 2. Pendidikan Profesi Apoteker
+  if (s.includes('apoteker') || s.includes('psppa') || s.includes('profesi apoteker')) {
+    return 'profesi_apoteker';
+  }
 
-  const clean = (str: string) =>
-    str
-      .toLowerCase()
-      .replace(/^s1\s+/i, '')
-      .replace(/^d3\s+/i, '')
-      .replace(/^d4\s+/i, '')
-      .replace(/^s2\s+/i, '')
-      .replace(/^magister\s+/i, '')
-      .replace(/^hima\s+/i, '')
-      .replace(/himasi/i, 'sistem informasi')
-      .replace(/himabid/i, 'bisnis digital')
-      .replace(/himafarma/i, 'farmasi')
-      .trim();
+  // 3. S1 Rekayasa Kosmetik / Kosmetika
+  if (s.includes('kosmetik') || s.includes('rekos')) {
+    return 's1_rekayasa_kosmetika';
+  }
 
-  const c = clean(candidateProdi);
-  const v = clean(voterProdi);
+  // 4. S1 Farmasi (Pastikan bukan S2, bukan Apoteker, bukan Kosmetik)
+  if (s.includes('farmasi') || s.includes('himafarma')) {
+    return 's1_farmasi';
+  }
 
-  if (!c || !v) return false;
-  return c.includes(v) || v.includes(c);
+  // 5. D3 Keperawatan
+  if (s.includes('d3') && (s.includes('keperawatan') || s.includes('perawat'))) {
+    return 'd3_keperawatan';
+  }
+
+  // 6. S1 Keperawatan
+  if (s.includes('s1') && (s.includes('keperawatan') || s.includes('perawat'))) {
+    return 's1_keperawatan';
+  }
+  if (s.includes('keperawatan') || s.includes('perawat')) {
+    return s.includes('d3') ? 'd3_keperawatan' : 's1_keperawatan';
+  }
+
+  // 7. S1 Administrasi Rumah Sakit (ARS)
+  if (s.includes('administrasi rumah sakit') || s.includes('ars')) {
+    return 's1_ars';
+  }
+
+  // 8. D3 TLM (Teknologi Laboratorium Medis / Analis Kesehatan)
+  if (s.includes('laboratorium') || s.includes('tlm') || s.includes('analis kesehatan')) {
+    return 'd3_tlm';
+  }
+
+  // 9. D3 Refraksi Optisi / Optometri (RO)
+  if (s.includes('optometri') || s.includes('refraksi') || s.includes('optisi')) {
+    return 'd3_optometri';
+  }
+
+  // 10. S1 Gizi
+  if (s.includes('gizi')) {
+    return 's1_gizi';
+  }
+
+  // 11. S1 Sistem Informasi
+  if (s.includes('sistem informasi') || s.includes('himasi')) {
+    return 's1_sistem_informasi';
+  }
+
+  // 12. S1 Bisnis Digital
+  if (s.includes('bisnis digital') || s.includes('himabid')) {
+    return 's1_bisnis_digital';
+  }
+
+  // 13. S1 Teknologi Pangan
+  if (s.includes('teknologi pangan') || s.includes('pangan') || s.includes('tekpang')) {
+    return 's1_teknologi_pangan';
+  }
+
+  // 14. S1 Kewirausahaan
+  if (s.includes('kewirausahaan') || s.includes('kwu')) {
+    return 's1_kewirausahaan';
+  }
+
+  // Fallback: normalisasi teks
+  return s
+    .replace(/^(program studi|prodi|hima)\s+/i, '')
+    .replace(/[\(\)]/g, '')
+    .trim();
+};
+
+const isProdiMatching = (candidateProdi: string = '', voterProdi: string = ''): boolean => {
+  const keyC = getCanonicalProdiKey(candidateProdi);
+  const keyV = getCanonicalProdiKey(voterProdi);
+  if (!keyC || !keyV) return false;
+  return keyC === keyV;
 };
 
 type Step =
@@ -806,35 +864,15 @@ function VoteContent() {
     return cat.includes('BEM');
   });
 
-  // - Paslon HIMA Khusus Per-Prodi:
-  const normalizeProdi = (str: string = '') => 
-    str.toLowerCase()
-      .replace(/^(s1|d3|d4)\s+/i, '')
-      .replace(/^program studi\s+/i, '')
-      .replace(/^hima\s+/i, '')
-      .replace(/[\(\)]/g, '')
-      .trim();
-
-  const voterProdiClean = normalizeProdi(verifiedVoter?.prodi || voterProdi || '');
-
+  // - Paslon HIMA Khusus Per-Prodi (Pencocokan Ketat Berbasis getCanonicalProdiKey):
   const prodiHimaCandidates = candidatesPool.filter((c: any) => {
     const cat = (c.category || c.type || '').toUpperCase().trim();
     if (cat.includes('BEM')) return false;
-    
-    const rawC = (c.prodi || c.hima_name || c.prodi_name || '').toLowerCase();
-    const rawV = (verifiedVoter?.prodi || voterProdi || '').toLowerCase();
 
-    // Strict separator for S1 vs S2 Farmasi
-    if (rawV.includes('s2') && !rawC.includes('s2') && !rawC.includes('magister')) return false;
-    if (!rawV.includes('s2') && !rawV.includes('magister') && (rawC.includes('s2') || rawC.includes('magister'))) return false;
+    const candidateProdi = c.prodi || c.hima_name || c.prodi_name || '';
+    const voterProdiStr = verifiedVoter?.prodi || voterProdi || '';
 
-    // Strict separator for S1 Keperawatan vs D3 Keperawatan
-    if (rawV.includes('s1') && rawV.includes('keperawatan') && rawC.includes('d3')) return false;
-    if (rawV.includes('d3') && rawV.includes('keperawatan') && rawC.includes('s1')) return false;
-
-    const candidateProdiClean = normalizeProdi(c.prodi || c.hima_name || c.prodi_name || '');
-    if (!candidateProdiClean || !voterProdiClean) return false;
-    return candidateProdiClean.includes(voterProdiClean) || voterProdiClean.includes(candidateProdiClean);
+    return isProdiMatching(candidateProdi, voterProdiStr);
   });
 
   const himaCandidates = prodiHimaCandidates;
@@ -1596,14 +1634,39 @@ function VoteContent() {
                 <CandidateSkeleton />
               </div>
             ) : prodiHimaCandidates.length === 0 ? (
-              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-6 text-center my-6">
-                <p className="text-xs font-bold tracking-widest text-slate-400 uppercase mb-2">Informasi Surat Suara HIMA</p>
-                <h3 className="text-sm font-semibold text-slate-700 mb-1">
-                  Tidak Ada Pasangan Calon HIMA Terdaftar
-                </h3>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
-                  Untuk Program Studi {verifiedVoter?.prodi || voterProdi}, tidak terdapat pasangan calon Himpunan Mahasiswa pada pemilihan ini. Anda hanya menggunakan hak suara untuk pemilihan Presiden BEM Universitas.
-                </p>
+              <div className="bg-slate-50 border border-slate-200/90 rounded-3xl p-6 sm:p-8 text-center my-6 space-y-4 shadow-xs">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto text-amber-600 shadow-xs">
+                  <Info className="w-6 h-6" />
+                </div>
+                <div className="space-y-1.5 max-w-lg mx-auto">
+                  <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase bg-slate-200/60 px-3 py-1 rounded-full inline-block">
+                    PEMBERITAHUAN RESMI KPUM
+                  </span>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 mt-2">
+                    Tidak Ada Pasangan Calon HIMA Terdaftar
+                  </h3>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Berdasarkan penetapan resmi Komisi Pemilihan Umum Mahasiswa (KPUM), Program Studi{' '}
+                    <strong className="text-slate-900 font-semibold">{verifiedVoter?.prodi || voterProdi}</strong> tidak memiliki pasangan calon Himpunan Mahasiswa (HIMA) yang berkontestasi pada periode pemilihan ini.
+                  </p>
+                  <p className="text-xs text-slate-500 italic">
+                    Hak suara Anda dialihkan secara sah dan penuh untuk Pemilihan Presiden BEM Universitas.
+                  </p>
+                </div>
+                <div className="pt-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedHima(null);
+                      setSelectedHimaId('');
+                      setStep('REVIEW_CONFIRM');
+                    }}
+                    className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold shadow-lg shadow-slate-900/20 cursor-pointer active:scale-95 transition-all"
+                  >
+                    <span>Lanjut ke Konfirmasi Akhir (BEM)</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="space-y-6 pt-2">
@@ -1744,7 +1807,9 @@ function VoteContent() {
                     : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20 cursor-pointer active:scale-95'
                 }`}
               >
-                <span>Lanjut ke Konfirmasi Akhir</span>
+                <span>
+                  {prodiHimaCandidates.length === 0 ? 'Lanjut ke Konfirmasi Akhir (BEM)' : 'Lanjut ke Konfirmasi Akhir'}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
