@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import AdminHeader from '@/components/admin/AdminHeader';
 
 export default function AdminRekapPage() {
   // 1. Inisialisasi State dari Cache Browser agar saat Refresh TIDAK ADA FLASH KOSONG (0ms Render)
@@ -165,9 +166,12 @@ export default function AdminRekapPage() {
   };
 
   return (
-    <div className="space-y-8 pb-16">
-      {/* HEADER UTAMA */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="flex-1 flex flex-col min-h-screen bg-slate-50 font-sans text-slate-800">
+      <AdminHeader />
+
+      <main className="p-6 sm:p-8 space-y-8 max-w-7xl w-full mx-auto pb-16">
+        {/* HEADER UTAMA */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Rekapitulasi Suara Pemilihan</h1>
           <p className="text-xs text-slate-500 mt-1">
@@ -336,18 +340,21 @@ export default function AdminRekapPage() {
                       </span>
                     </div>
 
-                    {/* Foto Paslon */}
-                    <div className="w-full h-44 rounded-xl overflow-hidden mb-4 bg-white border border-slate-200/60 flex items-center justify-center relative">
-                      {cand.photo_url ? (
-                        <img 
-                          src={cand.photo_url} 
-                          alt={cand.name} 
-                          className="w-full h-full object-cover object-top" 
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="text-xs text-slate-400 font-medium">Foto Resmi Paslon</span>
-                      )}
+                    {/* Foto Paslon Resmi (3:4) */}
+                    <div className="w-full flex justify-center py-2 mb-3">
+                      <div className="w-36 aspect-[3/4] rounded-2xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center relative">
+                        {cand.photo_url ? (
+                          <img 
+                            src={cand.photo_url} 
+                            alt={cand.name} 
+                            className="w-full h-full object-cover object-top" 
+                          />
+                        ) : (
+                          <div className="text-center p-2 text-slate-400 text-[11px] font-medium">
+                            Foto Paslon Resmi (3:4)
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <h3 className="font-bold text-slate-900 text-sm leading-snug line-clamp-1">
@@ -429,12 +436,21 @@ export default function AdminRekapPage() {
                       </span>
                     </div>
 
-                    <div className="w-full h-40 rounded-xl overflow-hidden mb-3 bg-white border border-slate-200/60 flex items-center justify-center">
-                      {cand.photo_url ? (
-                        <img src={cand.photo_url} alt={cand.name} className="w-full h-full object-cover object-top" loading="lazy" />
-                      ) : (
-                        <span className="text-xs text-slate-400 font-medium">Foto Resmi Paslon</span>
-                      )}
+                    {/* Foto Paslon HIMA (3:4) */}
+                    <div className="w-full flex justify-center py-1 mb-2">
+                      <div className="w-32 aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center relative">
+                        {cand.photo_url ? (
+                          <img 
+                            src={cand.photo_url} 
+                            alt={cand.name} 
+                            className="w-full h-full object-cover object-top" 
+                          />
+                        ) : (
+                          <div className="text-center p-2 text-slate-400 text-[10px] font-medium">
+                            Foto Paslon (3:4)
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <h4 className="font-bold text-slate-900 text-xs leading-snug line-clamp-1">{cand.name}</h4>
@@ -539,6 +555,7 @@ export default function AdminRekapPage() {
           </table>
         </div>
       </section>
-    </div>
+    </main>
+  </div>
   );
 }

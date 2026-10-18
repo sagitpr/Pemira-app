@@ -58,34 +58,38 @@ export default function AdminHeader({
         >
           <Menu className="w-4 h-4 sm:w-5 sm:h-5 text-slate-700" />
         </button>
-        <img
-          src="/candidate/image/logo-pemira.png"
-          onError={(e) => {
-            const target = e.currentTarget;
-            if (!target.src.includes('/candidates/image/Image-logo-Pemira.png')) {
-              target.src = '/candidates/image/Image-logo-Pemira.png';
-            } else {
-              target.style.display = 'none';
-            }
-          }}
-          alt="Logo Pemira"
-          className="h-8 sm:h-12 w-auto object-contain drop-shadow-sm shrink-0"
-        />
-        <h1 className="text-xs sm:text-base font-black text-slate-900 tracking-tight truncate max-w-[120px] xs:max-w-[180px] sm:max-w-none">
-          {title || 'PEMIRA 2026 – KPR UBTH'}
-        </h1>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-800 shadow-2xs shrink-0">
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${
-              electionStatus === 'AKTIF'
-                ? 'bg-emerald-500'
-                : electionStatus === 'JEDA'
-                ? 'bg-amber-500'
-                : 'bg-slate-500'
-            }`}
+        <div className="w-9 h-9 rounded-xl bg-slate-50 border border-slate-200/60 p-1.5 flex items-center justify-center shrink-0">
+          <img
+            src="/candidate/image-logo-Pemira.png"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('/image-logo-Pemira.png')) {
+                target.src = '/image-logo-Pemira.png';
+              }
+            }}
+            alt="Logo"
+            className="w-full h-full object-contain"
           />
-          <span>{electionStatus}</span>
-        </span>
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xs font-bold text-slate-900 leading-none">
+              {title || 'PEMIRA 2026 - KPR UBTH'}
+            </h2>
+            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1.5">
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  electionStatus === 'AKTIF'
+                    ? 'bg-emerald-500'
+                    : electionStatus === 'JEDA'
+                    ? 'bg-amber-500'
+                    : 'bg-slate-500'
+                }`}
+              />
+              <span>{electionStatus}</span>
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Right: Actions */}
