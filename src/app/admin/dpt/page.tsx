@@ -185,7 +185,9 @@ export default function AdminDptPage() {
   };
 
   const handleResetSingleVoter = async (nim: string, name: string) => {
-    if (!confirm(`Buka kembali hak suara untuk mahasiswa ${name} (${nim})? Mahasiswa ini akan dapat diverifikasi dan mencoblos ulang di bilik.`)) return;
+    const confirmReset = window.confirm('Kembalikan hak suara untuk ' + name + ' (' + nim + ') menjadi Belum Memilih?');
+    if (!confirmReset) return;
+
     try {
       const res = await fetch('/api/admin/reset-election', {
         method: 'POST',
@@ -193,12 +195,15 @@ export default function AdminDptPage() {
         body: JSON.stringify({ action: 'RESET_SINGLE_VOTER', nim })
       });
       const data = await res.json();
+
       if (data.success) {
         alert(data.message);
-        fetchDptData(false); // Refresh tabel
+        fetchDptData(false);
+      } else {
+        alert(data.error || 'Gagal reset hak suara.');
       }
     } catch (e) {
-      alert('Gagal mereset hak suara pemilih.');
+      alert('Terjadi kesalahan jaringan.');
     }
   };
 
@@ -531,7 +536,7 @@ export default function AdminDptPage() {
                     <th className="py-3 px-4 text-center w-28">Angkatan</th>
                     <th className="py-3 px-4 text-center w-36">Status Hak Suara</th>
                     <th className="py-3 px-5 text-right w-44">Waktu Memilih</th>
-                    <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 w-24">Aksi</th>
+                    <th className="px-6 py-3.5 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 w-36">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200/80">
@@ -613,17 +618,14 @@ export default function AdminDptPage() {
                           </td>
                           {/* Kolom Aksi Hapus & Reset Per Baris */}
                           <td className="px-6 py-4 text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {isSelesai && (
+                            <div className="flex items-center justify-center gap-1.5">
+                              {v.has_voted && (
                                 <button
                                   type="button"
                                   onClick={() => handleResetSingleVoter(v.nim, displayName)}
-                                  title="Reset Hak Suara Mahasiswa Ini"
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
+                                  className="px-2.5 py-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 rounded-lg hover:bg-amber-100 transition cursor-pointer"
                                 >
-                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                  </svg>
+                                  Reset ke Belum
                                 </button>
                               )}
                               <button

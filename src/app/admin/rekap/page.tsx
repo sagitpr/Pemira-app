@@ -132,14 +132,55 @@ export default function AdminRekapPage() {
     return bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0);
   }, [bemCandidates]);
 
+  // Handler Reset Seluruh Pemilihan dari Halaman Rekap
+  const handleResetFromRekap = async () => {
+    const confirmAction = window.confirm('Konfirmasi: Anda akan mengosongkan seluruh perolehan suara menjadi 0 dan mengembalikan status seluruh DPT menjadi Belum Memilih. Lanjutkan?');
+    if (!confirmAction) return;
+
+    try {
+      const res = await fetch('/api/admin/reset-election', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESET_ALL' })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        // Bersihkan seluruh cache lokal di browser admin
+        sessionStorage.removeItem('rekap_cache_bem');
+        sessionStorage.removeItem('rekap_cache_hima');
+        sessionStorage.removeItem('rekap_cache_matrix');
+        sessionStorage.removeItem('rekap_cache_metrics');
+        sessionStorage.removeItem('pemira_admin_voters_cache');
+        sessionStorage.removeItem('pemira_dashboard_metrics');
+
+        alert(data.message);
+        window.location.reload();
+      } else {
+        alert(data.error || 'Gagal melakukan reset.');
+      }
+    } catch (e) {
+      alert('Terjadi kesalahan jaringan.');
+    }
+  };
+
   return (
     <div className="space-y-8 pb-16">
       {/* HEADER UTAMA */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-900 tracking-tight">Rekapitulasi Suara Pemilihan</h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Penghitungan suara sah masuk, persentase partisipasi per kandidat, dan matriks 14 program studi secara realtime.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Rekapitulasi Suara Pemilihan</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Penghitungan suara sah masuk, persentase partisipasi per kandidat, dan matriks 14 program studi secara realtime.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleResetFromRekap}
+          className="self-start sm:self-center px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold shadow-xs transition"
+        >
+          Reset Perolehan Suara
+        </button>
       </div>
 
       {/* 4 KOTAK KAD METRIK RINGKASAN REKAPITULASI (DIKEMBALIKAN SEMULA) */}

@@ -173,28 +173,32 @@ export default function AdminPengaturanPage() {
 
   const handleSaveBoothConfig = handleSaveConfig;
 
-  // Tombol Reset Seluruh Pemilihan ke 0 & Buka Kembali Hak Suara DPT (Gladi Bersih -> Hari H)
-  const handleResetAllElection = async () => {
-    const confirm1 = confirm("PERINGATAN KRUSIAL: Apakah Anda yakin ingin mereset SELURUH perolehan suara menjadi 0 dan membuka kembali hak suara seluruh DPT?");
-    if (!confirm1) return;
-    const confirm2 = prompt("Ketik 'RESET2026' untuk mengonfirmasi tindakan pembersihan:");
-    if (confirm2 !== 'RESET2026') {
-      alert("Konfirmasi dibatalkan.");
-      return;
-    }
+  // Tombol Reset Seluruh Pemilihan ke 0 & Buka Kembali Hak Suara DPT
+  const handleExecuteResetAll = async () => {
+    const confirmAction = window.confirm('Konfirmasi: Anda akan mengosongkan seluruh perolehan suara menjadi 0 dan mengembalikan status seluruh DPT menjadi Belum Memilih. Lanjutkan?');
+    if (!confirmAction) return;
 
     try {
       const res = await fetch('/api/admin/reset-election', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'RESET_ALL_ELECTION' })
+        body: JSON.stringify({ action: 'RESET_ALL' })
       });
       const data = await res.json();
+
       if (data.success) {
+        // Bersihkan seluruh cache lokal di browser admin
+        sessionStorage.removeItem('rekap_cache_bem');
+        sessionStorage.removeItem('rekap_cache_hima');
+        sessionStorage.removeItem('rekap_cache_matrix');
+        sessionStorage.removeItem('rekap_cache_metrics');
+        sessionStorage.removeItem('pemira_admin_voters_cache');
+        sessionStorage.removeItem('pemira_dashboard_metrics');
+
         alert(data.message);
         window.location.reload();
       } else {
-        alert(data.error || 'Gagal mereset.');
+        alert(data.error || 'Gagal melakukan reset.');
       }
     } catch (e) {
       alert('Terjadi kesalahan jaringan.');
@@ -623,21 +627,20 @@ export default function AdminPengaturanPage() {
             </div>
           </div>
 
-          {/* ZONA PEMBERSIHAN DATA (GLADI BERSIH) */}
-          <div className="bg-rose-50/50 border border-rose-200/80 rounded-2xl p-5 mt-6">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <h4 className="font-bold text-rose-900 text-xs uppercase tracking-wider">Zona Pembersihan Data (Gladi Bersih)</h4>
-            </div>
+          {/* ZONA PEMBERSIHAN DATA SUARA */}
+          <div className="bg-rose-50/60 border border-rose-200/80 rounded-2xl p-5 mt-6">
+            <h4 className="font-bold text-rose-900 text-xs uppercase tracking-wider mb-1">
+              Zona Pembersihan Data Suara
+            </h4>
             <p className="text-xs text-rose-700/80 mb-4 leading-relaxed">
-              Gunakan tombol ini setelah gladi bersih selesai untuk mengosongkan kotak suara digital kembali ke 0 dan mengizinkan seluruh mahasiswa di DPT memberikan suara kembali pada hari pemilihan resmi.
+              Gunakan tombol ini untuk mengosongkan kotak suara kembali ke 0, mengembalikan status seluruh pemilih di DPT menjadi Belum Memilih, dan membuka kembali bilik suara fisik.
             </p>
             <button
               type="button"
-              onClick={handleResetAllElection}
+              onClick={handleExecuteResetAll}
               className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
             >
-              Reset Kotak Suara ke 0 &amp; Buka Kembali Seluruh DPT
+              Reset Kotak Suara ke Nol dan Buka Status DPT
             </button>
           </div>
         </section>
