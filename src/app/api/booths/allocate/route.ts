@@ -1,114 +1,115 @@
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
-    const { booth_number, requested_token } = await req.json();
+    const { booth_number, session_token } = await req.json();
 
-    // --------------------------------------------------------------------------
-    // KASUS A: Pemilih Scan QR Spesifik Bilik Tertentu (misal: ?booth=2)
-    // --------------------------------------------------------------------------
+    // 1. CEK IDEMPOTENSI: Jika token sesi ini sudah dialokasikan ke bilik, kembalikan bilik tersebut
+    if (session_token) {
+      const existingAllocation = await sql`
+        SELECT id, booth_number, name, status, session_token
+        FROM booths
+        WHERE session_token = ${session_token}
+        LIMIT 1
+      `;
+
+      if (existingAllocation && existingAllocation.length > 0) {
+        return NextResponse.json({
+          success: true,
+          allocated: true,
+          booth: existingAllocation[0],
+          message: 'Sesi bilik aktif ditemukan kembali.'
+        });
+      }
+    }
+
+    // 2. KASUS SCAN QR SPESIFIK BILIK FISIK (Contoh: ?booth=1)
     if (booth_number) {
       const bNum = parseInt(booth_number, 10);
-      
-      const targetBooths = await sql`
-        SELECT id, booth_number, name, status, session_token 
-        FROM booths 
+      const targetCheck = await sql`
+        SELECT id, booth_number, name, status, session_token
+        FROM booths
         WHERE booth_number = ${bNum}
         LIMIT 1
       `;
 
-      if (targetBooths && targetBooths.length > 0) {
-        const target = targetBooths[0];
+      if (targetCheck && targetCheck.length > 0) {
+        const target = targetCheck[0];
+        const statusUpper = (target.status || '').toUpperCase();
 
-        // Jika bilik tersebut SEDANG DIGUNAKAN oleh orang lain
-        if (target.status === 'OCCUPIED' || target.status === 'ALLOCATED') {
-          // Periksa apakah tokennya sama (kasus refresh HP sendiri)
-          if (requested_token && target.session_token === requested_token) {
-            return NextResponse.json({
-              success: true,
-              allocated: true,
-              booth: target,
-              message: 'Melanjutkan sesi bilik aktif Anda.'
-            });
-          }
-
-          // Jika orang lain yang mencoba masuk ke bilik yang sedang dipakai:
+        if (statusUpper === 'OCCUPIED' || statusUpper === 'ALLOCATED') {
           return NextResponse.json({
             success: true,
             allocated: false,
             waiting: true,
-            booth_in_use: bNum,
-            message: `Bilik ${String(bNum).padStart(2, '0')} saat ini sedang digunakan oleh pemilih lain. Sistem sedang mencari bilik kosong...`
+            message: 'Bilik nomor ' + bNum + ' sedang digunakan oleh pemilih lain.'
           });
         }
 
-        // Jika bilik tersebut AVAILABLE (Kosong), langsung kunci:
-        const token = requested_token || `UBTH-B${bNum}-${Date.now()}`;
-        await sql`
-          UPDATE booths 
-          SET status = 'ALLOCATED', session_token = ${token}, started_at = NOW(), updated_at = NOW()
-          WHERE id = ${target.id}
+        const token = session_token || ('UBTH-B' + bNum + '-' + Date.now());
+        const lockedTarget = await sql`
+          UPDATE booths
+          SET status = 'ALLOCATED',
+              session_token = ${token},
+              started_at = NOW(),
+              updated_at = NOW()
+          WHERE id = ${target.id} AND UPPER(status) IN ('AVAILABLE', 'TERSEDIA')
+          RETURNING id, booth_number, name, status, session_token
         `;
 
-        return NextResponse.json({
-          success: true,
-          allocated: true,
-          booth: { ...target, status: 'ALLOCATED', session_token: token }
-        });
+        if (lockedTarget && lockedTarget.length > 0) {
+          return NextResponse.json({
+            success: true,
+            allocated: true,
+            booth: lockedTarget[0]
+          });
+        }
       }
     }
 
-    // --------------------------------------------------------------------------
-    // KASUS B: Scan Umum / Antrean Otomatis (Cari Bilik Kosong Nomor Terkecil)
-    // --------------------------------------------------------------------------
-    // Cari bilik aktif pertama yang statusnya 'AVAILABLE'
-    const availableBooths = await sql`
-      SELECT id, booth_number, name, status 
-      FROM booths 
-      WHERE status = 'AVAILABLE' AND (is_active = true OR is_active IS NULL)
-      ORDER BY booth_number ASC 
-      LIMIT 1
+    // 3. KASUS ALOKASI OTOMATIS: AMBIL BILIK KOSONG NOMOR TERKECIL SECARA ATOMIK
+    const clientToken = session_token || ('UBTH-' + Date.now() + '-' + Math.floor(Math.random() * 1000));
+
+    const assigned = await sql`
+      UPDATE booths
+      SET status = 'ALLOCATED',
+          session_token = ${clientToken},
+          started_at = NOW(),
+          updated_at = NOW()
+      WHERE id = (
+        SELECT id
+        FROM booths
+        WHERE UPPER(status) IN ('AVAILABLE', 'TERSEDIA')
+          AND (is_active = true OR is_active IS NULL)
+        ORDER BY booth_number ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      RETURNING id, booth_number, name, status, session_token
     `;
 
-    if (availableBooths && availableBooths.length > 0) {
-      const selectedBooth = availableBooths[0];
-      const token = `UBTH-B${selectedBooth.booth_number}-${Date.now()}`;
-
-      // Kunci bilik secara atomik
-      const lockRes = await sql`
-        UPDATE booths 
-        SET status = 'ALLOCATED', session_token = ${token}, started_at = NOW(), updated_at = NOW()
-        WHERE id = ${selectedBooth.id} AND status = 'AVAILABLE'
-        RETURNING id, booth_number, name, status, session_token, started_at
-      `;
-
-      if (lockRes && lockRes.length > 0) {
-        return NextResponse.json({
-          success: true,
-          allocated: true,
-          booth: lockRes[0]
-        });
-      }
+    if (assigned && assigned.length > 0) {
+      return NextResponse.json({
+        success: true,
+        allocated: true,
+        booth: assigned[0]
+      });
     }
 
-    // --------------------------------------------------------------------------
-    // KASUS C: SEMUA BILIK PENUH! (Tidak ada yang AVAILABLE)
-    // --------------------------------------------------------------------------
-    const totalCountRes = await sql`SELECT count(*)::int as total FROM booths WHERE is_active = true OR is_active IS NULL`;
-    const totalBooths = totalCountRes[0]?.total || 16;
-
+    // 4. JIKA SEMUA BILIK TERISI
     return NextResponse.json({
       success: true,
       allocated: false,
       waiting: true,
-      totalBooths,
-      message: `Seluruh bilik suara (${totalBooths} Bilik) saat ini sedang terisi. Anda berada dalam antrean otomatis.`
+      message: 'Seluruh bilik suara fisik sedang terisi. Anda berada dalam antrean otomatis.'
     });
 
   } catch (err: any) {
-    console.error('Error allocate booth:', err);
+    console.error('Error alokasi bilik:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

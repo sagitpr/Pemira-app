@@ -180,6 +180,7 @@ function VoteContent() {
   // Penanda status submit berhasil & ref channel realtime bilik
   const isVoteFinishedRef = useRef(false);
   const boothChannelRef = useRef<any>(null);
+  const allocationExecutedRef = useRef(false);
 
   const [assignedBooth, setAssignedBooth] = useState<any>(null);
   const [assignedBoothName, setAssignedBoothName] = useState<string>('Bilik 01');
@@ -357,30 +358,38 @@ function VoteContent() {
     }
   };
 
-  // 1. Validasi Token Cerdas & Anti-Share (Dukungan Pinjam HP & Resilient Fallback)
+  // 1. Validasi Token Cerdas & Anti-Share (Client-Side Allocation Guard)
   const attemptBoothAllocation = async (targetBoothNum?: number) => {
+    // Cegah pemanggilan berulang kali dari mount yang sama
+    if (allocationExecutedRef.current) return;
+    allocationExecutedRef.current = true;
+
     try {
-      const activeSession = typeof window !== 'undefined' ? sessionStorage.getItem('pemira_active_session') : null;
-      const requestedToken = activeSession ? JSON.parse(activeSession).token : undefined;
+      // Siapkan token sesi klien persisten
+      let clientSessionToken = sessionStorage.getItem('pemira_client_token');
+      if (!clientSessionToken) {
+        clientSessionToken = 'UBTH-SES-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
+        sessionStorage.setItem('pemira_client_token', clientSessionToken);
+      }
 
       const res = await fetch('/api/booths/allocate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           booth_number: targetBoothNum,
-          requested_token: requestedToken
+          session_token: clientSessionToken
         })
       });
+
       const data = await res.json();
 
       if (data.success && data.allocated && data.booth) {
-        // BERHASIL DAPAT BILIK:
         setIsWaitingQueue(false);
         const b = data.booth;
         setAssignedBooth(b);
-        setAssignedBoothId(b.id || `booth-${b.booth_number}`);
         setAssignedBoothNumber(b.booth_number);
         setAssignedBoothName(b.name || `Bilik ${String(b.booth_number).padStart(2, '0')}`);
+        setAssignedBoothId(b.id || `booth-${b.booth_number}`);
 
         sessionStorage.setItem('pemira_active_session', JSON.stringify({
           booth_number: b.booth_number,
@@ -395,10 +404,11 @@ function VoteContent() {
         setLoading(false);
         return true;
       } else if (data.waiting) {
-        // SEMUA BILIK PENUH / MASUK ANTREAN:
+        // Izinkan pemanggilan ulang jika berstatus antrean
+        allocationExecutedRef.current = false;
         setIsWaitingQueue(true);
-        setQueueMessage(data.message || 'Seluruh bilik suara fisik sedang terisi.');
-        setIsAccessGranted(true); // Izinkan render layar antrean
+        setQueueMessage(data.message || 'Seluruh bilik fisik sedang terisi.');
+        setIsAccessGranted(true);
         setIsCheckingAccess(false);
         setLoading(false);
         return false;
@@ -409,13 +419,15 @@ function VoteContent() {
         window.location.replace('about:blank');
         return false;
       }
-    } catch (e) {
+    } catch (err) {
+      allocationExecutedRef.current = false;
       setIsCheckingAccess(false);
       setLoading(false);
       return false;
     }
   };
 
+  // Jalankan Pengecekan Mount Tepat Satu Kali
   useEffect(() => {
     setMounted(true);
 
@@ -425,56 +437,29 @@ function VoteContent() {
 
     const params = new URLSearchParams(window.location.search);
     const boothParam = params.get('booth') || params.get('b');
-    const tokenParam = params.get('token') || params.get('t');
 
-    if (boothParam) {
-      const boothNo = parseInt(boothParam, 10);
-      sessionStorage.clear();
-      localStorage.removeItem('pemira_booth_session');
-      localStorage.removeItem('pemira_completed_voter');
-      localStorage.removeItem('pemira_active_token');
-      localStorage.removeItem('pemira_assigned_booth');
-      localStorage.removeItem('pemira_access_verified');
+    // Hapus parameter URL agar tidak dapat disalin
+    window.history.replaceState({}, document.title, window.location.pathname);
 
-      fetch('/api/booths/allocate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ booth_number: boothNo, token: tokenParam })
-      }).catch(console.error);
-
-      sessionStorage.setItem('pemira_active_session', JSON.stringify({
-        booth_number: boothNo,
-        token: tokenParam
-      }));
-      setAssignedBooth({ booth_number: boothNo });
-      setAssignedBoothNumber(boothNo);
-
-      // HAPUS URL TOKEN DARI ADDRESS BAR SECARA INSTAN
-      window.history.replaceState(null, '', window.location.pathname);
-      setIsAccessGranted(true);
-      setIsCheckingAccess(false);
-
-      // Coba sinkronisasi penuh
-      attemptBoothAllocation(boothNo);
-    } else {
-      const active = sessionStorage.getItem('pemira_active_session');
-      if (active) {
-        try {
-          const parsed = JSON.parse(active);
+    // Periksa apakah sudah ada sesi bilik aktif di peramban ini
+    const activeSessionRaw = sessionStorage.getItem('pemira_active_session');
+    if (activeSessionRaw) {
+      try {
+        const parsed = JSON.parse(activeSessionRaw);
+        if (parsed.booth_number) {
           setAssignedBooth(parsed);
           setAssignedBoothNumber(Number(parsed.booth_number) || 1);
+          setAssignedBoothName(`Bilik ${String(parsed.booth_number).padStart(2, '0')}`);
           setIsAccessGranted(true);
           setIsCheckingAccess(false);
           setLoading(false);
-        } catch {
-          window.location.replace('about:blank');
+          return;
         }
-      } else {
-        window.location.replace('about:blank');
-      }
-      setIsCheckingAccess(false);
-      setLoading(false);
+      } catch (e) {}
     }
+
+    // Jika sesi baru, jalankan alokasi tunggal
+    attemptBoothAllocation(boothParam ? parseInt(boothParam, 10) : undefined);
 
     return () => {
       document.removeEventListener('contextmenu', blockContext);
@@ -486,6 +471,7 @@ function VoteContent() {
     if (isWaitingQueue) {
       queuePollingRef.current = setInterval(async () => {
         // Coba ambil bilik kosong yang baru selesai digunakan pemilih lain
+        allocationExecutedRef.current = false;
         const success = await attemptBoothAllocation();
         if (success && queuePollingRef.current) {
           clearInterval(queuePollingRef.current);
