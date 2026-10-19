@@ -151,10 +151,6 @@ export default function SelesaiPage() {
       {/* Konten Kartu Utama */}
       <main className="w-full max-w-md mx-auto my-auto py-4">
         <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm flex flex-col items-center text-center">
-          
-          <p className="text-[11px] font-bold tracking-widest text-emerald-600 uppercase mb-2">
-            TRANSAKSI SUARA BERHASIL
-          </p>
 
           <h2 className="text-xl font-bold text-slate-900 leading-snug mb-2">
             Terima Kasih Atas Partisipasi Anda

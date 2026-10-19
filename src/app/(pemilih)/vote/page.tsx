@@ -719,7 +719,7 @@ function VoteContent() {
       return;
     }
     if (!cleanName) {
-      setVerifyError('Silakan masukkan Nama Lengkap Anda sesuai DPT.');
+      setVerifyError('Silakan masukkan Nama Lengkap Anda.');
       return;
     }
     if (!selectedProdi) {
@@ -1285,7 +1285,7 @@ function VoteContent() {
                 Verifikasi Hak Suara DPT
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Masukkan data diri resmi Anda sesuai Daftar Pemilih Tetap (DPT) Universitas Bakti Tunas Husada.
+                Masukkan data diri resmi Anda Universitas Bakti Tunas Husada.
               </p>
             </div>
 
@@ -1344,7 +1344,7 @@ function VoteContent() {
               {/* 2. Nama Lengkap Sesuai DPT (Wajib) */}
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
-                  Nama Lengkap (Sesuai DPT) <span className="text-rose-500">*</span>
+                  Nama Lengkap  <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <User className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
