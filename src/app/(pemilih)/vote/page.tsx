@@ -770,19 +770,43 @@ function VoteContent() {
     setIsSubmitting(true);
     setIsConfirmModalOpen(false);
 
-    // KUNCI UTAMA: Matikan heartbeat seketika agar tidak memicu false exit ke about:blank
+    // Inisialisasi audio seketika pada gestur klik aktif
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        (window as any).__pemira_audio_ctx = ctx;
+
+        const audio = new Audio('/audio/terimakasih.mp3');
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        (window as any).__pemira_audio = audio;
+
+        const source = ctx.createMediaElementSource(audio);
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(3.0, ctx.currentTime);
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        audio.play().catch(() => {});
+      } else {
+        const audio = new Audio('/audio/terimakasih.mp3');
+        audio.volume = 1.0;
+        (window as any).__pemira_audio = audio;
+        audio.play().catch(() => {});
+      }
+    } catch (audioErr) {
+      console.warn('Audio pre-trigger error:', audioErr);
+    }
+
     isSubmittingVoteRef.current = true;
     if (heartbeatTimerRef.current) clearInterval(heartbeatTimerRef.current);
 
     try {
-      if (!selectedBem) {
-        alert("Silakan tentukan pilihan Presiden BEM.");
-        setIsSubmitting(false);
-        isSubmittingVoteRef.current = false;
-        return;
-      }
-
-      const voterNim = verifiedVoter?.nim || detectedVoter?.nim || inputNim.trim();
+      const voterNim = detectedVoter?.nim || inputNim.trim();
 
       const res = await fetch('/api/vote/submit', {
         method: 'POST',
@@ -796,31 +820,22 @@ function VoteContent() {
       });
 
       const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Gagal menyimpan suara');
 
-      if (!data.success) {
-        throw new Error(data.message || 'Gagal menyimpan suara');
-      }
-
-      // 2. Simpan identitas pemilih ke sessionStorage untuk layar selesai
       sessionStorage.setItem('pemira_completed_voter', JSON.stringify({
-        name: verifiedVoter?.name || detectedVoter?.name || inputName.trim() || 'Mahasiswa UBTH',
+        name: detectedVoter?.name || inputName.trim() || 'Mahasiswa UBTH',
         nim: voterNim || '-',
-        prodi: verifiedVoter?.prodi || detectedVoter?.prodi || inputProdi.trim() || '-',
-        booth_number: assignedBooth?.booth_number || assignedBoothNumber || 1,
+        prodi: detectedVoter?.prodi || inputProdi.trim() || '-',
         voted_at: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
       }));
 
-      // Hapus sesi bilik aktif
       sessionStorage.removeItem('pemira_active_session');
       sessionStorage.removeItem('pemira_session_token');
-
-      // 4. Pengalihan Instan ke Halaman Selesai
       router.replace('/selesai');
 
     } catch (err: any) {
-      console.error("Gagal merekam suara:", err);
       isSubmittingVoteRef.current = false;
-      alert("Gagal menyimpan suara: " + (err.message || 'Silakan ulangi'));
+      alert(err.message || 'Gagal menyimpan suara.');
       setIsSubmitting(false);
     }
   };

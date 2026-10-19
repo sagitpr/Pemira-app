@@ -322,7 +322,7 @@ export default function QrScreenPage() {
       {/* Footer */}
       <footer className="z-20 mb-1 text-center">
         <p className="text-[11px] md:text-xs font-semibold tracking-wider text-slate-500 uppercase">
-          PEMILIHAN RAYA MAHASISWA 2026 • BILIK SUARA DIGITAL BY Mr.s SISTEM INFORMASI
+          PEMILIHAN RAYA MAHASISWA 2026 • BILIK SUARA DIGITAL BY SAGIT FATURRAKHMAN
         </p>
       </footer>
     </main>
