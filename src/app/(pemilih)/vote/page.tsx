@@ -830,8 +830,9 @@ function VoteContent() {
   const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    return `0${m}:${s < 10 ? '0' : ''}${s}`;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
+  const formatTime = formatTimer;
 
   // Safe Candidate Lists Fallback
   const safeBemList = dbCandidatesLoaded && dbBemCandidates.length > 0 ? dbBemCandidates : BEM_CANDIDATES;
@@ -1011,14 +1012,26 @@ function VoteContent() {
     return (
       <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased select-none">
         {/* Header Resmi Identik */}
-        <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center overflow-hidden">
-              <img src="/candidate/image-logo-Pemira.png" alt="Logo Pemira" className="w-full h-full object-contain" />
-            </div>
+        <header className="w-full max-w-md mx-auto flex items-center justify-between py-3 px-1">
+          <div className="flex items-center gap-3">
+            <img 
+              src="/candidate/image-logo-Pemira.png" 
+              alt="Logo Pemira" 
+              className="w-9 h-9 object-contain shrink-0"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.includes('image-logo-Pemira.png')) {
+                  target.src = '/image-logo-Pemira.png';
+                }
+              }}
+            />
             <div>
-              <h1 className="text-xs font-bold text-slate-900 tracking-tight leading-none">PEMIRA UBTH 2026</h1>
-              <p className="text-[10px] font-medium text-slate-500 tracking-wide mt-0.5">KOMISI PEMILIHAN RAYA</p>
+              <h1 className="text-xs font-bold text-slate-900 tracking-tight leading-none">
+                PEMIRA UBTH 2026
+              </h1>
+              <p className="text-[10px] font-medium text-slate-500 tracking-wide mt-1">
+                KOMISI PEMILIHAN RAYA
+              </p>
             </div>
           </div>
           <span className="text-[11px] font-semibold text-blue-600 tracking-tight">
@@ -1166,37 +1179,35 @@ function VoteContent() {
       )}
 
       {/* HEADER HALAMAN /VOTE */}
-      <header className="w-full max-w-full bg-white/80 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-slate-100 sticky top-0 z-30">
-        {/* Kiri: Logo & Nama */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-white border border-[#EFECE6] p-1 shadow-xs flex items-center justify-center overflow-hidden">
-            <img
-              src="/candidate/image-logo-Pemira.png"
-              alt="Logo Pemira"
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                const target = e.currentTarget;
-                if (!target.src.includes('image-logo-Pemira')) {
-                  target.src = '/image-logo-Pemira.png';
-                }
-              }}
-            />
-          </div>
+      <header className="w-full max-w-md mx-auto flex items-center justify-between py-3 px-1">
+        <div className="flex items-center gap-3">
+          {/* LOGO MURNI TANPA KOTAK BINGKAI */}
+          <img 
+            src="/candidate/image-logo-Pemira.png" 
+            alt="Logo Pemira" 
+            className="w-9 h-9 object-contain shrink-0"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.includes('image-logo-Pemira.png')) {
+                target.src = '/image-logo-Pemira.png';
+              }
+            }}
+          />
           <div>
-            <h1 className="text-sm font-bold text-slate-800 leading-tight">PEMIRA UBTH 2026</h1>
-            <p className="text-[10px] text-slate-500 font-medium">KOMISI PEMILIHAN RAYA</p>
+            <h1 className="text-xs font-bold text-slate-900 tracking-tight leading-none">
+              PEMIRA UBTH 2026
+            </h1>
+            <p className="text-[10px] font-medium text-slate-500 tracking-wide mt-1">
+              KOMISI PEMILIHAN RAYA
+            </p>
           </div>
         </div>
 
-        {/* Kanan: Indikator Timer Sesi Bilik */}
-        <div className="flex items-center gap-2 sm:gap-4 text-xs">
-          {/* Sesi Bilik Timer */}
-          {step !== 'BOOTH_ROUTING' && step !== 'SUCCESS' && step !== 'SESSION_EXPIRED' && (
-            <div className="flex items-center gap-1.5 font-semibold text-rose-600 whitespace-nowrap">
-              <span className={`w-2 h-2 rounded-full bg-rose-500 ${isLoadingCandidates ? 'opacity-40 animate-none' : 'animate-ping'}`}></span>
-              <span>Sesi: {isLoadingCandidates ? 'Memuat Data...' : formatTimer(timerSeconds)}</span>
-            </div>
-          )}
+        {/* SESI WAKTU TANPA TITIK LINGKARAN INDIKATOR */}
+        <div className="text-right">
+          <span className="text-xs font-bold text-rose-600 font-mono">
+            Sesi: {formatTime(timeLeft)}
+          </span>
         </div>
       </header>
 
@@ -1263,24 +1274,34 @@ function VoteContent() {
               </p>
             </div>
 
-            <div className="p-3.5 bg-slate-50/70 border border-slate-200/80 rounded-2xl flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
-                  <Monitor className="w-4 h-4" />
-                </div>
+            <div className="bg-[#FAF8F4] border border-[#EFECE6] rounded-2xl p-4 flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3.5">
+                {/* IKON MONITOR MURNI TANPA KOTAK WRAPPER */}
+                <svg 
+                  className="w-6 h-6 text-slate-700 shrink-0" 
+                  fill="none" 
+                  viewBox="0 0 24 24" 
+                  stroke="currentColor" 
+                  strokeWidth={1.8}
+                >
+                  <path 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" 
+                  />
+                </svg>
+
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Bilik Aktif
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                    BILIK AKTIF
                   </span>
-                  <span className="text-xs font-black text-slate-900">
-                    Bilik {assignedBoothNumber}
+                  <span className="text-sm font-bold text-slate-900 block mt-0.5">
+                    Bilik {assignedBooth?.booth_number || 1}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Terkunci Khusus Anda</span>
-              </div>
+
+              {/* ELEMEN KANAN (TITIK HIJAU DAN TEKS TERKUNCI KHUSUS ANDA) DIHAPUS SEPENUHNYA */}
             </div>
 
             <form onSubmit={handleVerifyDPT} className="space-y-4">
