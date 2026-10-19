@@ -9,17 +9,23 @@ export default function SelesaiPage() {
     prodi: string;
     voted_at: string;
   } | null>(null);
-  const [countdown, setCountdown] = useState(60); // 1 Menit Penuh
-  const speechIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [countdown, setCountdown] = useState(60);
   const hasExitedRef = useRef(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
-  // FUNGSI KELUAR KE ABOUT:BLANK
   const handleExitToAboutBlank = () => {
     if (hasExitedRef.current) return;
     hasExitedRef.current = true;
 
-    if (speechIntervalRef.current) clearInterval(speechIntervalRef.current);
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    // Hentikan pemutaran audio dan tutup AudioContext
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current.currentTime = 0;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {});
+    }
 
     sessionStorage.clear();
     localStorage.clear();
@@ -28,7 +34,6 @@ export default function SelesaiPage() {
   };
 
   useEffect(() => {
-    // Validasi sesi: jika tidak ada data selesai yang sah, langsung lempar ke about:blank
     const stored = sessionStorage.getItem('pemira_completed_voter');
     if (!stored) {
       handleExitToAboutBlank();
@@ -41,32 +46,52 @@ export default function SelesaiPage() {
       console.error(e);
     }
 
-    // Audio Suara Terima Kasih Resmi
-    const speakThankYou = () => {
-      try {
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const text = "Terima kasih atas partisipasi Anda dalam Pemilihan Raya Mahasiswa Universitas Bakti Tunas Husada Tahun 2026. Hak suara Anda telah berhasil disimpan secara sah.";
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'id-ID';
-          utterance.rate = 0.95;
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
+    // Inisialisasi Audio dengan Web Audio API GainNode untuk penguatan volume maksimal
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        audioContextRef.current = ctx;
+
+        const audio = new Audio('/audio/terimakasih.mp3');
+        audio.preload = 'auto';
+        audio.volume = 1.0;
+        audioElementRef.current = audio;
+
+        const source = ctx.createMediaElementSource(audio);
+        const gainNode = ctx.createGain();
+
+        // Penguatan volume digital 2.5 kali lipat
+        gainNode.gain.setValueAtTime(2.5, ctx.currentTime);
+
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        if (ctx.state === 'suspended') {
+          ctx.resume().then(() => {
+            audio.play().catch(() => {});
+          });
+        } else {
+          audio.play().catch(() => {});
         }
-      } catch (err) {}
-    };
+      } else {
+        const audio = new Audio('/audio/terimakasih.mp3');
+        audio.volume = 1.0;
+        audioElementRef.current = audio;
+        audio.play().catch(() => {});
+      }
+    } catch (err) {
+      console.warn('Inisialisasi audio selesai mengalami kendala:', err);
+    }
 
-    speakThankYou();
-    speechIntervalRef.current = setInterval(speakThankYou, 20000);
-
-    // Kunci tombol back browser
+    // Pencegahan navigasi mundur peramban
     window.history.pushState(null, '', window.location.href);
     const handlePopState = () => {
       window.history.pushState(null, '', window.location.href);
     };
     window.addEventListener('popstate', handlePopState);
 
-    // Timer 60 Detik menuju about:blank
+    // Hitung mundur 60 detik menuju penutupan sesi permanen
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -80,15 +105,19 @@ export default function SelesaiPage() {
 
     return () => {
       clearInterval(timer);
-      if (speechIntervalRef.current) clearInterval(speechIntervalRef.current);
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(() => {});
+      }
       window.removeEventListener('popstate', handlePopState);
     };
   }, []);
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-slate-800 flex flex-col justify-between p-4 md:p-6 font-sans antialiased">
-      {/* Header Resmi Identik */}
+      {/* Header Halaman */}
       <header className="w-full max-w-md mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-white border border-[#EFECE6] p-1.5 shadow-xs flex items-center justify-center overflow-hidden">
@@ -114,7 +143,7 @@ export default function SelesaiPage() {
         </span>
       </header>
 
-      {/* Konten Kartu Utama */}
+      {/* Konten Utama */}
       <main className="w-full max-w-md mx-auto my-auto py-4">
         <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 shadow-sm flex flex-col items-center text-center">
           
@@ -150,7 +179,7 @@ export default function SelesaiPage() {
             </div>
           </div>
 
-          {/* Penunjuk Sesi Bilik (Hitung Mundur 60s) */}
+          {/* Penunjuk Sisa Waktu Sesi */}
           <div className="w-full bg-slate-50 border border-slate-200/60 rounded-xl py-2 px-3 mb-6 flex items-center justify-center gap-2 text-[11px] text-slate-500">
             <span>Sesi bilik tertutup otomatis dalam</span>
             <span className="font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
@@ -160,12 +189,12 @@ export default function SelesaiPage() {
 
           <button
             onClick={handleExitToAboutBlank}
-            className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99] cursor-pointer"
+            className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99]"
           >
-            Selesai & Keluar dari Bilik
+            Selesai dan Keluar dari Bilik
           </button>
 
-          {/* Watermark Konsisten */}
+          {/* Penanda Pengembang Sistem */}
           <div className="w-full mt-6 pt-4 border-t border-[#EFECE6] flex items-center justify-center gap-1.5 text-[10px] text-slate-400 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span>Engineered by <strong className="text-slate-700 font-semibold">Sagit Faturrakhman</strong></span>
@@ -173,10 +202,10 @@ export default function SelesaiPage() {
         </div>
       </main>
 
-      {/* Footer Resmi Identik */}
+      {/* Footer Halaman */}
       <footer className="w-full py-3 text-center">
         <p className="text-[11px] text-slate-400 font-medium tracking-wide">
-          KOMISI PEMILIHAN RAYA • UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
+          KOMISI PEMILIHAN RAYA - UNIVERSITAS BAKTI TUNAS HUSADA TASIKMALAYA 2026
         </p>
       </footer>
     </div>
