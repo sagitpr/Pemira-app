@@ -189,8 +189,9 @@ export default function SelesaiPage() {
           </div>
 
           <button
+            type="button"
             onClick={handleExitToAboutBlank}
-            className="w-full py-3 px-4 bg-[#0F172A] hover:bg-[#1E293B] text-white rounded-xl text-xs font-semibold tracking-wide transition shadow-xs active:scale-[0.99]"
+            className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-semibold tracking-wide shadow-md shadow-blue-500/20 transition active:scale-[0.99] flex items-center justify-center"
           >
             Selesai dan Keluar dari Bilik
           </button>

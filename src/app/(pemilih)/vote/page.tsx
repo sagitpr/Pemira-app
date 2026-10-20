@@ -1256,11 +1256,12 @@ function VoteContent() {
 
             {/* TOMBOL TUNGGAL: [ Saya Sudah Berada di Bilik ] */}
             <button
+              type="button"
               onClick={() => {
                 triggerFullscreenMode();
                 handleArrivedAtBooth();
               }}
-              className="w-full py-4 px-6 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-lg shadow-slate-900/20 cursor-pointer active:scale-95"
+              className="w-full py-4 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm sm:text-base flex items-center justify-center gap-2 transition-all shadow-md shadow-blue-500/20 cursor-pointer active:scale-95"
             >
               <span>Saya Sudah Berada di Bilik</span>
               <ArrowRight className="w-5 h-5" />
@@ -1412,20 +1413,16 @@ function VoteContent() {
                   type="submit"
                   onClick={() => triggerFullscreenMode()}
                   disabled={isVerifying || !inputNim.trim() || !inputName.trim() || !inputProdi.trim()}
-                  className={`w-full sm:w-auto px-6 py-3 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 ${
-                    isVerifying || !inputNim.trim() || !inputName.trim() || !inputProdi.trim()
-                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 cursor-pointer active:scale-95'
-                  }`}
+                  className="w-full sm:w-auto py-3.5 px-6 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-300 text-white rounded-xl text-xs font-semibold tracking-wide shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
                 >
                   {isVerifying ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
-                      <span>Memverifikasi DPT...</span>
+                      <span>Memverifikasi Data...</span>
                     </>
                   ) : (
                     <>
-                      <span>Verifikasi &amp; Buka Surat Suara</span>
+                      <span>Verifikasi dan Buka Surat Suara</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -1462,7 +1459,7 @@ function VoteContent() {
                   Pemilih Sah: <strong>{verifiedVoter?.name || inputName}</strong> ({verifiedVoter?.nim || inputNim}) • Silakan tentukan satu pasangan calon Presiden &amp; Wakil Presiden BEM.
                 </p>
               </div>
-              <span className="self-start sm:self-center text-xs font-black px-3 py-1.5 rounded-full bg-slate-900 text-white uppercase tracking-wider">
+              <span className="self-start sm:self-center text-xs font-bold px-3 py-1.5 rounded-full bg-blue-600 text-white uppercase tracking-wider">
                 BEM-U
               </span>
             </div>
@@ -1517,9 +1514,9 @@ function VoteContent() {
                               &ldquo;{cand?.tagline || cand?.slogan || 'Inovatif, Transparan, dan Berdaya Saing'}&rdquo;
                             </p>
                           </div>
-                          <div className="w-10 h-10 rounded-2xl bg-slate-900 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                          <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
                             {displayNumber}
-                          </div>
+                          </span>
                         </div>
 
                         <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-4">
@@ -1601,11 +1598,7 @@ function VoteContent() {
                 type="button"
                 onClick={() => setStep('VOTE_HIMA')}
                 disabled={!selectedBem}
-                className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl text-xs sm:text-sm font-bold shadow-lg flex items-center justify-center gap-2 transition-all ${
-                  !selectedBem
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/25 cursor-pointer active:scale-95'
-                }`}
+                className="w-full sm:w-auto py-3.5 px-8 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-300 disabled:shadow-none text-white rounded-xl text-xs sm:text-sm font-semibold tracking-wide shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <span>Lanjut ke Pemilihan HIMA</span>
                 <ArrowRight className="w-4 h-4" />
@@ -1640,7 +1633,7 @@ function VoteContent() {
                     <span className="font-semibold text-slate-700">{verifiedVoter?.prodi || voterProdi}</span>
                   </p>
                 </div>
-                <span className="self-start sm:self-center text-xs font-bold px-3 py-1.5 rounded-full bg-[#0F172A] text-white tracking-wider">
+                <span className="self-start sm:self-center text-xs font-bold px-3 py-1.5 rounded-full bg-blue-600 text-white tracking-wider">
                   HIMA {verifiedVoter?.prodi || voterProdi}
                 </span>
               </div>
@@ -1683,7 +1676,7 @@ function VoteContent() {
                       setSelectedHimaId('');
                       setStep('REVIEW_CONFIRM');
                     }}
-                    className="inline-flex items-center gap-2.5 px-6 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold shadow-lg shadow-slate-900/20 cursor-pointer active:scale-95 transition-all"
+                    className="inline-flex items-center gap-2.5 py-3.5 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-semibold tracking-wide shadow-md shadow-blue-500/20 cursor-pointer active:scale-95 transition"
                   >
                     <span>Lanjut ke Konfirmasi Akhir (BEM)</span>
                     <ArrowRight className="w-4 h-4" />
@@ -1732,9 +1725,9 @@ function VoteContent() {
                                 &ldquo;{cand?.tagline || cand?.slogan || 'Sinergi dan Prestasi untuk Program Studi'}&rdquo;
                               </p>
                             </div>
-                            <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                            <span className="w-8 h-8 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center justify-center shadow-xs shrink-0">
                               {displayNumber}
-                            </div>
+                            </span>
                           </div>
 
                           <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-[3/4] max-w-[150px] w-full mx-auto bg-slate-100 flex items-center justify-center relative shadow-xs mb-3">
@@ -1823,16 +1816,14 @@ function VoteContent() {
                   setStep('REVIEW_CONFIRM');
                 }}
                 disabled={prodiHimaCandidates.length > 0 && !selectedHima}
-                className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl text-xs sm:text-sm font-bold shadow-lg flex items-center justify-center gap-2 transition-all ${
-                  prodiHimaCandidates.length > 0 && !selectedHima
-                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                    : 'bg-slate-900 hover:bg-slate-800 text-white shadow-slate-900/20 cursor-pointer active:scale-95'
-                }`}
+                className="w-full sm:w-auto py-3.5 px-8 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-slate-300 disabled:shadow-none text-white rounded-xl text-xs sm:text-sm font-semibold tracking-wide shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <span>
                   {prodiHimaCandidates.length === 0 ? 'Lanjut ke Konfirmasi Akhir (BEM)' : 'Lanjut ke Konfirmasi Akhir'}
                 </span>
-                <ArrowRight className="w-4 h-4" />
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                </svg>
               </button>
             </div>
 
@@ -1868,13 +1859,13 @@ function VoteContent() {
             {/* RINGKASAN BERDAMPINGAN: BEM & HIMA */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
               {/* KARTU 1: PILIHAN BEM */}
-              <div className="rounded-3xl border-2 border-slate-900/40 bg-slate-50/60 p-6 flex flex-col justify-between shadow-sm">
+              <div className="rounded-3xl border-2 border-blue-600/30 bg-blue-50/20 p-6 flex flex-col justify-between shadow-sm">
                 <div>
                   <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
                     <span className="text-xs font-black text-slate-900 uppercase tracking-wider">
                       1. Pilihan Presiden BEM
                     </span>
-                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-900 text-white">
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-600 text-white">
                       BEM-U
                     </span>
                   </div>
@@ -2007,8 +1998,8 @@ function VoteContent() {
               <button
                 type="button"
                 disabled={isSubmitting}
-                onClick={handleFinalConfirmVote}
-                className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-black shadow-lg shadow-slate-900/25 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                onClick={handleSubmitVote}
+                className="w-full sm:w-auto py-3.5 px-8 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-300 text-white rounded-xl text-xs sm:text-sm font-semibold tracking-wide shadow-md shadow-blue-500/20 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 {isSubmitting ? (
                   <>
@@ -2017,8 +2008,10 @@ function VoteContent() {
                   </>
                 ) : (
                   <>
-                    <Check className="w-5 h-5 stroke-[3]" />
-                    <span>Kirim &amp; Masukkan ke Kotak Suara</span>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.4}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Kirim dan Masukkan ke Kotak Suara</span>
                   </>
                 )}
               </button>
