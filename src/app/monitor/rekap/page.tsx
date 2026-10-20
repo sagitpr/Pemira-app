@@ -169,7 +169,9 @@ export default function MonitorRekapPage() {
                     </div>
 
                     <h3 className="font-bold text-slate-900 text-sm leading-snug text-center mb-1 line-clamp-1">
-                      {cand.name}
+                      {(cand.name && !cand.name.toLowerCase().startsWith('paslon')) 
+                        ? cand.name 
+                        : (cand.leader_name || cand.name || ('Paslon ' + cand.candidate_number))}
                     </h3>
                     <p className="text-[11px] text-slate-500 italic text-center line-clamp-1 mb-4">
                       "{cand.slogan || 'Menuju Kampus BTH Berkemajuan'}"

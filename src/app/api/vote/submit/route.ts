@@ -41,28 +41,40 @@ export async function POST(req: Request) {
       }, { status: 403 });
     }
 
-    // 2. Ambil informasi nama paslon BEM untuk log basis data
+    // 2. Ambil data paslon BEM dengan memprioritaskan nama asli
     const bemInfo = await sql`
-      SELECT name, candidate_number 
+      SELECT id, name, leader_name, candidate_number 
       FROM candidates 
-      WHERE id = ${String(bem_candidate_id)} OR candidate_number::text = ${String(bem_candidate_id)}
+      WHERE (id = ${String(bem_candidate_id)} OR candidate_number::text = ${String(bem_candidate_id)})
+        AND UPPER(COALESCE(category, type, '')) = 'BEM'
       LIMIT 1
     `;
-    const bemLabel = bemInfo.length > 0 
-      ? 'Paslon ' + (bemInfo[0].candidate_number || '') + ' - ' + (bemInfo[0].name || '')
-      : String(bem_candidate_id);
+
+    let bemLabel = 'Paslon ' + String(bem_candidate_id);
+    if (bemInfo.length > 0) {
+      const c = bemInfo[0];
+      const realName = (c.name && !c.name.toLowerCase().startsWith('paslon')) 
+        ? c.name 
+        : (c.leader_name || c.name || '');
+      bemLabel = 'Paslon ' + (c.candidate_number || '') + (realName ? ' - ' + realName : '');
+    }
 
     // 3. Ambil informasi nama paslon HIMA jika ada
     let himaLabel = null;
     if (hima_candidate_id && hima_candidate_id !== 'skip' && hima_candidate_id !== 'none') {
       const himaInfo = await sql`
-        SELECT name, candidate_number, prodi 
+        SELECT name, leader_name, candidate_number, prodi 
         FROM candidates 
-        WHERE id = ${String(hima_candidate_id)} OR candidate_number::text = ${String(hima_candidate_id)}
+        WHERE (id = ${String(hima_candidate_id)} OR candidate_number::text = ${String(hima_candidate_id)})
+          AND UPPER(COALESCE(category, type, '')) <> 'BEM'
         LIMIT 1
       `;
       if (himaInfo.length > 0) {
-        himaLabel = 'Paslon ' + (himaInfo[0].candidate_number || '') + ' - ' + (himaInfo[0].name || '') + ' (' + (himaInfo[0].prodi || '') + ')';
+        const c = himaInfo[0];
+        const realName = (c.name && !c.name.toLowerCase().startsWith('paslon'))
+          ? c.name
+          : (c.leader_name || c.name || '');
+        himaLabel = 'Paslon ' + (c.candidate_number || '') + (realName ? ' - ' + realName : '') + (c.prodi ? ' (' + c.prodi + ')' : '');
       } else {
         himaLabel = String(hima_candidate_id);
       }

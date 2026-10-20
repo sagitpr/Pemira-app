@@ -1587,9 +1587,11 @@ function VoteContent() {
                 {bemCandidates.map((cand: any) => {
                   const isSelected = selectedBem && String(selectedBem.id) === String(cand.id);
                   const displayPhoto = candidatePhotos[cand.id] || cand?.photoUrl || cand?.photo_url || cand?.image_url;
-                  const displayName = cand?.leaderName || cand?.leader_name || cand?.name || 'Kandidat';
-                  const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
                   const displayNumber = cand?.candidate_number ?? cand?.candidateNumber ?? cand?.number ?? '01';
+                  const displayName = (cand?.name && !cand.name.toLowerCase().startsWith('paslon'))
+                    ? cand.name
+                    : (cand?.leaderName || cand?.leader_name || cand?.name || ('Paslon ' + displayNumber));
+                  const displayVice = cand?.viceLeaderName || cand?.vice_leader_name || '';
 
                   return (
                     <div
@@ -1992,7 +1994,9 @@ function VoteContent() {
                         Nomor Urut {selectedBem?.candidate_number ?? selectedBem?.candidateNumber ?? selectedBem?.number ?? '01'}
                       </span>
                       <h4 className="text-base font-black text-slate-900 leading-snug">
-                        {selectedBem?.leaderName || selectedBem?.leader_name || selectedBem?.name || 'Kandidat BEM'}
+                        {(selectedBem?.name && !selectedBem.name.toLowerCase().startsWith('paslon'))
+                          ? selectedBem.name
+                          : (selectedBem?.leaderName || selectedBem?.leader_name || selectedBem?.name || 'Kandidat BEM')}
                         {selectedBem?.viceLeaderName || selectedBem?.vice_leader_name
                           ? ` & ${selectedBem?.viceLeaderName || selectedBem?.vice_leader_name}`
                           : ''}
