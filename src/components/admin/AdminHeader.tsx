@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useAdmin } from '@/context/AdminContext';
 import AppLogo from '@/components/common/AppLogo';
 import {
-  Eye,
-  EyeOff,
   Maximize2,
   Minimize2,
   User,
@@ -94,19 +93,14 @@ export default function AdminHeader({
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {actionButton}
 
-        {/* Sensor Button */}
-        <button
-          onClick={toggleSensor}
-          className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-            isSensorActive
-              ? 'bg-amber-50 text-amber-800 border-amber-300 ring-2 ring-amber-200'
-              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs'
-          }`}
-          title="Sensor Tampilan Suara"
+        {/* Input Suara Cepat */}
+        <Link
+          href="/admin/input-suara"
+          className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 px-3 py-1.5 rounded-xl hover:bg-blue-100 transition shadow-2xs"
         >
-          {isSensorActive ? <EyeOff className="h-4 w-4 text-amber-600 shrink-0" /> : <Eye className="h-4 w-4 text-slate-500 shrink-0" />}
-          <span className="hidden sm:inline">Sensor Suara</span>
-        </button>
+          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+          <span>Input Suara Cepat</span>
+        </Link>
 
         {/* Fullscreen Button */}
         <button

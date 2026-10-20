@@ -26,7 +26,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           }
 
           if (isOperator) {
-            const forbiddenForOperator = ['/admin/rekap', '/admin/paslon', '/admin/pengaturan'];
+            const forbiddenForOperator = ['/admin/rekap', '/admin/paslon', '/admin/pengaturan', '/admin/input-suara'];
             if (forbiddenForOperator.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
               alert('Akses Dibatasi: Halaman ini hanya dapat diakses oleh Super Admin.');
               window.location.replace('/admin/dashboard');
@@ -35,7 +35,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           }
 
           if (!isSuperAdmin) {
-            const superAdminOnly = ['/admin/paslon', '/admin/pengaturan'];
+            const superAdminOnly = ['/admin/paslon', '/admin/pengaturan', '/admin/input-suara'];
             if (superAdminOnly.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
               alert('Akses Dibatasi: Halaman ini hanya dapat diakses oleh Super Admin.');
               window.location.replace('/admin/dashboard');
@@ -46,6 +46,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       }
     }
   }, [pathname]);
+
+  if (pathname === '/admin/input-suara') {
+    return <div className="min-h-screen bg-slate-50 font-sans text-slate-900 w-full">{children}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 w-full relative">
