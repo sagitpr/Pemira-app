@@ -8,79 +8,60 @@ export async function POST(req: Request) {
   try {
     const { booth_number, session_token } = await req.json();
 
-    // 1. CEK IDEMPOTENSI: Jika token sesi ini sudah dialokasikan ke bilik, kembalikan bilik tersebut
+    // 1. Validasi Token Sesi Eksisting
     if (session_token) {
-      const existingAllocation = await sql`
+      const existing = await sql`
         SELECT id, booth_number, name, status, session_token
         FROM booths
         WHERE session_token = ${session_token}
         LIMIT 1
       `;
-
-      if (existingAllocation && existingAllocation.length > 0) {
+      if (existing && existing.length > 0) {
         return NextResponse.json({
           success: true,
           allocated: true,
-          booth: existingAllocation[0],
-          message: 'Sesi bilik aktif ditemukan kembali.'
+          booth: existing[0]
         });
       }
     }
 
-    // 2. KASUS SCAN QR SPESIFIK BILIK FISIK (Contoh: ?booth=1)
+    // 2. KASUS SCAN QR SPESIFIK BILIK TERTENTU
     if (booth_number) {
       const bNum = parseInt(booth_number, 10);
-      const targetCheck = await sql`
-        SELECT id, booth_number, name, status, session_token
-        FROM booths
-        WHERE booth_number = ${bNum}
-        LIMIT 1
+      const token = session_token || ('UBTH-B' + bNum + '-' + Date.now());
+
+      const lockedSpecific = await sql`
+        UPDATE booths
+        SET status = 'ALLOCATED',
+            session_token = ${token},
+            started_at = NOW(),
+            updated_at = NOW()
+        WHERE booth_number = ${bNum} 
+          AND UPPER(status) IN ('AVAILABLE', 'TERSEDIA')
+        RETURNING id, booth_number, name, status, session_token
       `;
 
-      if (targetCheck && targetCheck.length > 0) {
-        const target = targetCheck[0];
-        const statusUpper = (target.status || '').toUpperCase();
-
-        if (statusUpper === 'OCCUPIED' || statusUpper === 'ALLOCATED') {
-          return NextResponse.json({
-            success: true,
-            allocated: false,
-            waiting: true,
-            message: 'Bilik nomor ' + bNum + ' sedang digunakan oleh pemilih lain.'
-          });
-        }
-
-        const token = session_token || ('UBTH-B' + bNum + '-' + Date.now());
-        const lockedTarget = await sql`
-          UPDATE booths
-          SET status = 'ALLOCATED',
-              session_token = ${token},
-              started_at = NOW(),
-              updated_at = NOW()
-          WHERE id = ${target.id} AND UPPER(status) IN ('AVAILABLE', 'TERSEDIA')
-          RETURNING id, booth_number, name, status, session_token
-        `;
-
-        if (lockedTarget && lockedTarget.length > 0) {
-          return NextResponse.json({
-            success: true,
-            allocated: true,
-            booth: lockedTarget[0]
-          });
-        }
+      if (lockedSpecific && lockedSpecific.length > 0) {
+        return NextResponse.json({
+          success: true,
+          allocated: true,
+          booth: lockedSpecific[0]
+        });
+      } else {
+        return NextResponse.json({
+          success: true,
+          allocated: false,
+          waiting: true,
+          message: 'Bilik nomor ' + bNum + ' sedang digunakan oleh pemilih lain.'
+        });
       }
     }
 
-    // 3. KASUS ALOKASI OTOMATIS: AMBIL BILIK KOSONG NOMOR TERKECIL SECARA ATOMIK
+    // 3. KASUS AUTO-DISPATCH (PILIH BILIK KOSONG NOMOR TERKECIL SECARA ATOMIK)
     const clientToken = session_token || ('UBTH-' + Date.now() + '-' + Math.floor(Math.random() * 1000));
 
-    const assigned = await sql`
-      UPDATE booths
-      SET status = 'ALLOCATED',
-          session_token = ${clientToken},
-          started_at = NOW(),
-          updated_at = NOW()
-      WHERE id = (
+    const lockedAuto = await sql`
+      WITH available_target AS (
         SELECT id
         FROM booths
         WHERE UPPER(status) IN ('AVAILABLE', 'TERSEDIA')
@@ -89,18 +70,25 @@ export async function POST(req: Request) {
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING id, booth_number, name, status, session_token
+      UPDATE booths b
+      SET status = 'ALLOCATED',
+          session_token = ${clientToken},
+          started_at = NOW(),
+          updated_at = NOW()
+      FROM available_target
+      WHERE b.id = available_target.id
+      RETURNING b.id, b.booth_number, b.name, b.status, b.session_token
     `;
 
-    if (assigned && assigned.length > 0) {
+    if (lockedAuto && lockedAuto.length > 0) {
       return NextResponse.json({
         success: true,
         allocated: true,
-        booth: assigned[0]
+        booth: lockedAuto[0]
       });
     }
 
-    // 4. JIKA SEMUA BILIK TERISI
+    // 4. SELURUH BILIK TERISI
     return NextResponse.json({
       success: true,
       allocated: false,
@@ -109,7 +97,7 @@ export async function POST(req: Request) {
     });
 
   } catch (err: any) {
-    console.error('Error alokasi bilik:', err);
+    console.error('Error atomic allocate booth:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

@@ -111,10 +111,10 @@ export default function AdminRekapPage() {
   useEffect(() => {
     fetchRekapData(false);
 
-    // Polling hening setiap 1.5 detik
+    // Polling hening setiap 1 detik
     const timer = setInterval(() => {
       fetchRekapData(true);
-    }, 1500);
+    }, 1000);
 
     return () => clearInterval(timer);
   }, []);

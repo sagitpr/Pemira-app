@@ -465,14 +465,23 @@ export default function AdminDptPage() {
                     setSelectedProdi(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-slate-50/70 focus:outline-hidden focus:border-slate-500 focus:bg-white transition-colors cursor-pointer"
+                  className="w-full text-xs px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 font-medium text-slate-700"
                 >
                   <option value="Semua Program Studi (14 Prodi)">Semua Program Studi (14 Prodi)</option>
-                  {MASTER_PRODI.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
+                  <option value="Bisnis Digital">Bisnis Digital</option>
+                  <option value="Sistem Informasi">Sistem Informasi</option>
+                  <option value="Teknologi Pangan">Teknologi Pangan</option>
+                  <option value="Kewirausahaan">Kewirausahaan</option>
+                  <option value="S1 Administrasi Rumah Sakit (ARS)">S1 Administrasi Rumah Sakit (ARS)</option>
+                  <option value="S1 Keperawatan">S1 Keperawatan</option>
+                  <option value="S1 Gizi">S1 Gizi</option>
+                  <option value="D3 Keperawatan">D3 Keperawatan</option>
+                  <option value="D3 Refraksi Optisi / Optometri (RO)">D3 Refraksi Optisi / Optometri (RO)</option>
+                  <option value="D3 Teknologi Laboratorium Medis (TLM)">D3 Teknologi Laboratorium Medis (TLM)</option>
+                  <option value="S1 Farmasi">S1 Farmasi</option>
+                  <option value="S1 Rekayasa Kosmetik">S1 Rekayasa Kosmetik</option>
+                  <option value="Pendidikan Profesi Apoteker">Pendidikan Profesi Apoteker (PSPPA)</option>
+                  <option value="S2 Farmasi">S2 Farmasi</option>
                 </select>
               </div>
             </div>

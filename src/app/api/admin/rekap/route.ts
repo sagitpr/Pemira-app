@@ -7,9 +7,9 @@ import { sql } from '@/lib/db';
 
 export async function GET() {
   try {
-    const currentServerTime = Date.now();
+    const timestamp = Date.now();
 
-    // 1. Kueri Kandidat & Suara: Cocokkan c.id ATAU c.candidate_number secara case-insensitive
+    // 1. Agregasi Suara Kandidat BEM & HIMA langsung di database
     const candidateVotes = await sql`
       SELECT 
         c.id, 
@@ -33,74 +33,50 @@ export async function GET() {
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Ambil Total Suara Sah BEM murni (Case-Insensitive)
-    const bemCountRes = await sql`
-      SELECT count(*)::int as total 
-      FROM votes 
-      WHERE UPPER(category) = 'BEM' OR UPPER(type) = 'BEM'
-    `;
-    const totalBemSuaraSah = bemCountRes[0]?.total || 0;
-
-    // Tambahkan kueri agregasi suara per interval 10 menit untuk BEM:
-    const timelineRes = await sql`
+    // 2. Agregasi Ringkasan Total Suara Masuk & DPT
+    const summaryRes = await sql`
       SELECT 
-        to_char(
-          date_trunc('hour', v.created_at) + 
-          INTERVAL '10 minute' * floor(date_part('minute', v.created_at) / 10), 
-          'HH24:MI'
-        ) AS time_slot,
-        v.candidate_id::text,
-        COUNT(v.id)::int AS vote_count
-      FROM votes v
-      WHERE UPPER(COALESCE(v.category, v.type, '')) = 'BEM'
-      GROUP BY 1, 2
-      ORDER BY 1 ASC
+        (SELECT count(*)::int FROM voters) as total_dpt,
+        (SELECT count(*)::int FROM voters WHERE has_voted = true) as total_sudah_memilih,
+        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'BEM') as total_suara_bem,
+        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'HIMA') as total_suara_hima
     `;
 
-    // 3. Ambil data voters untuk matriks 14 prodi
-    const voters = await sql`SELECT id, prodi, faculty, has_voted FROM voters`;
+    const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0, total_suara_bem: 0, total_suara_hima: 0 };
+    const totalDpt = summary.total_dpt || 0;
+    const totalSudah = summary.total_sudah_memilih || 0;
+    const totalBelum = totalDpt - totalSudah;
+    const partisipasi = totalDpt > 0 ? ((totalSudah / totalDpt) * 100).toFixed(1) + '%' : '0.0%';
 
-    // Matriks 14 Program Studi Resmi
-    const MASTER_MATRIX = [
-      { no: 1, name: 'Bisnis Digital', faculty: 'FTB', match: ['bisnis digital'] },
-      { no: 2, name: 'Sistem Informasi', faculty: 'FTB', match: ['sistem informasi'] },
-      { no: 3, name: 'Teknologi Pangan', faculty: 'FTB', match: ['teknologi pangan', 'pangan', 'tekpang'] },
-      { no: 4, name: 'Kewirausahaan', faculty: 'FTB', match: ['kewirausahaan', 'kwu'] },
-      { no: 5, name: 'S1 Administrasi Rumah Sakit (ARS)', faculty: 'FIKES', match: ['administrasi rumah sakit', 'ars'] },
-      { no: 6, name: 'S1 Keperawatan', faculty: 'FIKES', match: ['s1 keperawatan', 'keperawatan s1'] },
-      { no: 7, name: 'S1 Gizi', faculty: 'FIKES', match: ['gizi'] },
-      { no: 8, name: 'D3 Keperawatan', faculty: 'FIKES', match: ['d3 keperawatan', 'keperawatan d3'] },
-      { no: 9, name: 'D3 Refraksi Optisi / Optometri (RO)', faculty: 'FIKES', match: ['optometri', 'refraksi optisi', 'refraksi', 'optisi'] },
-      { no: 10, name: 'D3 Teknologi Laboratorium Medis (TLM)', faculty: 'FIKES', match: ['laboratorium medis', 'tlm', 'analis kesehatan'] },
-      { no: 11, name: 'S1 Farmasi', faculty: 'FARMASI', match: ['s1 farmasi', 'farmasi s1'] },
-      { no: 12, name: 'S1 Rekayasa Kosmetik', faculty: 'FARMASI', match: ['rekayasa kosmetik', 'kosmetik', 'rekos'] },
-      { no: 13, name: 'Pendidikan Profesi Apoteker', faculty: 'FARMASI', match: ['apoteker', 'psppa'] },
-      { no: 14, name: 'S2 Farmasi', faculty: 'FARMASI', match: ['s2 farmasi', 'magister farmasi', 'farmasi s2'] }
-    ];
+    // 3. Agregasi Matriks 14 Program Studi langsung di PostgreSQL (Super Ringan & Cepat)
+    const matrixRes = await sql`
+      SELECT 
+        sp.id AS no,
+        sp.name,
+        sp.faculty,
+        COUNT(v.id)::int AS total_dpt,
+        COUNT(v.id) FILTER (WHERE v.has_voted = true)::int AS suara_masuk
+      FROM study_program sp
+      LEFT JOIN voters v ON (
+        LOWER(TRIM(COALESCE(v.prodi, v.prodi_name, ''))) ILIKE '%' || LOWER(TRIM(sp.name)) || '%'
+        OR (sp.code IS NOT NULL AND LOWER(TRIM(COALESCE(v.prodi, v.prodi_name, ''))) ILIKE '%' || LOWER(TRIM(sp.code)) || '%')
+      )
+      GROUP BY sp.id, sp.name, sp.faculty, sp.code
+      ORDER BY sp.id ASC
+    `;
 
-    const matrix = MASTER_MATRIX.map(item => {
-      const prodiVoters = voters.filter((v: any) => {
-        const raw = (v.prodi || '').toLowerCase().trim();
-        if (item.name.includes('S1 Keperawatan') && raw.includes('d3')) return false;
-        if (item.name.includes('D3 Keperawatan') && (raw.includes('s1') || !raw.includes('d3'))) return false;
-        if (item.name === 'S1 Farmasi' && (raw.includes('s2') || raw.includes('magister') || raw.includes('apoteker') || raw.includes('psppa'))) return false;
-        if (item.name === 'S2 Farmasi' && (raw.includes('s1') || (!raw.includes('s2') && !raw.includes('magister')))) return false;
-        return item.match.some(m => raw.includes(m));
-      });
-
-      const totalDpt = prodiVoters.length;
-      const suaraMasuk = prodiVoters.filter((v: any) => v.has_voted === true).length;
-      const sisaBelum = totalDpt - suaraMasuk;
-      const partisipasi = totalDpt > 0 ? ((suaraMasuk / totalDpt) * 100).toFixed(1) + '%' : '-';
-
+    const matrix = matrixRes.map((row: any) => {
+      const tot = row.total_dpt || 0;
+      const masuk = row.suara_masuk || 0;
+      const sisa = tot - masuk;
       return {
-        no: item.no,
-        name: item.name,
-        faculty: item.faculty,
-        totalDpt,
-        suaraMasuk,
-        sisaBelum: sisaBelum > 0 ? sisaBelum : (totalDpt === 0 ? '-' : 0),
-        partisipasi
+        no: row.no,
+        name: row.name,
+        faculty: row.faculty,
+        totalDpt: tot,
+        suaraMasuk: masuk,
+        sisaBelum: sisa > 0 ? sisa : (tot === 0 ? '-' : 0),
+        partisipasi: tot > 0 ? ((masuk / tot) * 100).toFixed(1) + '%' : '-'
       };
     });
 
@@ -114,50 +90,35 @@ export async function GET() {
       return !cat.includes('BEM');
     });
 
-    const totalDptCount = voters.length;
-    const totalSudahMemilih = voters.filter((v: any) => v.has_voted === true).length;
-    const totalBelumMemilih = Math.max(0, totalDptCount - totalSudahMemilih);
-    const totalPartisipasi = totalDptCount > 0 
-      ? ((totalSudahMemilih / totalDptCount) * 100).toFixed(1) + '%' 
-      : '0.0%';
-
     return new NextResponse(
       JSON.stringify({
         success: true,
+        metrics: {
+          totalDpt,
+          suaraMasuk: totalSudah,
+          belumMemilih: totalBelum,
+          partisipasi
+        },
         matrix,
         bemCandidates,
         himaCandidates,
+        totalDpt,
+        totalBemSuaraSah: summary.total_suara_bem || 0,
         candidateVotes,
-        totalDpt: totalDptCount,
-        totalBemSuaraSah,
-        timeline: timelineRes || [],
-        metrics: {
-          totalDpt: totalDptCount,
-          suaraMasuk: totalSudahMemilih,
-          belumMemilih: totalBelumMemilih,
-          partisipasi: totalPartisipasi
-        },
-        summary: {
-          totalVoters: totalDptCount,
-          totalSudahMemilih,
-          totalBelumMemilih,
-          partisipasi: totalDptCount > 0 ? ((totalSudahMemilih / totalDptCount) * 100).toFixed(1) : '0.0',
-          totalBemVotes: totalBemSuaraSah
-        },
-        timestamp: currentServerTime
+        timestamp
       }),
       {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
           'Pragma': 'no-cache',
           'Expires': '0',
         },
       }
     );
   } catch (err: any) {
-    console.error('Error rekap route:', err);
+    console.error('Error rekap route fast:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

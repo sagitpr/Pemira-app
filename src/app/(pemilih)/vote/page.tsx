@@ -466,7 +466,7 @@ function VoteContent() {
     };
   }, []);
 
-  // Polling Otomatis Saat Berada di Antrean (Mengecek Bilik Kosong Tiap 2 Detik)
+  // Polling Otomatis Saat Berada di Antrean (Mengecek Bilik Kosong Tiap 800ms)
   useEffect(() => {
     if (isWaitingQueue) {
       queuePollingRef.current = setInterval(async () => {
@@ -476,7 +476,7 @@ function VoteContent() {
         if (success && queuePollingRef.current) {
           clearInterval(queuePollingRef.current);
         }
-      }, 2000);
+      }, 800);
     }
 
     return () => {

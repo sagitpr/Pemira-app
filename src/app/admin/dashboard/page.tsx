@@ -188,7 +188,10 @@ export default function AdminDashboardPage() {
   // REALTIME FAST-SYNC DARI DATABASE NEON VIA /api/admin/dashboard
   const fetchDashboardData = async () => {
     try {
-      const res = await fetch('/api/admin/dashboard');
+      const res = await fetch(`/api/admin/dashboard?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       if (!res.ok) return;
       const data = await res.json();
       if (data.success) {
@@ -233,13 +236,10 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
-    // 1. Fetch pertama kali
     fetchDashboardData();
-
-    // 2. Realtime Sync setiap 2 detik (sangat ringan dan aman di Neon)
     const interval = setInterval(() => {
       fetchDashboardData();
-    }, 2000);
+    }, 1000); // 1 detik sinkronisasi bilik
 
     return () => clearInterval(interval);
   }, []);
