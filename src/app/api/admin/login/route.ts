@@ -48,9 +48,13 @@ export async function POST(request: Request) {
       role: user.role || 'admin'
     };
 
+    const userRole = (user.role || '').toLowerCase();
+    const redirectUrl = userRole === 'saksi' ? '/monitor/rekap' : '/admin/dashboard';
+
     const response = NextResponse.json({
       success: true,
       message: 'Login berhasil.',
+      redirectUrl,
       user: sessionData
     });
 

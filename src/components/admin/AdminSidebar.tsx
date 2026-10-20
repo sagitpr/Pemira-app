@@ -12,11 +12,12 @@ import {
   Settings,
   ExternalLink,
   X,
+  LogOut,
 } from 'lucide-react';
 
 export default function AdminSidebar() {
   const pathname = usePathname();
-  const { isMobileSidebarOpen, setIsMobileSidebarOpen } = useAdmin();
+  const { isMobileSidebarOpen, setIsMobileSidebarOpen, logout } = useAdmin();
 
   const [userRole, setUserRole] = useState<string>('superadmin');
 
@@ -152,6 +153,23 @@ export default function AdminSidebar() {
             </div>
             <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
           </Link>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (isMobile) setIsMobileSidebarOpen(false);
+              if (window.confirm('Konfirmasi: Anda akan keluar dari akun admin. Lanjutkan?')) {
+                logout();
+              }
+            }}
+            className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200/80 transition-colors shadow-2xs cursor-pointer mt-1"
+          >
+            <div className="flex items-center gap-2">
+              <LogOut className="w-3.5 h-3.5 text-rose-500" />
+              <span>Keluar Akun</span>
+            </div>
+            <span className="text-[10px] text-rose-500/80 font-mono">Logout</span>
+          </button>
         </div>
       </div>
     </>

@@ -153,7 +153,25 @@ const INITIAL_CONFIG: SystemConfig = {
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
-  const [currentAdmin, setCurrentAdmin] = useState<AdminAccount | null>(null);
+  const [currentAdmin, setCurrentAdmin] = useState<AdminAccount | null>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = sessionStorage.getItem('pemira_admin_profile') || localStorage.getItem('pemira_admin_session');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          return {
+            id: parsed.id || 'adm',
+            name: parsed.name || 'Admin KPUM',
+            email: parsed.email || '',
+            role: parsed.role || 'Admin',
+            status: 'Aktif',
+            lastActive: 'Online',
+          };
+        } catch {}
+      }
+    }
+    return null;
+  });
   const [voters, setVoters] = useState<Voter[]>([]);
   const [bemCandidates, setBemCandidates] = useState<Candidate[]>([]);
   const [himaCandidates, setHimaCandidates] = useState<Candidate[]>([]);
@@ -318,9 +336,29 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' });
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('pemira_admin_profile');
+      sessionStorage.removeItem('pemira_admin_logged_in');
+      sessionStorage.removeItem('pemira_admin_voters_cache');
+      sessionStorage.removeItem('pemira_admin_paslon_cache');
+      sessionStorage.removeItem('pemira_dashboard_metrics');
+      sessionStorage.removeItem('rekap_cache_bem');
+      sessionStorage.removeItem('rekap_cache_hima');
+      sessionStorage.removeItem('rekap_cache_matrix');
+      sessionStorage.removeItem('rekap_cache_metrics');
+      localStorage.removeItem('pemira_admin_session');
+      document.cookie = 'admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'pemira_admin_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      document.cookie = 'admin_jwt_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    }
+
     setCurrentAdmin(null);
-    showToast('Berhasil keluar dari sistem.', 'info');
+    window.location.replace('/admin/login');
   };
 
   const addVoter = async (newVoter: Omit<Voter, 'id'>) => {

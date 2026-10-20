@@ -46,7 +46,8 @@ export default function AdminLoginPage() {
       sessionStorage.setItem('pemira_admin_profile', JSON.stringify(data.user));
       localStorage.setItem('pemira_admin_session', JSON.stringify(data.user));
 
-      router.replace('/admin/dashboard');
+      const targetUrl = data.redirectUrl || ((data.user?.role || '').toLowerCase() === 'saksi' ? '/monitor/rekap' : '/admin/dashboard');
+      router.replace(targetUrl);
     } catch (err: any) {
       setErrorMessage('Terjadi kesalahan koneksi atau server: ' + (err?.message || 'Gagal masuk.'));
       setIsLoading(false);

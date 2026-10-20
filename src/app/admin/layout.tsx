@@ -20,12 +20,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           const isOperator = role === 'admin';
 
           if (isSaksi) {
-            const forbiddenForSaksi = ['/admin/dpt', '/admin/paslon', '/admin/pengaturan'];
-            if (forbiddenForSaksi.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
-              alert('Akses Dibatasi: Halaman ini tidak dapat diakses oleh Saksi.');
-              window.location.replace('/admin/dashboard');
-              return;
-            }
+            // Saksi dilarang masuk panel admin, langsung alihkan ke layar monitor terisolasi
+            window.location.replace('/monitor/rekap');
+            return;
           }
 
           if (isOperator) {

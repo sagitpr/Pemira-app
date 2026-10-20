@@ -38,11 +38,9 @@ export default function AdminHeader({
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch('/api/admin/logout', { method: 'POST' });
-    } catch (e) {}
-    logout();
-    window.location.href = '/admin/login';
+    if (window.confirm('Konfirmasi: Anda akan keluar dari akun admin. Lanjutkan?')) {
+      await logout();
+    }
   };
 
   return (
