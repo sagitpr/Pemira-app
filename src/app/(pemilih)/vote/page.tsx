@@ -221,6 +221,35 @@ function VoteContent() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isJedaModalDismissed, setIsJedaModalDismissed] = useState(false);
 
+  // Pop-up Syarat Sah Suara Terkunci 40 Detik (Aktif saat masuk surat suara)
+  const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
+  const [termsCountdown, setTermsCountdown] = useState<number>(40);
+  const hasTriggeredTermsRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (step === 'VOTE_BEM' && !hasTriggeredTermsRef.current) {
+      hasTriggeredTermsRef.current = true;
+      setShowTermsModal(true);
+      setTermsCountdown(40);
+    }
+  }, [step]);
+
+  useEffect(() => {
+    if (!showTermsModal) return;
+
+    const timer = setInterval(() => {
+      setTermsCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [showTermsModal]);
+
   // Timers & Audio
   const [timerSeconds, setTimerSeconds] = useState(180); // 03:00 sesi bilik
   const timeLeft = timerSeconds;
@@ -756,6 +785,8 @@ function VoteContent() {
       setDetectedVoter(voter);
 
       setIsVerifying(false);
+      setShowTermsModal(true);
+      setTermsCountdown(40);
       setStep('VOTE_BEM'); // Lanjut ke TAHAP Surat Suara BEM
     } catch (err: any) {
       console.error('Error saat verifikasi DPT:', err);
@@ -1182,6 +1213,78 @@ function VoteContent() {
 
   return (
     <div className="relative min-h-screen bg-slate-50 flex flex-col justify-between overflow-x-hidden font-sans text-slate-800 select-none">
+      {/* Pop-up Syarat Sah Suara Terkunci 40 Detik */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 select-none">
+          <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 max-w-md w-full shadow-2xl flex flex-col justify-between max-h-[90vh] overflow-y-auto">
+            <div>
+              <div className="text-center pb-3 border-b border-slate-100 mb-4">
+                <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                  INFORMASI PENTING PEMILIHAN
+                </p>
+                <h2 className="text-base font-bold text-slate-900 mt-0.5">
+                  SYARAT SAH SUARA PEMIRA 2026
+                </h2>
+              </div>
+
+              <div className="space-y-3.5 text-slate-700 text-xs leading-relaxed">
+                <div className="flex items-start gap-3 bg-[#FAF8F4] border border-[#EFECE6] rounded-xl p-3">
+                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    1
+                  </span>
+                  <p className="text-[11px] font-medium leading-snug">
+                    Suara hanya berasal dari pemilih yang terdaftar dalam Daftar Pemilih Tetap (DPT) dan telah lolos verifikasi identitas resmi (Nama & NIM).
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3 bg-[#FAF8F4] border border-[#EFECE6] rounded-xl p-3">
+                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    2
+                  </span>
+                  <p className="text-[11px] font-medium leading-snug">
+                    Suara dikirimkan sesuai rentang waktu pemungutan suara yang telah ditentukan oleh Panitia KPUM.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3 bg-[#FAF8F4] border border-[#EFECE6] rounded-xl p-3">
+                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    3
+                  </span>
+                  <p className="text-[11px] font-medium leading-snug">
+                    Token dan hak akses pemilih otomatis hangus secara permanen setelah tombol kirim atau konfirmasi suara ditekan.
+                  </p>
+                </div>
+
+                <div className="flex items-start gap-3 bg-[#FAF8F4] border border-[#EFECE6] rounded-xl p-3">
+                  <span className="w-5 h-5 rounded-full bg-slate-900 text-white font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    4
+                  </span>
+                  <p className="text-[11px] font-medium leading-snug">
+                    Pemilih memilih kandidat dan menekan tombol konfirmasi pada dialog pertanyaan kepastian untuk memastikan tidak ada unsur ketidaksengajaan.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col items-center">
+              {termsCountdown > 0 ? (
+                <div className="w-full py-3 px-4 bg-slate-100 text-slate-500 rounded-xl text-xs font-semibold text-center border border-slate-200">
+                  Harap membaca syarat di atas ({termsCountdown} detik)
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-blue-500/20 transition active:scale-[0.99]"
+                >
+                  Saya Mengerti dan Siap Memilih
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* FLOATING TOAST */}
       {toast && (
         <div className="fixed top-5 right-5 z-50 max-w-sm rounded-2xl bg-slate-900 text-white px-4 py-3 shadow-xl flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-2">

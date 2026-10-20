@@ -9,20 +9,11 @@ export async function GET() {
   try {
     const timestamp = Date.now();
 
-    // 1. Agregasi Suara Kandidat BEM & HIMA langsung di database
+    // 1. Kueri Suara Kandidat
     const candidateVotes = await sql`
       SELECT 
-        c.id, 
-        c.name, 
-        c.leader_name, 
-        c.vice_leader_name, 
-        c.candidate_number, 
-        c.category, 
-        c.type, 
-        c.prodi, 
-        c.faculty, 
-        c.slogan, 
-        c.photo_url,
+        c.id, c.name, c.leader_name, c.vice_leader_name, c.candidate_number, 
+        c.category, c.type, c.prodi, c.faculty, c.slogan, c.photo_url,
         COUNT(v.id)::int as total_suara
       FROM candidates c
       LEFT JOIN votes v ON (
@@ -33,7 +24,7 @@ export async function GET() {
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Agregasi Ringkasan Total Suara Masuk & DPT
+    // 2. Kueri Ringkasan Suara Sah & DPT
     const summaryRes = await sql`
       SELECT 
         (SELECT count(*)::int FROM voters) as total_dpt,
@@ -41,14 +32,13 @@ export async function GET() {
         (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'BEM') as total_suara_bem,
         (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'HIMA') as total_suara_hima
     `;
-
     const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0, total_suara_bem: 0, total_suara_hima: 0 };
     const totalDpt = summary.total_dpt || 0;
     const totalSudah = summary.total_sudah_memilih || 0;
     const totalBelum = totalDpt - totalSudah;
     const partisipasi = totalDpt > 0 ? ((totalSudah / totalDpt) * 100).toFixed(1) + '%' : '0.0%';
 
-    // 3. Agregasi Matriks 14 Program Studi langsung di PostgreSQL (Super Ringan & Cepat)
+    // 3. Kueri Matriks 14 Prodi dengan CASE Pencocokan Pintar (Termasuk Perbaikan No. 9)
     const matrixRes = await sql`
       SELECT 
         sp.id AS no,
@@ -58,10 +48,35 @@ export async function GET() {
         COUNT(v.id) FILTER (WHERE v.has_voted = true)::int AS suara_masuk
       FROM study_program sp
       LEFT JOIN voters v ON (
-        LOWER(TRIM(COALESCE(v.prodi, v.prodi_name, ''))) ILIKE '%' || LOWER(TRIM(sp.name)) || '%'
-        OR (sp.code IS NOT NULL AND LOWER(TRIM(COALESCE(v.prodi, v.prodi_name, ''))) ILIKE '%' || LOWER(TRIM(sp.code)) || '%')
+        CASE
+          WHEN sp.id = 1 THEN LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%bisnis digital%'
+          WHEN sp.id = 2 THEN LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%sistem informasi%'
+          WHEN sp.id = 3 THEN LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%pangan%'
+          WHEN sp.id = 4 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%kewirausahaan%' OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%kwu%')
+          WHEN sp.id = 5 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%administrasi%' OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%ars%')
+          WHEN sp.id = 6 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%keperawatan%' AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) NOT ILIKE '%d3%')
+          WHEN sp.id = 7 THEN LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%gizi%'
+          WHEN sp.id = 8 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%keperawatan%' AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%d3%')
+          -- PERBAIKAN PRODI NOMOR 9: Cocokkan optometri, refraksi, dan optisi
+          WHEN sp.id = 9 THEN (
+            LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%optometri%' 
+            OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%refraksi%' 
+            OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%optisi%'
+          )
+          WHEN sp.id = 10 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%laboratorium%' OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%tlm%')
+          WHEN sp.id = 11 THEN (
+            LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%farmasi%' 
+            AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) NOT ILIKE '%s2%' 
+            AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) NOT ILIKE '%apoteker%' 
+            AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) NOT ILIKE '%psppa%'
+          )
+          WHEN sp.id = 12 THEN LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%kosmetik%'
+          WHEN sp.id = 13 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%apoteker%' OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%psppa%')
+          WHEN sp.id = 14 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%s2%' AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%farmasi%')
+          ELSE FALSE
+        END
       )
-      GROUP BY sp.id, sp.name, sp.faculty, sp.code
+      GROUP BY sp.id, sp.name, sp.faculty
       ORDER BY sp.id ASC
     `;
 
@@ -80,15 +95,8 @@ export async function GET() {
       };
     });
 
-    const bemCandidates = candidateVotes.filter((c: any) => {
-      const cat = (c.category || c.type || '').toUpperCase().trim();
-      return cat.includes('BEM');
-    });
-
-    const himaCandidates = candidateVotes.filter((c: any) => {
-      const cat = (c.category || c.type || '').toUpperCase().trim();
-      return !cat.includes('BEM');
-    });
+    const bemCandidates = candidateVotes.filter((c: any) => (c.category || c.type || '').toUpperCase().includes('BEM'));
+    const himaCandidates = candidateVotes.filter((c: any) => !(c.category || c.type || '').toUpperCase().includes('BEM'));
 
     return new NextResponse(
       JSON.stringify({
@@ -102,9 +110,6 @@ export async function GET() {
         matrix,
         bemCandidates,
         himaCandidates,
-        totalDpt,
-        totalBemSuaraSah: summary.total_suara_bem || 0,
-        candidateVotes,
         timestamp
       }),
       {

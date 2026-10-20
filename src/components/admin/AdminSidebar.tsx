@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAdmin } from '@/context/AdminContext';
@@ -18,13 +18,33 @@ export default function AdminSidebar() {
   const pathname = usePathname();
   const { isMobileSidebarOpen, setIsMobileSidebarOpen } = useAdmin();
 
-  const MENU_ITEMS = [
-    { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutGrid },
-    { href: '/admin/rekap', label: 'Rekap Suara', icon: Clock },
-    { href: '/admin/dpt', label: 'DPT & Pemilih', icon: Users },
-    { href: '/admin/paslon', label: 'Kelola Paslon', icon: UserCheck },
-    { href: '/admin/pengaturan', label: 'Pengaturan', icon: Settings },
+  const [userRole, setUserRole] = useState<string>('superadmin');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const profileRaw = sessionStorage.getItem('pemira_admin_profile');
+      if (profileRaw) {
+        try {
+          const parsed = JSON.parse(profileRaw);
+          setUserRole((parsed.role || 'admin').toLowerCase());
+        } catch (e) {}
+      }
+    }
+  }, []);
+
+  const isSuperAdmin = userRole === 'superadmin';
+  const isSaksi = userRole === 'saksi';
+  const isOperator = userRole === 'admin';
+
+  const ALL_MENU_ITEMS = [
+    { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutGrid, visible: isSuperAdmin || isSaksi || isOperator },
+    { href: '/admin/rekap', label: 'Rekap Suara', icon: Clock, visible: isSuperAdmin || isSaksi },
+    { href: '/admin/dpt', label: 'DPT & Pemilih', icon: Users, visible: isSuperAdmin || isOperator },
+    { href: '/admin/paslon', label: 'Kelola Paslon', icon: UserCheck, visible: isSuperAdmin },
+    { href: '/admin/pengaturan', label: 'Pengaturan', icon: Settings, visible: isSuperAdmin },
   ];
+
+  const MENU_ITEMS = ALL_MENU_ITEMS.filter((item) => item.visible);
 
   const renderNavContent = (isMobile = false) => (
     <>

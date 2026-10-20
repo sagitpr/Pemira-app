@@ -27,6 +27,22 @@ export default function AdminPengaturanPage() {
     setElectionStatus,
   } = useAdmin();
 
+  // Route guard khusus Super Admin
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const profile = sessionStorage.getItem('pemira_admin_profile');
+      if (profile) {
+        try {
+          const parsed = JSON.parse(profile);
+          if (parsed.role && parsed.role.toLowerCase() !== 'superadmin') {
+            alert('Akses Dibatasi: Halaman ini hanya dapat diakses oleh Super Admin.');
+            window.location.replace('/admin/dashboard');
+          }
+        } catch (e) {}
+      }
+    }
+  }, []);
+
   const [totalBooths, setTotalBooths] = useState(config.totalBooths || 3);
   const [sessionTimeout, setSessionTimeout] = useState(config.sessionTimeoutSeconds || 60);
   const [saving, setSaving] = useState(false);
@@ -81,13 +97,13 @@ export default function AdminPengaturanPage() {
   const [newAdminName, setNewAdminName] = useState('');
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
-  const [newAdminRole, setNewAdminRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
+  const [newAdminRole, setNewAdminRole] = useState<string>('superadmin');
 
   // Modal Edit Admin
   const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editRole, setEditRole] = useState<'Super Admin' | 'Operator Bilik' | 'Saksi Paslon'>('Super Admin');
+  const [editRole, setEditRole] = useState<string>('superadmin');
 
   // Ubah status pemilihan
   const handleChangeElectionStatus = async (newStatus: 'AKTIF' | 'JEDA' | 'TUTUP') => {
@@ -447,7 +463,7 @@ export default function AdminPengaturanPage() {
                       <td className="py-3 px-3 font-mono text-slate-600">{adm.email}</td>
                       <td className="py-3 px-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700">
-                          {adm.role || 'Admin'}
+                          {adm.role === 'superadmin' ? 'Super Admin' : adm.role === 'saksi' ? 'Saksi Paslon' : adm.role === 'admin' ? 'Operator Bilik' : (adm.role || 'Admin')}
                         </span>
                       </td>
                       <td className="py-3 px-3 text-right space-x-1">
@@ -695,15 +711,15 @@ export default function AdminPengaturanPage() {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Peran (*Super Admin*, *Operator Bilik*, *Saksi Paslon*)</label>
+                <label className="font-bold text-slate-700 block mb-1">Peran Akun</label>
                 <select
                   value={newAdminRole}
-                  onChange={(e) => setNewAdminRole(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500 focus:bg-white cursor-pointer"
+                  onChange={(e) => setNewAdminRole(e.target.value)}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
                 >
-                  <option value="Super Admin">Super Admin</option>
-                  <option value="Operator Bilik">Operator Bilik</option>
-                  <option value="Saksi Paslon">Saksi Paslon</option>
+                  <option value="superadmin">Super Admin (Akses Penuh)</option>
+                  <option value="admin">Operator Bilik (Dashboard &amp; DPT)</option>
+                  <option value="saksi">Saksi Paslon / Rekap (Dashboard &amp; Rekap Realtime)</option>
                 </select>
               </div>
 
@@ -762,15 +778,15 @@ export default function AdminPengaturanPage() {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Peran</label>
+                <label className="font-bold text-slate-700 block mb-1">Peran Akun</label>
                 <select
                   value={editRole}
-                  onChange={(e) => setEditRole(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 font-semibold text-slate-800 focus:outline-hidden focus:border-slate-500 focus:bg-white cursor-pointer"
+                  onChange={(e) => setEditRole(e.target.value)}
+                  className="w-full text-xs p-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
                 >
-                  <option value="Super Admin">Super Admin</option>
-                  <option value="Operator Bilik">Operator Bilik</option>
-                  <option value="Saksi Paslon">Saksi Paslon</option>
+                  <option value="superadmin">Super Admin (Akses Penuh)</option>
+                  <option value="admin">Operator Bilik (Dashboard &amp; DPT)</option>
+                  <option value="saksi">Saksi Paslon / Rekap (Dashboard &amp; Rekap Realtime)</option>
                 </select>
               </div>
 
