@@ -81,8 +81,7 @@ export default function AdminRekapPage() {
     isFetchingRef.current = true;
 
     try {
-      // Ambil seluruh suara masuk secara realtime tanpa filter pembatas
-      const res = await fetch(`/api/admin/rekap?_t=${Date.now()}`, {
+      const res = await fetch(`/api/admin/rekap?source=MANUAL&_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });

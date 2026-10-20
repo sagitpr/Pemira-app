@@ -5,11 +5,14 @@ export const fetchCache = 'force-no-store';
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    // source: 'MANUAL' (default untuk /admin/rekap & /admin/input-suara) ATAU 'DIGITAL' (untuk /monitor/rekap)
+    const sourceParam = (searchParams.get('source') || 'MANUAL').toUpperCase();
     const timestamp = Date.now();
 
-    // 1. Kueri Seluruh Suara Masuk per Paslon (Realtime dari bilik & manual)
+    // 1. Kueri Paslon BEM & HIMA Dibatasi Sesuai Sumber Suara
     const candidateVotes = await sql`
       SELECT 
         c.id, 
@@ -23,7 +26,7 @@ export async function GET() {
         c.faculty, 
         c.slogan, 
         c.photo_url,
-        COUNT(v.id)::int as total_suara
+        COUNT(v.id) FILTER (WHERE UPPER(COALESCE(v.vote_source, 'DIGITAL')) = ${sourceParam})::int as total_suara
       FROM candidates c
       LEFT JOIN votes v ON (
         (v.candidate_id = c.id OR v.candidate_id = c.candidate_number::text)
@@ -33,28 +36,58 @@ export async function GET() {
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Ringkasan Metrik Kehadiran DPT & Suara Sah
-    const summaryRes = await sql`
-      SELECT 
-        (SELECT count(*)::int FROM voters) as total_dpt,
-        (SELECT count(*)::int FROM voters WHERE has_voted = true) as total_sudah_memilih,
-        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'BEM') as total_suara_bem,
-        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'HIMA') as total_suara_hima
-    `;
-    const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0, total_suara_bem: 0, total_suara_hima: 0 };
-    const totalDpt = summary.total_dpt || 0;
-    const totalSudah = summary.total_sudah_memilih || 0;
+    // 2. Kueri 4 Kotak Metrik Atas:
+    // - Jika source === 'MANUAL' (/admin/rekap): Suara Masuk HANYA dihitung dari suara input manual di tabel votes
+    // - Jika source === 'DIGITAL' (/monitor/rekap): Suara Masuk dihitung dari suara digital bilik / voters has_voted
+    const dptCountRes = await sql`SELECT count(*)::int as total FROM voters`;
+    const totalDpt = dptCountRes[0]?.total || 0;
+
+    let totalSudah = 0;
+    let totalSuaraBem = 0;
+    let totalSuaraHima = 0;
+
+    if (sourceParam === 'MANUAL') {
+      // MODE MANUAL (/admin/rekap): Suara masuk murni dari input manual admin
+      const manualVotesRes = await sql`
+        SELECT 
+          COUNT(id) FILTER (WHERE UPPER(COALESCE(category, type, '')) = 'BEM')::int as bem_manual,
+          COUNT(id) FILTER (WHERE UPPER(COALESCE(category, type, '')) = 'HIMA')::int as hima_manual
+        FROM votes
+        WHERE UPPER(COALESCE(vote_source, 'DIGITAL')) = 'MANUAL'
+      `;
+      totalSuaraBem = manualVotesRes[0]?.bem_manual || 0;
+      totalSuaraHima = manualVotesRes[0]?.hima_manual || 0;
+      totalSudah = totalSuaraBem; // Suara masuk manual berpatokan pada surat suara BEM manual
+    } else {
+      // MODE DIGITAL (/monitor/rekap): Suara masuk realtime dari pemilih bilik fisik
+      const digitalVotesRes = await sql`
+        SELECT 
+          (SELECT count(*)::int FROM voters WHERE has_voted = true) as digital_voters,
+          COUNT(id) FILTER (WHERE UPPER(COALESCE(category, type, '')) = 'BEM')::int as bem_digital,
+          COUNT(id) FILTER (WHERE UPPER(COALESCE(category, type, '')) = 'HIMA')::int as hima_digital
+        FROM votes
+        WHERE UPPER(COALESCE(vote_source, 'DIGITAL')) = 'DIGITAL'
+      `;
+      totalSudah = digitalVotesRes[0]?.digital_voters || 0;
+      totalSuaraBem = digitalVotesRes[0]?.bem_digital || 0;
+      totalSuaraHima = digitalVotesRes[0]?.hima_digital || 0;
+    }
+
     const totalBelum = totalDpt - totalSudah;
     const partisipasi = totalDpt > 0 ? ((totalSudah / totalDpt) * 100).toFixed(1) + '%' : '0.0%';
 
     // 3. Matriks 14 Program Studi
+    // Untuk /admin/rekap (MANUAL), suara_masuk matriks dihitung 0 kecuali ada data pemilih manual
     const matrixRes = await sql`
       SELECT 
         sp.id AS no,
         sp.name,
         sp.faculty,
         COUNT(v.id)::int AS total_dpt,
-        COUNT(v.id) FILTER (WHERE v.has_voted = true)::int AS suara_masuk
+        CASE 
+          WHEN ${sourceParam} = 'DIGITAL' THEN COUNT(v.id) FILTER (WHERE v.has_voted = true)::int
+          ELSE 0
+        END AS suara_masuk
       FROM study_program sp
       LEFT JOIN voters v ON (
         CASE
@@ -109,6 +142,7 @@ export async function GET() {
     return new NextResponse(
       JSON.stringify({
         success: true,
+        source: sourceParam,
         metrics: {
           totalDpt,
           suaraMasuk: totalSudah,
@@ -118,8 +152,8 @@ export async function GET() {
         matrix,
         bemCandidates,
         himaCandidates,
-        totalBemSuaraSah: summary.total_suara_bem || 0,
-        totalHimaSuaraSah: summary.total_suara_hima || 0,
+        totalBemSuaraSah: totalSuaraBem,
+        totalHimaSuaraSah: totalSuaraHima,
         timestamp
       }),
       {

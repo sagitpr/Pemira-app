@@ -18,7 +18,7 @@ export default function MonitorRekapPage() {
     isFetchingRef.current = true;
 
     try {
-      const res = await fetch(`/api/admin/rekap?_t=${Date.now()}`, {
+      const res = await fetch(`/api/admin/rekap?source=DIGITAL&_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
