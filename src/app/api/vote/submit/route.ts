@@ -82,14 +82,14 @@ export async function POST(req: Request) {
 
     // 5. Masukkan catatan suara ke tabel votes (untuk tabulasi agregasi)
     await sql`
-      INSERT INTO votes (candidate_id, bem_candidate_id, category, type, created_at)
-      VALUES (${String(bem_candidate_id)}, ${String(bem_candidate_id)}, 'BEM', 'PRESMA', NOW())
+      INSERT INTO votes (candidate_id, bem_candidate_id, category, type, vote_source, created_at)
+      VALUES (${String(bem_candidate_id)}, ${String(bem_candidate_id)}, 'BEM', 'PRESMA', 'DIGITAL', NOW())
     `;
 
     if (hima_candidate_id && hima_candidate_id !== 'skip' && hima_candidate_id !== 'none') {
       await sql`
-        INSERT INTO votes (candidate_id, hima_candidate_id, category, type, created_at)
-        VALUES (${String(hima_candidate_id)}, ${String(hima_candidate_id)}, 'HIMA', 'KAHIM', NOW())
+        INSERT INTO votes (candidate_id, hima_candidate_id, category, type, vote_source, created_at)
+        VALUES (${String(hima_candidate_id)}, ${String(hima_candidate_id)}, 'HIMA', 'KAHIM', 'DIGITAL', NOW())
       `;
     }
 

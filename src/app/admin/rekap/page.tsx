@@ -119,6 +119,7 @@ export default function AdminRekapPage() {
 
   // Refs untuk mencegah tabrakan data (Concurrency & Hash Guards)
   const lastDataHashRef = useRef<string>('');
+  const latestTimestampRef = useRef<number>(0);
   const isFetchingRef = useRef<boolean>(false);
 
   // 2. Fungsi Fetching Bersih dengan Deep Comparison
@@ -127,50 +128,31 @@ export default function AdminRekapPage() {
     isFetchingRef.current = true;
 
     try {
-      const res = await fetch(`/api/admin/rekap?_t=${Date.now()}`, {
+      // KUNCI: source=MANUAL agar kartu paslon hanya membaca suara input manual admin
+      const res = await fetch(`/api/admin/rekap?source=MANUAL&_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
       if (!res.ok) return;
       const data = await res.json();
 
-      if (data.success) {
-        // Buat signature hash dari data suara yang masuk
-        const currentHash = JSON.stringify({
-          bem: data.bemCandidates?.map((c: any) => ({ id: c.id, v: c.total_suara })),
-          hima: data.himaCandidates?.map((c: any) => ({ id: c.id, v: c.total_suara })),
-          mat: data.matrix?.map((m: any) => ({ no: m.no, in: m.suaraMasuk, tot: m.totalDpt })),
-          tot: data.totalBemSuaraSah,
-          met: data.metrics
-        });
+      if (data.success && data.timestamp) {
+        if (data.timestamp < latestTimestampRef.current) return;
+        latestTimestampRef.current = data.timestamp;
 
-        // KUNCI ANTI-GLITCH: JANGAN update state jika data suara sama persis!
-        if (lastDataHashRef.current !== currentHash) {
-          lastDataHashRef.current = currentHash;
-
-          setBemCandidates(data.bemCandidates || []);
-          setHimaCandidates(data.himaCandidates || []);
-          setProdiMatrix(data.matrix || []);
-          setTotalBemSuara(data.totalBemSuaraSah || 0);
-          setTotalDpt(data.totalDpt || 0);
-          setTimelineData(data.timeline || []);
-          if (data.metrics) {
-            setMetrics(data.metrics);
-          }
-
-          // Simpan ke cache agar refresh berikutnya instan
-          try {
-            sessionStorage.setItem('rekap_cache_bem', JSON.stringify(data.bemCandidates || []));
-            sessionStorage.setItem('rekap_cache_hima', JSON.stringify(data.himaCandidates || []));
-            sessionStorage.setItem('rekap_cache_matrix', JSON.stringify(data.matrix || []));
-            if (data.metrics) {
-              sessionStorage.setItem('rekap_cache_metrics', JSON.stringify(data.metrics));
-            }
-          } catch (e) {}
+        // 4 kotak atas tetap update dari data.metrics DPT kehadiran
+        if (data.metrics) {
+          setMetrics(data.metrics);
+          setTotalDpt(data.metrics.totalDpt || 0);
         }
+
+        // Kartu BEM & HIMA hanya update dari data suara manual
+        setBemCandidates(data.bemCandidates || []);
+        setHimaCandidates(data.himaCandidates || []);
+        setProdiMatrix(data.matrix || []);
       }
     } catch (err) {
-      console.warn("Gagal sinkronisasi rekap:", err);
+      console.warn("Gagal sinkronisasi rekap manual:", err);
     } finally {
       setIsInitialLoading(false);
       isFetchingRef.current = false;

@@ -5,16 +5,27 @@ export const fetchCache = 'force-no-store';
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const sourceParam = (searchParams.get('source') || 'MANUAL').toUpperCase();
     const timestamp = Date.now();
 
-    // 1. Kueri Suara Kandidat
+    // 1. Kueri Paslon BEM & HIMA Berdasarkan Sumber Suara yang Dipilih
     const candidateVotes = await sql`
       SELECT 
-        c.id, c.name, c.leader_name, c.vice_leader_name, c.candidate_number, 
-        c.category, c.type, c.prodi, c.faculty, c.slogan, c.photo_url,
-        COUNT(v.id)::int as total_suara
+        c.id, 
+        c.name, 
+        c.leader_name, 
+        c.vice_leader_name, 
+        c.candidate_number, 
+        c.category, 
+        c.type, 
+        c.prodi, 
+        c.faculty, 
+        c.slogan, 
+        c.photo_url,
+        COUNT(v.id) FILTER (WHERE UPPER(COALESCE(v.vote_source, 'DIGITAL')) = ${sourceParam})::int as total_suara
       FROM candidates c
       LEFT JOIN votes v ON (
         (v.candidate_id = c.id OR v.candidate_id = c.candidate_number::text)
@@ -24,21 +35,19 @@ export async function GET() {
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Kueri Ringkasan Suara Sah & DPT
+    // 2. Ringkasan Metrik 4 Kotak Atas: SELALU DARI KEHADIRAN VOTERS (Realtime DPT)
     const summaryRes = await sql`
       SELECT 
         (SELECT count(*)::int FROM voters) as total_dpt,
-        (SELECT count(*)::int FROM voters WHERE has_voted = true) as total_sudah_memilih,
-        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'BEM') as total_suara_bem,
-        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'HIMA') as total_suara_hima
+        (SELECT count(*)::int FROM voters WHERE has_voted = true) as total_sudah_memilih
     `;
-    const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0, total_suara_bem: 0, total_suara_hima: 0 };
+    const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0 };
     const totalDpt = summary.total_dpt || 0;
     const totalSudah = summary.total_sudah_memilih || 0;
     const totalBelum = totalDpt - totalSudah;
     const partisipasi = totalDpt > 0 ? ((totalSudah / totalDpt) * 100).toFixed(1) + '%' : '0.0%';
 
-    // 3. Kueri Matriks 14 Prodi dengan CASE Pencocokan Pintar (Termasuk Perbaikan No. 9)
+    // 3. Matriks 14 Program Studi
     const matrixRes = await sql`
       SELECT 
         sp.id AS no,
@@ -57,7 +66,6 @@ export async function GET() {
           WHEN sp.id = 6 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%keperawatan%' AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) NOT ILIKE '%d3%')
           WHEN sp.id = 7 THEN LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%gizi%'
           WHEN sp.id = 8 THEN (LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%keperawatan%' AND LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%d3%')
-          -- PERBAIKAN PRODI NOMOR 9: Cocokkan optometri, refraksi, dan optisi
           WHEN sp.id = 9 THEN (
             LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%optometri%' 
             OR LOWER(COALESCE(v.prodi, v.prodi_name, '')) ILIKE '%refraksi%' 
@@ -101,6 +109,7 @@ export async function GET() {
     return new NextResponse(
       JSON.stringify({
         success: true,
+        source: sourceParam,
         metrics: {
           totalDpt,
           suaraMasuk: totalSudah,
@@ -117,13 +126,11 @@ export async function GET() {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
-          'Pragma': 'no-cache',
-          'Expires': '0',
         },
       }
     );
   } catch (err: any) {
-    console.error('Error rekap route fast:', err);
+    console.error('Error rekap API:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }

@@ -21,13 +21,14 @@ export async function POST(req: Request) {
 
     // Kueri generate_series PostgreSQL untuk memasukkan jumlah suara sekaligus dalam hitungan milidetik
     await sql`
-      INSERT INTO votes (candidate_id, bem_candidate_id, hima_candidate_id, category, type, created_at)
+      INSERT INTO votes (candidate_id, bem_candidate_id, hima_candidate_id, category, type, vote_source, created_at)
       SELECT 
         ${candIdStr}, 
         CASE WHEN ${cat} = 'BEM' THEN ${candIdStr} ELSE NULL END,
         CASE WHEN ${cat} <> 'BEM' THEN ${candIdStr} ELSE NULL END,
         ${cat}, 
         ${cat}, 
+        'MANUAL',
         NOW()
       FROM generate_series(1, ${count})
     `;
