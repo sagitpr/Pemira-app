@@ -70,53 +70,6 @@ export default function AdminRekapPage() {
 
   const isSuperAdmin = userRole === 'superadmin';
 
-  const [manualModal, setManualModal] = useState<{
-    isOpen: boolean;
-    candidateId: string | null;
-    candidateName: string;
-    category: string;
-    voteCount: number;
-    isSaving: boolean;
-  }>({
-    isOpen: false,
-    candidateId: null,
-    candidateName: '',
-    category: 'BEM',
-    voteCount: 1,
-    isSaving: false
-  });
-
-  const handleAddManualVote = async () => {
-    if (!manualModal.candidateId || manualModal.voteCount <= 0) return;
-
-    setManualModal(prev => ({ ...prev, isSaving: true }));
-
-    try {
-      const res = await fetch('/api/admin/rekap/manual-vote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidate_id: manualModal.candidateId,
-          category: manualModal.category,
-          vote_count: manualModal.voteCount
-        })
-      });
-      const data = await res.json();
-
-      if (data.success) {
-        alert(data.message);
-        setManualModal(prev => ({ ...prev, isOpen: false, isSaving: false }));
-        fetchRekapData(false); // Refresh tampilan rekap seketika
-      } else {
-        alert(data.message || 'Gagal menambahkan suara.');
-        setManualModal(prev => ({ ...prev, isSaving: false }));
-      }
-    } catch (err) {
-      alert('Terjadi kesalahan jaringan.');
-      setManualModal(prev => ({ ...prev, isSaving: false }));
-    }
-  };
-
   // Refs untuk mencegah tabrakan data (Concurrency & Hash Guards)
   const lastDataHashRef = useRef<string>('');
   const latestTimestampRef = useRef<number>(0);
@@ -128,8 +81,8 @@ export default function AdminRekapPage() {
     isFetchingRef.current = true;
 
     try {
-      // KUNCI: source=MANUAL agar kartu paslon hanya membaca suara input manual admin
-      const res = await fetch(`/api/admin/rekap?source=MANUAL&_t=${Date.now()}`, {
+      // Ambil seluruh suara masuk secara realtime tanpa filter pembatas
+      const res = await fetch(`/api/admin/rekap?_t=${Date.now()}`, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
@@ -140,19 +93,18 @@ export default function AdminRekapPage() {
         if (data.timestamp < latestTimestampRef.current) return;
         latestTimestampRef.current = data.timestamp;
 
-        // 4 kotak atas tetap update dari data.metrics DPT kehadiran
         if (data.metrics) {
           setMetrics(data.metrics);
           setTotalDpt(data.metrics.totalDpt || 0);
         }
 
-        // Kartu BEM & HIMA hanya update dari data suara manual
         setBemCandidates(data.bemCandidates || []);
         setHimaCandidates(data.himaCandidates || []);
         setProdiMatrix(data.matrix || []);
+        setTotalBemSuara(data.totalBemSuaraSah || 0);
       }
     } catch (err) {
-      console.warn("Gagal sinkronisasi rekap manual:", err);
+      console.warn("Gagal sinkronisasi rekap realtime:", err);
     } finally {
       setIsInitialLoading(false);
       isFetchingRef.current = false;
@@ -360,7 +312,7 @@ export default function AdminRekapPage() {
             </h2>
           </div>
           <span className="text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200/60 px-3 py-1 rounded-full">
-            Total Suara Masuk: <strong className="text-slate-800">{totalSuaraBemSah}</strong> Suara
+            Total Suara Masuk: <strong className="text-slate-800">{totalBemSuara || totalSuaraBemSah}</strong> Suara
           </span>
         </div>
 
@@ -436,23 +388,6 @@ export default function AdminRekapPage() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-
-                    {isSuperAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => setManualModal({
-                          isOpen: true,
-                          candidateId: cand.id,
-                          candidateName: cand.name,
-                          category: 'BEM',
-                          voteCount: 1,
-                          isSaving: false
-                        })}
-                        className="w-full mt-3 py-2 px-3 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 rounded-xl hover:bg-blue-100 transition shadow-2xs"
-                      >
-                        + Tambah Suara Manual
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -533,23 +468,6 @@ export default function AdminRekapPage() {
                       <span className="text-[10px] text-slate-400">Suara</span>
                     </div>
                   </div>
-
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => setManualModal({
-                        isOpen: true,
-                        candidateId: cand.id,
-                        candidateName: cand.name,
-                        category: cand.category || 'HIMA',
-                        voteCount: 1,
-                        isSaving: false
-                      })}
-                      className="w-full mt-2.5 py-1.5 px-3 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 rounded-lg hover:bg-blue-100 transition"
-                    >
-                      + Tambah Suara Manual
-                    </button>
-                  )}
                 </div>
               ))}
             </div>
@@ -643,63 +561,6 @@ export default function AdminRekapPage() {
         </div>
       </section>
     </main>
-
-    {/* Modal Input Suara Manual */}
-    {manualModal.isOpen && (
-      <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-        <div className="bg-white border border-slate-200/80 rounded-2xl w-full max-w-sm p-6 shadow-xl">
-          <div className="flex justify-between items-center mb-4">
-            <h4 className="text-sm font-bold text-slate-900">Input Suara Manual</h4>
-            <button
-              onClick={() => setManualModal(prev => ({ ...prev, isOpen: false }))}
-              className="text-slate-400 hover:text-slate-600 text-xs font-bold"
-            >
-              Tutup
-            </button>
-          </div>
-
-          <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3 mb-4 text-xs text-slate-600">
-            <span className="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Kandidat Terpilih:</span>
-            <strong className="text-slate-900">{manualModal.candidateName}</strong> ({manualModal.category})
-          </div>
-
-          <div className="mb-5">
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Jumlah Suara yang Ditambahkan
-            </label>
-            <input
-              type="number"
-              min="1"
-              value={manualModal.voteCount}
-              onChange={(e) => setManualModal(prev => ({ ...prev, voteCount: parseInt(e.target.value, 10) || 0 }))}
-              className="w-full text-sm font-bold text-slate-900 px-3 py-2.5 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
-              placeholder="Masukkan jumlah suara..."
-            />
-            <p className="text-[10px] text-slate-400 mt-1">
-              Suara akan langsung tercatat secara sah ke dalam basis data Neon.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setManualModal(prev => ({ ...prev, isOpen: false }))}
-              className="w-1/2 py-2.5 px-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold transition"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={handleAddManualVote}
-              disabled={manualModal.isSaving || manualModal.voteCount <= 0}
-              className="w-1/2 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-semibold shadow-xs transition"
-            >
-              {manualModal.isSaving ? 'Menyimpan...' : 'Simpan Suara'}
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
   </div>
   );
 }

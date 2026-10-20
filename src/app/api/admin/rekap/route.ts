@@ -5,13 +5,11 @@ export const fetchCache = 'force-no-store';
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(req.url);
-    const sourceParam = (searchParams.get('source') || 'MANUAL').toUpperCase();
     const timestamp = Date.now();
 
-    // 1. Kueri Paslon BEM & HIMA Berdasarkan Sumber Suara yang Dipilih
+    // 1. Kueri Seluruh Suara Masuk per Paslon (Realtime dari bilik & manual)
     const candidateVotes = await sql`
       SELECT 
         c.id, 
@@ -25,7 +23,7 @@ export async function GET(req: Request) {
         c.faculty, 
         c.slogan, 
         c.photo_url,
-        COUNT(v.id) FILTER (WHERE UPPER(COALESCE(v.vote_source, 'DIGITAL')) = ${sourceParam})::int as total_suara
+        COUNT(v.id)::int as total_suara
       FROM candidates c
       LEFT JOIN votes v ON (
         (v.candidate_id = c.id OR v.candidate_id = c.candidate_number::text)
@@ -35,13 +33,15 @@ export async function GET(req: Request) {
       ORDER BY c.candidate_number ASC, c.created_at ASC
     `;
 
-    // 2. Ringkasan Metrik 4 Kotak Atas: SELALU DARI KEHADIRAN VOTERS (Realtime DPT)
+    // 2. Ringkasan Metrik Kehadiran DPT & Suara Sah
     const summaryRes = await sql`
       SELECT 
         (SELECT count(*)::int FROM voters) as total_dpt,
-        (SELECT count(*)::int FROM voters WHERE has_voted = true) as total_sudah_memilih
+        (SELECT count(*)::int FROM voters WHERE has_voted = true) as total_sudah_memilih,
+        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'BEM') as total_suara_bem,
+        (SELECT count(*)::int FROM votes WHERE UPPER(COALESCE(category, type, '')) = 'HIMA') as total_suara_hima
     `;
-    const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0 };
+    const summary = summaryRes[0] || { total_dpt: 0, total_sudah_memilih: 0, total_suara_bem: 0, total_suara_hima: 0 };
     const totalDpt = summary.total_dpt || 0;
     const totalSudah = summary.total_sudah_memilih || 0;
     const totalBelum = totalDpt - totalSudah;
@@ -109,7 +109,6 @@ export async function GET(req: Request) {
     return new NextResponse(
       JSON.stringify({
         success: true,
-        source: sourceParam,
         metrics: {
           totalDpt,
           suaraMasuk: totalSudah,
@@ -119,6 +118,8 @@ export async function GET(req: Request) {
         matrix,
         bemCandidates,
         himaCandidates,
+        totalBemSuaraSah: summary.total_suara_bem || 0,
+        totalHimaSuaraSah: summary.total_suara_hima || 0,
         timestamp
       }),
       {
