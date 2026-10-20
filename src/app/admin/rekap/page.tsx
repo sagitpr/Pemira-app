@@ -137,8 +137,8 @@ export default function AdminRekapPage() {
   }, [bemCandidates]);
 
   // Handler Reset Seluruh Pemilihan dari Halaman Rekap
-  const handleResetFromRekap = async () => {
-    const confirmAction = window.confirm('Konfirmasi: Anda akan mengosongkan seluruh perolehan suara menjadi 0 dan mengembalikan status seluruh DPT menjadi Belum Memilih. Lanjutkan?');
+  const handleResetAllVotes = async () => {
+    const confirmAction = window.confirm('Konfirmasi: Anda akan mengosongkan seluruh perolehan suara BEM dan HIMA kembali ke 0 serta membuka kembali hak suara seluruh DPT. Lanjutkan?');
     if (!confirmAction) return;
 
     try {
@@ -150,20 +150,17 @@ export default function AdminRekapPage() {
       const data = await res.json();
 
       if (data.success) {
-        // Bersihkan seluruh cache lokal di browser admin
         sessionStorage.removeItem('rekap_cache_bem');
         sessionStorage.removeItem('rekap_cache_hima');
         sessionStorage.removeItem('rekap_cache_matrix');
-        sessionStorage.removeItem('rekap_cache_metrics');
-        sessionStorage.removeItem('pemira_admin_voters_cache');
         sessionStorage.removeItem('pemira_dashboard_metrics');
 
         alert(data.message);
         window.location.reload();
       } else {
-        alert(data.error || 'Gagal melakukan reset.');
+        alert(data.error || 'Gagal mereset perolehan suara.');
       }
-    } catch (e) {
+    } catch (err) {
       alert('Terjadi kesalahan jaringan.');
     }
   };
@@ -184,7 +181,7 @@ export default function AdminRekapPage() {
         {isSuperAdmin && (
           <button
             type="button"
-            onClick={handleResetFromRekap}
+            onClick={handleResetAllVotes}
             className="self-start sm:self-center px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold shadow-xs transition"
           >
             Reset Perolehan Suara

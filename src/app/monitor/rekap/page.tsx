@@ -55,6 +55,16 @@ export default function MonitorRekapPage() {
     return bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0);
   }, [bemCandidates]);
 
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' });
+    } catch (e) {}
+
+    sessionStorage.clear();
+    localStorage.clear();
+    window.location.replace('/admin/login');
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 p-6 md:p-8 font-sans antialiased select-none">
       {/* HEADER MONITOR FORMAL */}
@@ -82,9 +92,14 @@ export default function MonitorRekapPage() {
               LIVE TABULASI AKTIF
             </span>
           </div>
-          <span className="text-xs text-slate-400 font-mono">
-            Sinkronisasi: {lastSyncTime || '-'}
-          </span>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="px-3 py-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 rounded-xl text-xs font-semibold transition"
+          >
+            Keluar Akun
+          </button>
         </div>
       </header>
 

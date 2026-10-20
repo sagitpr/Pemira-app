@@ -8,19 +8,24 @@ export async function POST(req: Request) {
   try {
     const { action, nim } = await req.json();
 
-    // 1. RESET TOTAL SELURUH PEMILIHAN
-    if (action === 'RESET_ALL' || action === 'RESET_ALL_ELECTION') {
+    // AKSI 1: RESET TOTAL SELURUH SUARA & HAK AKSES DPT
+    if (action === 'RESET_ALL') {
       await Promise.all([
-        sql`TRUNCATE TABLE votes`,
+        // Kosongkan seluruh rekaman suara
+        sql`TRUNCATE TABLE votes CASCADE`,
+        // Kembalikan status pemilih dan bersihkan rekaman pilihan paslon
         sql`
           UPDATE voters 
           SET has_voted = false, 
               voting_status = 'BELUM', 
+              pilihan_bem = null,
+              pilihan_hima = null,
               start_vote_at = null, 
               completed_at = null, 
               duration_seconds = null, 
               updated_at = NOW()
         `,
+        // Kembalikan seluruh bilik fisik ke status tersedia
         sql`
           UPDATE booths 
           SET status = 'AVAILABLE', 
@@ -35,17 +40,19 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        message: 'Seluruh perolehan suara berhasil direset ke 0 dan status DPT kembali ke Belum Memilih.'
+        message: 'Seluruh perolehan suara BEM dan HIMA berhasil direset ke 0, serta status DPT dibuka kembali.'
       });
     }
 
-    // 2. RESET HAK SUARA PERORANGAN (SINGLE VOTER)
+    // AKSI 2: RESET PERORANGAN
     if (action === 'RESET_SINGLE_VOTER' && nim) {
       const cleanNim = nim.trim().toLowerCase();
       await sql`
         UPDATE voters 
         SET has_voted = false, 
             voting_status = 'BELUM', 
+            pilihan_bem = null,
+            pilihan_hima = null,
             start_vote_at = null, 
             completed_at = null, 
             duration_seconds = null, 
@@ -59,10 +66,10 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ success: false, message: 'Aksi tidak valid.' }, { status: 400 });
+    return NextResponse.json({ success: false, message: 'Aksi reset tidak valid.' }, { status: 400 });
 
   } catch (err: any) {
-    console.error('Error reset election:', err);
+    console.error('Error reset execution:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
