@@ -113,12 +113,43 @@ export default function AdminRekapPage() {
   useEffect(() => {
     fetchRekapData(false);
 
-    // Polling hening setiap 1 detik
-    const timer = setInterval(() => {
-      fetchRekapData(true);
-    }, 1000);
+    let timer: NodeJS.Timeout | null = null;
 
-    return () => clearInterval(timer);
+    const startPolling = () => {
+      if (!timer) {
+        timer = setInterval(() => {
+          // Hentikan penarikan data jika tab browser sedang di latar belakang
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+            return;
+          }
+          fetchRekapData(true);
+        }, 2000);
+      }
+    };
+
+    const stopPolling = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRekapData(true);
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Filter Matriks 14 Prodi

@@ -221,16 +221,16 @@ function VoteContent() {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isJedaModalDismissed, setIsJedaModalDismissed] = useState(false);
 
-  // Pop-up Syarat Sah Suara Terkunci 40 Detik (Aktif saat masuk surat suara)
+  // Pop-up Syarat Sah Suara Terkunci 20 Detik (Aktif saat masuk surat suara)
   const [showTermsModal, setShowTermsModal] = useState<boolean>(false);
-  const [termsCountdown, setTermsCountdown] = useState<number>(40);
+  const [termsCountdown, setTermsCountdown] = useState<number>(20);
   const hasTriggeredTermsRef = useRef<boolean>(false);
 
   useEffect(() => {
     if (step === 'VOTE_BEM' && !hasTriggeredTermsRef.current) {
       hasTriggeredTermsRef.current = true;
       setShowTermsModal(true);
-      setTermsCountdown(40);
+      setTermsCountdown(20);
     }
   }, [step]);
 
@@ -1213,7 +1213,7 @@ function VoteContent() {
 
   return (
     <div className="relative min-h-screen bg-slate-50 flex flex-col justify-between overflow-x-hidden font-sans text-slate-800 select-none">
-      {/* Pop-up Syarat Sah Suara Terkunci 40 Detik */}
+      {/* Pop-up Syarat Sah Suara Terkunci 20 Detik */}
       {showTermsModal && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 select-none">
           <div className="bg-white rounded-3xl border border-[#EFECE6] p-6 max-w-md w-full shadow-2xl flex flex-col justify-between max-h-[90vh] overflow-y-auto">

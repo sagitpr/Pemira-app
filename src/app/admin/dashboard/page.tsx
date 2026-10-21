@@ -237,11 +237,43 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     fetchDashboardData();
-    const interval = setInterval(() => {
-      fetchDashboardData();
-    }, 1000); // 1 detik sinkronisasi bilik
 
-    return () => clearInterval(interval);
+    let interval: NodeJS.Timeout | null = null;
+
+    const startInterval = () => {
+      if (!interval) {
+        interval = setInterval(() => {
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+            return;
+          }
+          fetchDashboardData();
+        }, 2000);
+      }
+    };
+
+    const stopInterval = () => {
+      if (interval) {
+        clearInterval(interval);
+        interval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboardData();
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    startInterval();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopInterval();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Update grafik trafik lokal berdasarkan suara masuk

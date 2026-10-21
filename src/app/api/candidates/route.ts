@@ -16,7 +16,9 @@ export async function GET() {
     return NextResponse.json(candidates || [], {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
+        'Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=43200',
+        'CDN-Cache-Control': 'public, s-maxage=86400',
+        'Vercel-CDN-Cache-Control': 'public, s-maxage=86400',
       },
     });
   } catch (err: any) {

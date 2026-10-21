@@ -46,20 +46,31 @@ export async function GET() {
       // Abaikan jika tabel activity_logs belum ada di database Neon
     }
 
-    return NextResponse.json({
-      success: true,
-      metrics: {
-        totalDpt,
-        suaraMasuk,
-        sudahMemilih,
-        availableBooths,
-        occupiedBooths,
-      },
-      booths,
-      config: configRes[0] || null,
-      activityLogs,
-      timestamp: Date.now()
-    });
+    return new NextResponse(
+      JSON.stringify({
+        success: true,
+        metrics: {
+          totalDpt,
+          suaraMasuk,
+          sudahMemilih,
+          availableBooths,
+          occupiedBooths,
+        },
+        booths,
+        config: configRes[0] || null,
+        activityLogs,
+        timestamp: Date.now()
+      }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, s-maxage=2, stale-while-revalidate=4',
+          'CDN-Cache-Control': 'public, s-maxage=2',
+          'Vercel-CDN-Cache-Control': 'public, s-maxage=2'
+        }
+      }
+    );
   } catch (err: any) {
     console.error('Error dashboard API Neon:', err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });

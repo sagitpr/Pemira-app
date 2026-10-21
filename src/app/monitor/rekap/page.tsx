@@ -47,8 +47,43 @@ export default function MonitorRekapPage() {
 
   useEffect(() => {
     fetchLiveVotes();
-    const interval = setInterval(fetchLiveVotes, 1000);
-    return () => clearInterval(interval);
+
+    let timer: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (!timer) {
+        timer = setInterval(() => {
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+            return;
+          }
+          fetchLiveVotes();
+        }, 1500);
+      }
+    };
+
+    const stopPolling = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLiveVotes();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const totalSuaraBem = useMemo(() => {

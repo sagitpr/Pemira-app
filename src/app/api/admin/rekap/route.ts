@@ -160,7 +160,9 @@ export async function GET(req: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Cache-Control': 'public, s-maxage=2, stale-while-revalidate=4',
+          'CDN-Cache-Control': 'public, s-maxage=2',
+          'Vercel-CDN-Cache-Control': 'public, s-maxage=2'
         },
       }
     );
