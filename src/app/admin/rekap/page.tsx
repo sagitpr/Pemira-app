@@ -166,29 +166,29 @@ export default function AdminRekapPage() {
     return bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0);
   }, [bemCandidates]);
 
-  // Handler Reset Seluruh Pemilihan dari Halaman Rekap
-  const handleResetAllVotes = async () => {
-    const confirmAction = window.confirm('Konfirmasi: Anda akan mengosongkan seluruh perolehan suara BEM dan HIMA kembali ke 0 serta membuka kembali hak suara seluruh DPT. Lanjutkan?');
+  // Handler Pengosongan Suara Manual Pembanding
+  const handleResetManualVotes = async () => {
+    const confirmAction = window.confirm(
+      'Konfirmasi Pengosongan Suara Manual:\n\n' +
+      'Tindakan ini HANYA akan menghapus angka perolehan suara manual pembanding.\n' +
+      'Suara digital asli pemilih dari bilik fisik dan kehadiran DPT TIDAK AKAN TERHAPUS.\n\n' +
+      'Lanjutkan pengosongan suara manual?'
+    );
     if (!confirmAction) return;
 
     try {
       const res = await fetch('/api/admin/reset-election', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'RESET_ALL' })
+        body: JSON.stringify({ action: 'RESET_MANUAL_ONLY' })
       });
       const data = await res.json();
 
       if (data.success) {
-        sessionStorage.removeItem('rekap_cache_bem');
-        sessionStorage.removeItem('rekap_cache_hima');
-        sessionStorage.removeItem('rekap_cache_matrix');
-        sessionStorage.removeItem('pemira_dashboard_metrics');
-
         alert(data.message);
-        window.location.reload();
+        fetchRekapData(false);
       } else {
-        alert(data.error || 'Gagal mereset perolehan suara.');
+        alert(data.message || 'Gagal mengosongkan suara manual.');
       }
     } catch (err) {
       alert('Terjadi kesalahan jaringan.');
@@ -211,10 +211,10 @@ export default function AdminRekapPage() {
         {isSuperAdmin && (
           <button
             type="button"
-            onClick={handleResetAllVotes}
-            className="self-start sm:self-center px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold shadow-xs transition"
+            onClick={handleResetManualVotes}
+            className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold transition"
           >
-            Reset Perolehan Suara
+            Kosongkan Suara Manual
           </button>
         )}
       </div>

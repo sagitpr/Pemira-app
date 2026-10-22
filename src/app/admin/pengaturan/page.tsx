@@ -189,16 +189,27 @@ export default function AdminPengaturanPage() {
 
   const handleSaveBoothConfig = handleSaveConfig;
 
-  // Tombol Reset Seluruh Pemilihan ke 0 & Buka Kembali Hak Suara DPT
-  const handleExecuteResetAll = async () => {
-    const confirmAction = window.confirm('Konfirmasi: Anda akan mengosongkan seluruh perolehan suara menjadi 0 dan mengembalikan status seluruh DPT menjadi Belum Memilih. Lanjutkan?');
-    if (!confirmAction) return;
+  // Tombol Reset Total dengan Verifikasi Kata Kunci Khusus
+  const handleResetAllTotal = async () => {
+    const inputCode = window.prompt(
+      'PERINGATAN TINGKAT TINGGI:\n' +
+      'Anda akan menghapus SELURUH suara (digital & manual), mengosongkan audit pilihan, dan mereset status seluruh DPT.\n\n' +
+      'Ketik "KOSONGKAN-PEMIRA" untuk mengonfirmasi:'
+    );
+
+    if (inputCode !== 'KOSONGKAN-PEMIRA') {
+      if (inputCode !== null) alert('Kode salah. Pengosongan total dibatalkan.');
+      return;
+    }
 
     try {
       const res = await fetch('/api/admin/reset-election', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'RESET_ALL' })
+        body: JSON.stringify({
+          action: 'RESET_ALL',
+          confirmation_code: 'KOSONGKAN-PEMIRA'
+        })
       });
       const data = await res.json();
 
@@ -214,7 +225,7 @@ export default function AdminPengaturanPage() {
         alert(data.message);
         window.location.reload();
       } else {
-        alert(data.error || 'Gagal melakukan reset.');
+        alert(data.message || 'Gagal mengosongkan database.');
       }
     } catch (e) {
       alert('Terjadi kesalahan jaringan.');
@@ -615,26 +626,8 @@ export default function AdminPengaturanPage() {
                 </p>
               </div>
               <button
-                onClick={async () => {
-                  if (!confirm('PERINGATAN: Seluruh suara yang masuk akan dihapus permanen dari database Neon dan kembali ke 0. Lanjutkan?')) return;
-                  try {
-                    const res = await fetch('/api/admin/pengaturan/reset', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ target: 'votes' }),
-                    });
-                    const json = await res.json();
-                    if (json.success) {
-                      resetAllVotes();
-                      alert('Seluruh perolehan suara berhasil di-reset ke 0!');
-                      showToast('Seluruh suara berhasil dinolkan.', 'warning');
-                    } else {
-                      throw new Error(json.message);
-                    }
-                  } catch (err: any) {
-                    alert('Gagal mereset suara: ' + err.message);
-                  }
-                }}
+                type="button"
+                onClick={handleResetAllTotal}
                 className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -653,7 +646,7 @@ export default function AdminPengaturanPage() {
             </p>
             <button
               type="button"
-              onClick={handleExecuteResetAll}
+              onClick={handleResetAllTotal}
               className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shadow-xs transition cursor-pointer"
             >
               Reset Kotak Suara ke Nol dan Buka Status DPT

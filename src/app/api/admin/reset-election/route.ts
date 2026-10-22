@@ -6,14 +6,34 @@ import { sql } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
-    const { action, nim } = await req.json();
+    const { action, confirmation_code, nim } = await req.json();
 
-    // AKSI 1: RESET TOTAL SELURUH SUARA & HAK AKSES DPT
+    // AKSI 1: RESET SUARA MANUAL PEMBANDING (AMAN 100% UNTUK SUARA DIGITAL)
+    if (action === 'RESET_MANUAL_ONLY') {
+      const result = await sql`
+        DELETE FROM votes 
+        WHERE UPPER(COALESCE(vote_source, 'DIGITAL')) = 'MANUAL'
+        RETURNING id
+      `;
+
+      return NextResponse.json({
+        success: true,
+        message: 'Berhasil mengosongkan ' + result.length + ' data suara manual pembanding. Suara digital bilik pemilih dan data DPT tetap aman.',
+        deletedCount: result.length
+      });
+    }
+
+    // AKSI 2: RESET TOTAL GLADI BERSIH (HANYA DARI PENGATURAN DENGAN KODE KEAMANAN)
     if (action === 'RESET_ALL') {
+      if (confirmation_code !== 'KOSONGKAN-PEMIRA') {
+        return NextResponse.json({
+          success: false,
+          message: 'Kode konfirmasi salah. Tindakan pengosongan total dibatalkan demi keamanan.'
+        }, { status: 400 });
+      }
+
       await Promise.all([
-        // Kosongkan seluruh rekaman suara
         sql`TRUNCATE TABLE votes CASCADE`,
-        // Kembalikan status pemilih dan bersihkan rekaman pilihan paslon
         sql`
           UPDATE voters 
           SET has_voted = false, 
@@ -25,7 +45,6 @@ export async function POST(req: Request) {
               duration_seconds = null, 
               updated_at = NOW()
         `,
-        // Kembalikan seluruh bilik fisik ke status tersedia
         sql`
           UPDATE booths 
           SET status = 'AVAILABLE', 
@@ -40,11 +59,11 @@ export async function POST(req: Request) {
 
       return NextResponse.json({
         success: true,
-        message: 'Seluruh perolehan suara BEM dan HIMA berhasil direset ke 0, serta status DPT dibuka kembali.'
+        message: 'Seluruh sistem berhasil dikosongkan total untuk persiapan pemungutan suara baru.'
       });
     }
 
-    // AKSI 2: RESET PERORANGAN
+    // AKSI 3: RESET SATU NIM PEMILIH
     if (action === 'RESET_SINGLE_VOTER' && nim) {
       const cleanNim = nim.trim().toLowerCase();
       await sql`
@@ -66,10 +85,10 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ success: false, message: 'Aksi reset tidak valid.' }, { status: 400 });
+    return NextResponse.json({ success: false, message: 'Aksi reset tidak dikenali.' }, { status: 400 });
 
   } catch (err: any) {
     console.error('Error reset execution:', err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return NextResponse.json({ success: false, message: 'Gagal memproses reset: ' + err.message }, { status: 500 });
   }
 }

@@ -166,6 +166,35 @@ export default function InputSuaraManualPage() {
     }
   };
 
+  // Handler Pengosongan Suara Manual Pembanding
+  const handleResetManualVotes = async () => {
+    const confirmAction = window.confirm(
+      'Konfirmasi Pengosongan Suara Manual:\n\n' +
+      'Tindakan ini HANYA akan menghapus angka perolehan suara manual pembanding.\n' +
+      'Suara digital asli pemilih dari bilik fisik dan kehadiran DPT TIDAK AKAN TERHAPUS.\n\n' +
+      'Lanjutkan pengosongan suara manual?'
+    );
+    if (!confirmAction) return;
+
+    try {
+      const res = await fetch('/api/admin/reset-election', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESET_MANUAL_ONLY' })
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        alert(data.message);
+        fetchLiveVotes();
+      } else {
+        alert(data.message || 'Gagal mengosongkan suara manual.');
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan jaringan.');
+    }
+  };
+
   const totalSuaraBem = useMemo(() => {
     return bemCandidates.reduce((acc, c) => acc + (c.total_suara || 0), 0);
   }, [bemCandidates]);
@@ -223,11 +252,20 @@ export default function InputSuaraManualPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200/60 px-3 py-1.5 rounded-xl">
-          <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-          <span className="text-xs font-bold text-blue-700 tracking-wide">
-            KONTROL SUARA AKTIF (TAMBAH &amp; KURANG)
-          </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200/60 px-3 py-1.5 rounded-xl">
+            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+            <span className="text-xs font-bold text-blue-700 tracking-wide">
+              KONTROL SUARA AKTIF (TAMBAH &amp; KURANG)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetManualVotes}
+            className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold transition cursor-pointer"
+          >
+            Kosongkan Suara Manual
+          </button>
         </div>
       </header>
 
